@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { Navigation } from '@/components/Navigation'
 import { Button } from '@/components/ui/button'
 import { getRoute } from '@/routes'
+import { applyTheme } from '@/lib/theme'
 
 export function AppShell({ appVersion }: { appVersion: string }): React.JSX.Element {
   const route = getRoute(useLocation().pathname)
@@ -16,6 +17,13 @@ export function AppShell({ appVersion }: { appVersion: string }): React.JSX.Elem
       .getRuntimeInfo()
       .then((runtimeInfo) => setDisplayVersion(runtimeInfo.appVersion))
       .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    void window.api?.settings
+      .get()
+      .then((settings) => applyTheme(settings.general.theme))
+      .catch(() => applyTheme('light'))
   }, [])
 
   return (

@@ -1,0 +1,155 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { join } from 'node:path'
+import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
+import { getAppPaths } from '@main/infrastructure/paths'
+import { store } from '@main/infrastructure/store'
+import { createId, isValidEmail, requiredText } from './common'
+
+const execFileAsync = promisify(execFile)
+
+async function git(args: string[]): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', args)
+    return stdout.trim()
+  } catch {
+    throw new Error('Git 不可用或命令执行失败，请确认已安装 Git')
+  }
+}
+
+async function readGlobal(): Promise<GitState['global']> {
+  try {
+    const output = await git(['config', '--global', '--list', '--show-origin'])
+    const rows = output.split('\n').filter(Boolean)
+    const name =
+      rows
+        .find((row) => row.includes('\tuser.name='))
+        ?.split('user.name=')
+        .slice(1)
+        .join('') ?? ''
+    const email =
+      rows
+        .find((row) => row.includes('\tuser.email='))
+        ?.split('user.email=')
+        .slice(1)
+        .join('') ?? ''
+    const sourceFile =
+      rows[0]?.match(/^file:(.*?)\t/)?.[1] ?? join(process.env.HOME ?? '', '.gitconfig')
+    return { username: name, email, sourceFile }
+  } catch {
+    return { username: '', email: '', sourceFile: join(process.env.HOME ?? '', '.gitconfig') }
+  }
+}
+
+async function writeProfile(identity: GitIdentity, keys: SSHKey[]): Promise<void> {
+  const directory = join(getAppPaths().data, 'git-rules')
+  await mkdir(directory, { recursive: true })
+  const key = keys.find((item) => item.id === identity.sshKeyId && item.privateKeyPath)
+  const sshSection = key?.privateKeyPath
+    ? `\n[core]\n\tsshCommand = ssh -i "${key.privateKeyPath}" -o IdentitiesOnly=yes\n`
+    : ''
+  await writeFile(
+    join(directory, `${identity.id}.profile`),
+    `[user]\n\tname = ${identity.username}\n\temail = ${identity.email}\n${sshSection}`,
+    'utf8'
+  )
+}
+
+/** 将工作区路径规则集中写入托管 include 文件，并挂到用户级 Git 配置。 */
+export async function syncGitRules(): Promise<void> {
+  const identities = await store.gitIdentities.read()
+  const keys = await store.sshKeys.read()
+  const workspaces = await store.workspaces.read()
+  const directory = join(getAppPaths().data, 'git-rules')
+  await mkdir(directory, { recursive: true })
+  for (const identity of identities) await writeProfile(identity, keys)
+  const lines = workspaces.flatMap((workspace) => {
+    const identity = identities.find((item) => item.id === workspace.gitIdentityId)
+    if (!identity) return []
+    return [
+      `[includeIf "gitdir:${workspace.rootPath.replace(/\\/g, '/')}/"]`,
+      `\tpath = ${join(directory, `${identity.id}.profile`)}`
+    ]
+  })
+  await writeFile(join(directory, 'workspace-rules.inc'), `${lines.join('\n')}\n`, 'utf8')
+  const includes: string[] = await execFileAsync('git', [
+    'config',
+    '--global',
+    '--get-all',
+    'include.path'
+  ])
+    .then(({ stdout }) => stdout.split('\n'))
+    .catch(() => [] as string[])
+  const includePath = join(directory, 'workspace-rules.inc')
+  if (!includes.includes(includePath))
+    await git(['config', '--global', '--add', 'include.path', includePath])
+}
+
+export async function getGitState(): Promise<GitState> {
+  return {
+    global: await readGlobal(),
+    identities: await store.gitIdentities.read(),
+    profileDirectory: join(getAppPaths().data, 'git-rules')
+  }
+}
+
+export async function getGitFiles(): Promise<GitFileSnapshot[]> {
+  const state = await getGitState()
+  const workspaces = await store.workspaces.read()
+  const paths = [
+    { name: '全局配置', path: state.global.sourceFile },
+    { name: '工作区规则', path: join(state.profileDirectory, 'workspace-rules.inc') },
+    ...state.identities.map((identity) => ({
+      name: `身份：${identity.name}`,
+      path: join(state.profileDirectory, `${identity.id}.profile`)
+    }))
+  ]
+  if (!workspaces.length && !state.identities.length)
+    return paths.slice(0, 2).map((item) => ({ ...item, content: '', exists: false }))
+  return Promise.all(
+    paths.map(async (item) => {
+      const content = await readFile(item.path, 'utf8').catch(() => '')
+      return { ...item, content, exists: Boolean(content) }
+    })
+  )
+}
+
+export async function saveGlobalGit(value: { username: string; email: string }): Promise<GitState> {
+  const username = requiredText(value.username, 'Git 用户名', 120)
+  const email = requiredText(value.email, 'Git 邮箱', 200)
+  if (!isValidEmail(email)) throw new Error('Git 邮箱格式无效')
+  await git(['config', '--global', '--replace-all', 'user.name', username])
+  await git(['config', '--global', '--replace-all', 'user.email', email])
+  return getGitState()
+}
+
+export async function saveGitIdentity(input: GitIdentity): Promise<GitState> {
+  const name = requiredText(input.name, '身份名称', 80)
+  const username = requiredText(input.username, '用户名', 120)
+  const email = requiredText(input.email, '邮箱', 200)
+  if (!isValidEmail(email)) throw new Error('身份邮箱格式无效')
+  const existing = await store.gitIdentities.read()
+  if (
+    existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
+  )
+    throw new Error(`身份名称重复：${name}`)
+  if (input.sshKeyId && !(await store.sshKeys.read()).some((key) => key.id === input.sshKeyId))
+    throw new Error('关联的 SSH 密钥不存在')
+  const identity = { ...input, id: input.id || createId('git'), name, username, email }
+  await store.gitIdentities.write([...existing.filter((item) => item.id !== identity.id), identity])
+  await syncGitRules()
+  return getGitState()
+}
+
+export async function removeGitIdentity(id: string): Promise<GitState> {
+  const workspaces = await store.workspaces.read()
+  const references = workspaces.filter((workspace) => workspace.gitIdentityId === id).slice(0, 3)
+  if (references.length)
+    throw new Error(`身份仍被工作区使用：${references.map((item) => item.name).join('、')}`)
+  await store.gitIdentities.write(
+    (await store.gitIdentities.read()).filter((item) => item.id !== id)
+  )
+  await syncGitRules()
+  return getGitState()
+}

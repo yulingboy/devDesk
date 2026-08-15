@@ -10,5 +10,78 @@ export const IPC_CHANNELS = {
     toggleMaximize: 'window:toggle-maximize',
     close: 'window:close',
     stateChanged: 'window:state-changed'
+  },
+  overview: {
+    getSnapshot: 'overview:get-snapshot',
+    updated: 'overview:updated'
+  },
+  hosts: {
+    list: 'hosts:list',
+    save: 'hosts:save',
+    restoreBackup: 'hosts:restore-backup',
+    openFile: 'hosts:open-file',
+    flushDns: 'hosts:flush-dns',
+    openDomain: 'hosts:open-domain'
+  },
+  ssh: {
+    list: 'ssh:list',
+    save: 'ssh:save',
+    generate: 'ssh:generate',
+    remove: 'ssh:remove'
+  },
+  git: {
+    getState: 'git:get-state',
+    saveGlobal: 'git:save-global',
+    saveIdentity: 'git:save-identity',
+    removeIdentity: 'git:remove-identity',
+    files: 'git:files'
+  },
+  workspaces: {
+    list: 'workspaces:list',
+    save: 'workspaces:save',
+    remove: 'workspaces:remove',
+    scan: 'workspaces:scan',
+    open: 'workspaces:open',
+    openProject: 'workspaces:open-project',
+    openProjectEditor: 'workspaces:open-project-editor'
+  },
+  templates: {
+    list: 'templates:list',
+    save: 'templates:save',
+    remove: 'templates:remove',
+    createProject: 'templates:create-project'
+  },
+  node: {
+    getState: 'node:get-state',
+    releases: 'node:releases',
+    install: 'node:install',
+    switch: 'node:switch',
+    remove: 'node:remove',
+    registries: 'node:registries',
+    saveRegistry: 'node:save-registry',
+    removeRegistry: 'node:remove-registry',
+    useRegistry: 'node:use-registry',
+    testRegistry: 'node:test-registry',
+    packages: 'node:packages',
+    installPackage: 'node:install-package',
+    removePackage: 'node:remove-package',
+    updatePackage: 'node:update-package',
+    scanCaches: 'node:scan-caches',
+    clearCaches: 'node:clear-caches',
+    taskUpdated: 'node:task-updated'
+  },
+  settings: {
+    get: 'settings:get',
+    save: 'settings:save',
+    reset: 'settings:reset',
+    export: 'settings:export',
+    exportFile: 'settings:export-file',
+    import: 'settings:import',
+    importFile: 'settings:import-file',
+    openData: 'settings:open-data',
+    clearBusinessData: 'settings:clear-business-data',
+    environmentCheck: 'settings:environment-check',
+    dataStats: 'settings:data-stats',
+    openDeveloperTools: 'settings:open-developer-tools'
   }
 } as const

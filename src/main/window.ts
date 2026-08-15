@@ -7,6 +7,7 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import { registerManagedWindow } from '@main/infrastructure/ipc'
 import { log } from '@main/infrastructure/logger'
 import icon from '../../resources/icon.png?asset'
+import { shouldMinimizeToTray } from '@main/tray'
 
 /** 创建主窗口并绑定安全导航、日志和窗口状态事件。 */
 export function createMainWindow(): BrowserWindow {
@@ -36,6 +37,12 @@ export function createMainWindow(): BrowserWindow {
   registerManagedWindow(window)
   registerWindowLogging(window)
   registerWindowStateEvents(window)
+  window.on('close', (event) => {
+    if (shouldMinimizeToTray()) {
+      event.preventDefault()
+      window.hide()
+    }
+  })
 
   window.on('ready-to-show', () => window.show())
 

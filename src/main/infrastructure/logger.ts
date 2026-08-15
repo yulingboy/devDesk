@@ -47,4 +47,11 @@ export function writeLog(level: LogLevel, message: string, ...args: unknown[]): 
   log[level](message, ...args)
 }
 
+/** 设置持久化日志阈值；控制台在开发环境中仍保留调试信息。 */
+export function setLogLevel(level: LogLevel): void {
+  log.transports.file.level = level
+  if (process.env.NODE_ENV !== 'development') log.transports.console.level = level
+  log.info('日志级别已更新', { level })
+}
+
 export { log }

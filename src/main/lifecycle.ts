@@ -3,8 +3,13 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerApplicationIpc } from '@main/ipc-handlers'
 import { initializeLogger, log } from '@main/infrastructure/logger'
 import { initializeAppPaths } from '@main/infrastructure/paths'
+import { initializeStore } from '@main/infrastructure/store'
 import { createMainWindow } from '@main/window'
 import { WindowPool } from '@main/window-pool'
+import { IPC_CHANNELS } from '@shared/ipc'
+import { startOverviewSampler, stopOverviewSampler } from '@main/services/overview'
+import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } from '@main/tray'
+import { getSettings } from '@main/services/settings'
 
 const windowPool = new WindowPool()
 
@@ -12,6 +17,7 @@ const windowPool = new WindowPool()
 export function registerAppLifecycle(): void {
   app.whenReady().then(() => {
     const paths = initializeAppPaths()
+    initializeStore(paths)
     initializeLogger(paths)
     electronApp.setAppUserModelId('com.envtool.app')
     log.info('应用开始启动', { version: app.getVersion(), paths })
@@ -20,7 +26,16 @@ export function registerAppLifecycle(): void {
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
     registerApplicationIpc()
-    windowPool.open('main', createMainWindow)
+    const mainWindow = windowPool.open('main', createMainWindow)
+    void getSettings()
+      .then((settings) => setMinimizeToTray(settings.general.minimizeToTray))
+      .catch(() => undefined)
+    createAppTray(mainWindow)
+    startOverviewSampler((snapshot) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send(IPC_CHANNELS.overview.updated, snapshot)
+      }
+    })
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -41,6 +56,9 @@ export function registerAppLifecycle(): void {
 
   app.on('before-quit', () => {
     log.info('应用准备退出')
+    markAppQuitting()
+    stopOverviewSampler()
+    destroyAppTray()
     windowPool.closeAll()
   })
 }
