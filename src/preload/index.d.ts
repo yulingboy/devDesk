@@ -1,10 +1,8 @@
-import type { RuntimeInfo } from '../shared/types'
+import type { AppApi } from '@shared/types'
 
 declare global {
   interface Window {
-    api?: {
-      getRuntimeInfo: () => Promise<RuntimeInfo>
-    }
+    api?: AppApi
   }
 }
 

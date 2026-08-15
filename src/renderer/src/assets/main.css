@@ -2,6 +2,15 @@
 
 :root {
   color-scheme: light;
+  --background: #fbfbfa;
+  --foreground: #202123;
+  --card: #ffffff;
+  --card-foreground: #202123;
+  --border: #e1e3e5;
+  --muted: #f2f2f0;
+  --muted-foreground: #777b80;
+  --primary: #202123;
+  --primary-foreground: #ffffff;
   font-family:
     Inter,
     ui-sans-serif,
@@ -29,6 +38,8 @@ body,
 body {
   min-height: 100vh;
   overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
 }
 
 button {
@@ -38,4 +49,14 @@ button {
 button:focus-visible {
   outline: 2px solid #22a06b;
   outline-offset: 2px;
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.app-no-drag,
+.app-no-drag * {
+  -webkit-app-region: no-drag;
 }
