@@ -4,8 +4,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { shell } from 'electron'
 import type { HostRecord } from '@shared/domain'
-import { getAppPaths } from '@main/infrastructure/paths'
-import { store } from '@main/infrastructure/store'
+import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidDomain, isValidIpv4, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
@@ -19,7 +18,7 @@ function hostsPath(): string {
 }
 
 function backupPath(): string {
-  return join(getAppPaths().data, 'hosts.backup')
+  return join(getStoreDirectory(), 'hosts.backup')
 }
 
 function parseManaged(raw: string): HostRecord[] {

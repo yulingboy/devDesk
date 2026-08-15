@@ -1,26 +1,44 @@
 import { app, dialog, shell } from 'electron'
-import { lstat, readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { cp, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { AppSettings, DataExport } from '@shared/domain'
+import type { AppSettings, DataExport, ThemeName } from '@shared/domain'
 import type { DataStats, EnvironmentCheck } from '@shared/domain'
 import { getAppPaths } from '@main/infrastructure/paths'
-import { store } from '@main/infrastructure/store'
+import { getStoreDirectory, setStoreDirectory, store } from '@main/infrastructure/store'
 import { setMinimizeToTray } from '@main/tray'
 import { setLogLevel } from '@main/infrastructure/logger'
+import { syncGitRules } from '@main/services/git'
 
 const execFileAsync = promisify(execFile)
+const supportedThemes: ThemeName[] = [
+  'blue',
+  'purple',
+  'green',
+  'orange',
+  'rose',
+  'cyan',
+  'indigo',
+  'teal'
+]
+
+const normalizeTheme = (value: unknown): ThemeName =>
+  supportedThemes.includes(value as ThemeName) ? (value as ThemeName) : 'blue'
 
 export async function getSettings(): Promise<AppSettings> {
-  return store.settings.read()
+  const settings = await store.settings.read()
+  return {
+    ...settings,
+    general: { ...settings.general, theme: normalizeTheme(settings.general.theme) }
+  }
 }
 
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {
   const next: AppSettings = {
     ...settings,
     schemaVersion: 1,
-    general: { ...settings.general, theme: settings.general.theme ?? 'light' },
+    general: { ...settings.general, theme: normalizeTheme(settings.general.theme) },
     advanced: { ...settings.advanced, logLevel: settings.advanced.logLevel ?? 'info' },
     node: { ...settings.node }
   }
@@ -35,7 +53,7 @@ export async function resetSettings(): Promise<AppSettings> {
   const current = await store.settings.read()
   return saveSettings({
     ...current,
-    general: { theme: 'light', launchAtLogin: false, minimizeToTray: false },
+    general: { theme: 'blue', launchAtLogin: false, minimizeToTray: false },
     advanced: { logLevel: 'info', developerTools: false }
   })
 }
@@ -56,7 +74,8 @@ export async function exportSettingsFile(): Promise<void> {
 
 export async function importSettings(data: DataExport): Promise<AppSettings> {
   await store.importData(data)
-  return store.settings.read()
+  await syncGitRules()
+  return saveSettings(await store.settings.read())
 }
 
 export async function importSettingsFile(): Promise<AppSettings> {
@@ -71,8 +90,64 @@ export async function importSettingsFile(): Promise<AppSettings> {
 }
 
 export async function openDataDirectory(): Promise<void> {
-  const error = await shell.openPath(getAppPaths().data)
+  const settings = await getSettings()
+  const error = await shell.openPath(settings.data.directory || getAppPaths().data)
   if (error) throw new Error(`无法打开数据目录：${error}`)
+}
+
+/** 先复制完整数据，再更新设置和运行时目录，避免迁移中断造成半切换。 */
+export async function changeDataDirectory(): Promise<AppSettings> {
+  const current = await getSettings()
+  const result = await dialog.showOpenDialog({
+    title: '选择新的数据目录',
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (result.canceled || !result.filePaths[0]) return current
+  const source = resolve(getStoreDirectory())
+  const target = resolve(result.filePaths[0])
+  if (target === source) return current
+  const targetFromSource = relative(source, target)
+  if (targetFromSource && !targetFromSource.startsWith('..') && !isAbsolute(targetFromSource)) {
+    throw new Error('新数据目录不能位于当前数据目录内部')
+  }
+  await mkdir(target, { recursive: true })
+  const businessFiles = [
+    'hosts.json',
+    'ssh-keys.json',
+    'git-configs.json',
+    'workspaces.json',
+    'templates.json',
+    'hosts.backup',
+    'system-overview-snapshot.json',
+    'node-manager.json',
+    'git-rules'
+  ]
+  try {
+    await Promise.all(
+      businessFiles.map((fileName) =>
+        cp(join(source, fileName), join(target, fileName), {
+          recursive: true,
+          force: true
+        }).catch((error: unknown) => {
+          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return
+          throw error
+        })
+      )
+    )
+  } catch {
+    throw new Error('数据目录迁移失败，请检查目标目录权限和剩余空间')
+  }
+  const next = { ...current, data: { directory: target } }
+  // 先在新目录重建 Git 路径规则，成功后再更新固定位置的目录指针。
+  setStoreDirectory(target)
+  try {
+    await syncGitRules()
+    await store.settings.write(next)
+  } catch (error) {
+    setStoreDirectory(source)
+    throw error
+  }
+  return next
 }
 
 export async function clearBusinessData(): Promise<AppSettings> {
@@ -81,6 +156,7 @@ export async function clearBusinessData(): Promise<AppSettings> {
   await store.gitIdentities.write([])
   await store.workspaces.write([])
   await store.templates.write([])
+  await syncGitRules()
   return store.settings.read()
 }
 
@@ -107,7 +183,7 @@ async function directoryStats(path: string): Promise<{ sizeBytes: number; fileCo
 
 /** 统计数据目录和主要业务对象，单项失败时使用安全默认值。 */
 export async function getDataStats(): Promise<DataStats> {
-  const directory = getAppPaths().data
+  const directory = getStoreDirectory()
   const [stats, identities, workspaces, keys] = await Promise.all([
     directoryStats(directory),
     store.gitIdentities.read().catch(() => []),
@@ -135,10 +211,44 @@ const environmentCommands: Array<{ id: string; name: string; command: string; ar
   { id: 'docker', name: 'Docker', command: 'docker', args: ['--version'] }
 ]
 
+const environmentGuides: Record<string, string> = {
+  git: 'https://git-scm.com/downloads',
+  node: 'https://nodejs.org/zh-cn/download',
+  npm: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm',
+  pnpm: 'https://pnpm.io/zh/installation',
+  yarn: 'https://yarnpkg.com/getting-started/install',
+  bun: 'https://bun.sh/docs/installation',
+  ssh: 'https://www.openssh.com/',
+  python: 'https://www.python.org/downloads/',
+  docker: 'https://docs.docker.com/desktop/setup/install/mac-install/'
+}
+
+/** 缺失工具只打开官方安装指引，避免未经确认执行远程 shell 脚本。 */
+export async function openEnvironmentGuide(id: string): Promise<void> {
+  const url = environmentGuides[id]
+  if (!url) throw new Error('暂无该工具的安装指引')
+  await shell.openExternal(url)
+}
+
 /** 逐项执行常见开发工具检测，并保留原始输出用于排障。 */
-export async function runEnvironmentCheck(): Promise<EnvironmentCheck[]> {
+export async function runEnvironmentCheck(
+  shouldStop: () => boolean = () => false,
+  onUpdated?: (results: EnvironmentCheck[]) => void
+): Promise<EnvironmentCheck[]> {
   const results: EnvironmentCheck[] = []
-  for (const item of environmentCommands) {
+  for (const [index, item] of environmentCommands.entries()) {
+    if (shouldStop()) {
+      const skipped = environmentCommands.slice(index).map((remaining) => ({
+        id: remaining.id,
+        name: remaining.name,
+        command: `${remaining.command} ${remaining.args.join(' ')}`,
+        status: 'skipped' as const,
+        detail: '用户已停止后续检测'
+      }))
+      results.push(...skipped)
+      onUpdated?.([...results])
+      break
+    }
     try {
       const { stdout, stderr } = await execFileAsync(item.command, item.args, {
         timeout: 10_000,
@@ -163,6 +273,8 @@ export async function runEnvironmentCheck(): Promise<EnvironmentCheck[]> {
         detail
       })
     }
+    // 每项完成就推送快照，页面不必等待全部命令结束。
+    onUpdated?.([...results])
   }
   return results
 }

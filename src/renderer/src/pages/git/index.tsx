@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { GitBranch, Pencil, Save, Trash2 } from 'lucide-react'
+import { Copy, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { rendererLogger } from '@/lib/logger'
+import { PageHeader } from '@/components/PageHeader'
+import { Drawer } from '@/components/ui/drawer'
 
 const emptyIdentity: GitIdentity = { id: '', name: '', username: '', email: '' }
 
@@ -17,6 +19,7 @@ export function GitPage(): React.JSX.Element {
   const [identity, setIdentity] = useState<GitIdentity>(emptyIdentity)
   const [status, setStatus] = useState('')
   const [files, setFiles] = useState<GitFileSnapshot[]>([])
+  const [drawerMode, setDrawerMode] = useState<'global' | 'identity' | null>(null)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
@@ -40,6 +43,7 @@ export function GitPage(): React.JSX.Element {
       .saveGlobal(global)
       .then((value) => {
         setState(value)
+        setDrawerMode(null)
         setStatus('全局 Git 配置已写入真实配置文件')
       })
       .catch(report)
@@ -50,41 +54,45 @@ export function GitPage(): React.JSX.Element {
       .then((value) => {
         setState(value)
         setIdentity(emptyIdentity)
+        setDrawerMode(null)
         setStatus('Git 身份已保存并生成 profile')
       })
       .catch(report)
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-8 py-8">
+    <div className="mx-auto max-w-6xl space-y-5 p-6">
+      <PageHeader
+        extra={
+          <Button
+            onClick={() => {
+              setIdentity(emptyIdentity)
+              setDrawerMode('identity')
+            }}
+            variant="success"
+          >
+            <Plus size={15} />
+            新增配置
+          </Button>
+        }
+        title="Git 配置"
+        subtitle="维护全局配置、项目身份和工作区规则"
+      />
       <Card>
         <CardHeader>
           <CardTitle>全局 Git 配置</CardTitle>
           <CardDescription>来源文件：{state?.global.sourceFile ?? '读取中'}</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="global-name">用户名</Label>
-            <Input
-              id="global-name"
-              onChange={(event) => setGlobal({ ...global, username: event.target.value })}
-              value={global.username}
-            />
+        <CardContent className="flex items-center justify-between gap-4">
+          <div className="text-sm text-slate-600">
+            <span className="font-medium text-slate-800">{global.username || '未配置用户名'}</span>
+            <span className="mx-2 text-slate-300">·</span>
+            {global.email || '未配置邮箱'}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="global-email">邮箱</Label>
-            <Input
-              id="global-email"
-              onChange={(event) => setGlobal({ ...global, email: event.target.value })}
-              value={global.email}
-            />
-          </div>
-          <div>
-            <Button onClick={saveGlobal} variant="success">
-              <Save size={15} />
-              保存全局配置
-            </Button>
-          </div>
+          <Button onClick={() => setDrawerMode('global')} variant="secondary">
+            <Pencil size={15} />
+            编辑全局配置
+          </Button>
         </CardContent>
       </Card>
       <Card>
@@ -96,14 +104,14 @@ export function GitPage(): React.JSX.Element {
         </CardHeader>
         <CardContent className="space-y-2">
           {files.map((file) => (
-            <details className="rounded-md border border-[#e7e8e9] p-3" key={file.path}>
+            <details className="rounded-md border border-slate-100 p-3" key={file.path}>
               <summary className="cursor-pointer text-sm font-medium">
                 {file.name}
-                <span className="ml-2 font-mono text-xs font-normal text-[#777b80]">
+                <span className="ml-2 font-mono text-xs font-normal text-slate-500">
                   {file.path}
                 </span>
               </summary>
-              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-[#f4f4f2] p-3 text-xs text-[#62666a]">
+              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs text-slate-600">
                 {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
               </pre>
             </details>
@@ -121,23 +129,37 @@ export function GitPage(): React.JSX.Element {
         <CardContent className="space-y-3">
           {state?.identities.map((item) => (
             <div
-              className="flex items-center gap-3 rounded-md border border-[#e7e8e9] p-3"
+              className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
               key={item.id}
             >
-              <GitBranch className="text-[#1f845a]" size={18} />
+              <GitBranch className="text-[var(--accent)]" size={18} />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{item.name}</p>
-                <p className="text-xs text-[#777b80]">
+                <p className="text-xs text-slate-500">
                   {item.username} · {item.email}
                 </p>
               </div>
               <Button
-                onClick={() => setIdentity(item)}
+                onClick={() => {
+                  setIdentity(item)
+                  setDrawerMode('identity')
+                }}
                 size="icon"
                 title="编辑身份"
                 variant="ghost"
               >
                 <Pencil size={15} />
+              </Button>
+              <Button
+                onClick={() => {
+                  setIdentity({ ...item, id: '', name: `${item.name}-copy` })
+                  setDrawerMode('identity')
+                }}
+                size="icon"
+                title="复制身份"
+                variant="ghost"
+              >
+                <Copy size={15} />
               </Button>
               <Button
                 onClick={() => {
@@ -152,7 +174,60 @@ export function GitPage(): React.JSX.Element {
               </Button>
             </div>
           ))}
-          <div className="grid gap-3 border-t border-[#e7e8e9] pt-4 md:grid-cols-2">
+          <p className="text-xs text-slate-500">{status}</p>
+        </CardContent>
+      </Card>
+      <Drawer
+        description={
+          drawerMode === 'global'
+            ? '此操作会直接修改当前用户的真实 Git 全局配置。'
+            : '配置可绑定 SSH 密钥，并由工作区通过 includeIf 自动应用。'
+        }
+        footer={
+          <>
+            <Button onClick={() => setDrawerMode(null)} variant="secondary">
+              取消
+            </Button>
+            <Button onClick={drawerMode === 'global' ? saveGlobal : saveIdentity} variant="success">
+              <Save size={15} />
+              保存
+            </Button>
+          </>
+        }
+        onClose={() => setDrawerMode(null)}
+        open={drawerMode !== null}
+        title={
+          drawerMode === 'global'
+            ? '编辑全局 Git 配置'
+            : identity.id
+              ? '编辑 Git 配置'
+              : '新增 Git 配置'
+        }
+      >
+        {drawerMode === 'global' ? (
+          <div className="space-y-5">
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+              保存后会立即写入 {state?.global.sourceFile || '~/.gitconfig'}。
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="global-name">用户名</Label>
+              <Input
+                id="global-name"
+                onChange={(event) => setGlobal({ ...global, username: event.target.value })}
+                value={global.username}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="global-email">邮箱</Label>
+              <Input
+                id="global-email"
+                onChange={(event) => setGlobal({ ...global, email: event.target.value })}
+                value={global.email}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="identity-name">身份名称</Label>
               <Input
@@ -180,7 +255,7 @@ export function GitPage(): React.JSX.Element {
             <div className="space-y-2">
               <Label htmlFor="identity-key">SSH 密钥</Label>
               <select
-                className="h-9 w-full rounded-md border border-[#d9dadb] bg-white px-3 text-sm"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 id="identity-key"
                 onChange={(event) =>
                   setIdentity({ ...identity, sshKeyId: event.target.value || undefined })
@@ -195,21 +270,9 @@ export function GitPage(): React.JSX.Element {
                 ))}
               </select>
             </div>
-            <div>
-              <Button onClick={saveIdentity} variant="success">
-                <Save size={15} />
-                {identity.id ? '更新身份' : '保存身份'}
-              </Button>
-              {identity.id && (
-                <Button onClick={() => setIdentity(emptyIdentity)} variant="ghost">
-                  取消编辑
-                </Button>
-              )}
-            </div>
           </div>
-          <p className="text-xs text-[#777b80]">{status}</p>
-        </CardContent>
-      </Card>
+        )}
+      </Drawer>
     </div>
   )
 }

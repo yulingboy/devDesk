@@ -1,8 +1,8 @@
-/** 主题名称；前 3 项是系统模式，后 5 项是可持久化的浅色强调色。 */
-export type ThemeName =
-  'light' | 'dark' | 'system' | 'blue' | 'green' | 'orange' | 'rose' | 'violet'
+/** 主题名称与参考项目保持一致，主题只改变强调色并维持浅色工作区。 */
+export type ThemeName = 'blue' | 'purple' | 'green' | 'orange' | 'rose' | 'cyan' | 'indigo' | 'teal'
 export type TemplateType = 'git' | 'local'
-export type TaskStatus = 'waiting' | 'running' | 'completed' | 'skipped' | 'failed'
+export type TaskStatus =
+  'waiting' | 'downloading' | 'extracting' | 'completed' | 'skipped' | 'failed'
 
 export interface HostRecord {
   id: string
@@ -186,6 +186,7 @@ export interface NodeRelease {
   date?: string
   lts?: string | false
   security?: boolean
+  files?: string[]
 }
 
 export interface DataExport {
@@ -197,6 +198,9 @@ export interface DataExport {
   gitIdentities: GitIdentity[]
   workspaces: Workspace[]
   templates: ProjectTemplate[]
+  nodeState?: NodeState | null
+  overview?: SystemOverviewSnapshot | null
+  hostsBackup?: string
 }
 
 export interface SSHKeyDraft {

@@ -12,12 +12,12 @@ export function EnvironmentPanel({
 }): React.JSX.Element {
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between border-b border-[#e7e8e9]">
+      <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
         <div>
           <CardTitle>开发环境</CardTitle>
           <CardDescription>运行时与平台信息</CardDescription>
         </div>
-        <ShieldCheck aria-hidden="true" className="text-[#22a06b]" size={19} />
+        <ShieldCheck aria-hidden="true" className="text-[var(--accent)]" size={19} />
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-5">
@@ -64,12 +64,12 @@ function RuntimeRow({
 }): React.JSX.Element {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-md bg-[#eef2f3] text-[#526168]">
+      <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--theme-lighter)] text-[var(--accent)]">
         <Icon aria-hidden="true" size={17} />
       </div>
       <div className="min-w-0">
-        <dt className="text-xs text-[#85878a]">{label}</dt>
-        <dd className="mt-0.5 truncate text-sm font-medium">{value}</dd>
+        <dt className="text-xs text-slate-400">{label}</dt>
+        <dd className="mt-0.5 truncate text-sm font-medium text-slate-700">{value}</dd>
       </div>
     </div>
   )

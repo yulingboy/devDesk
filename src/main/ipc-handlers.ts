@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { RendererErrorReport, RendererLogEntry, RuntimeInfo, WindowState } from '@shared/types'
 import type {
@@ -26,9 +26,11 @@ import {
   importSettings,
   importSettingsFile,
   openDataDirectory,
+  changeDataDirectory,
   clearBusinessData,
   getDataStats,
-  runEnvironmentCheck
+  runEnvironmentCheck,
+  openEnvironmentGuide
 } from '@main/services/settings'
 import {
   listHosts,
@@ -76,6 +78,8 @@ import {
   installGlobalPackage,
   removeGlobalPackage,
   updateGlobalPackage,
+  setPackageManager,
+  setPackageManagerRegistry,
   scanNodeCaches,
   clearNodeCaches
 } from '@main/services/node'
@@ -104,6 +108,24 @@ export function registerApplicationIpc(): void {
   registerIpcHandler<void>(IPC_CHANNELS.app.reportError, (_, report) => {
     writeRendererError(parseRendererErrorReport(report))
   })
+
+  registerIpcHandler<string | null>(
+    IPC_CHANNELS.dialog.selectDirectory,
+    async (event, defaultPath) => {
+      const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const options = {
+        title: '选择目录',
+        defaultPath: typeof defaultPath === 'string' ? defaultPath : undefined,
+        properties: ['openDirectory', 'createDirectory'] as Array<
+          'openDirectory' | 'createDirectory'
+        >
+      }
+      const result = owner
+        ? await dialog.showOpenDialog(owner, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    }
+  )
 
   registerIpcHandler<WindowState>(IPC_CHANNELS.window.getState, (event) =>
     getWindowState(BrowserWindow.fromWebContents(event.sender))
@@ -196,6 +218,12 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.node.packages, (_, keyword) =>
     listGlobalPackages(String(keyword ?? ''))
   )
+  registerIpcHandler(IPC_CHANNELS.node.setPackageManager, (_, manager) =>
+    setPackageManager(String(manager))
+  )
+  registerIpcHandler(IPC_CHANNELS.node.setPackageRegistry, (_, manager, registry) =>
+    setPackageManagerRegistry(String(manager), String(registry))
+  )
   registerIpcHandler(IPC_CHANNELS.node.installPackage, (_, name) =>
     installGlobalPackage(String(name))
   )
@@ -218,8 +246,25 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.settings.import, (_, data) => importSettings(data as DataExport))
   registerIpcHandler(IPC_CHANNELS.settings.importFile, () => importSettingsFile())
   registerIpcHandler(IPC_CHANNELS.settings.openData, () => openDataDirectory())
+  registerIpcHandler(IPC_CHANNELS.settings.changeDataDirectory, () => changeDataDirectory())
   registerIpcHandler(IPC_CHANNELS.settings.clearBusinessData, () => clearBusinessData())
-  registerIpcHandler(IPC_CHANNELS.settings.environmentCheck, () => runEnvironmentCheck())
+  const stoppedEnvironmentChecks = new Set<number>()
+  registerIpcHandler(IPC_CHANNELS.settings.environmentCheck, (event) => {
+    stoppedEnvironmentChecks.delete(event.sender.id)
+    return runEnvironmentCheck(
+      () => stoppedEnvironmentChecks.has(event.sender.id) || event.sender.isDestroyed(),
+      (checks) => {
+        if (!event.sender.isDestroyed())
+          event.sender.send(IPC_CHANNELS.settings.environmentCheckUpdated, checks)
+      }
+    ).finally(() => stoppedEnvironmentChecks.delete(event.sender.id))
+  })
+  registerIpcHandler<void>(IPC_CHANNELS.settings.stopEnvironmentCheck, (event) => {
+    stoppedEnvironmentChecks.add(event.sender.id)
+  })
+  registerIpcHandler(IPC_CHANNELS.settings.openEnvironmentGuide, (_, id) =>
+    openEnvironmentGuide(String(id))
+  )
   registerIpcHandler(IPC_CHANNELS.settings.dataStats, () => getDataStats())
   registerIpcHandler<void>(IPC_CHANNELS.settings.openDeveloperTools, async (event) => {
     const settings = await getSettings()

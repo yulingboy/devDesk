@@ -2,16 +2,19 @@
 
 :root {
   color-scheme: light;
-  --background: #fbfbfa;
-  --foreground: #202123;
+  --background: #f8fafc;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --card-foreground: #202123;
-  --border: #e1e3e5;
-  --muted: #f2f2f0;
-  --muted-foreground: #777b80;
-  --primary: #202123;
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --accent: #1f845a;
+  --accent: #2563eb;
+  --theme-light: #dbeafe;
+  --theme-lighter: #eff6ff;
+  --theme-border: #bfdbfe;
   font-family:
     Inter,
     ui-sans-serif,
@@ -24,25 +27,53 @@
   text-rendering: optimizeLegibility;
 }
 
-:root[data-theme='blue'] {
+:root[data-theme-color='blue'] {
   --accent: #2563eb;
+  --theme-light: #dbeafe;
+  --theme-lighter: #eff6ff;
+  --theme-border: #bfdbfe;
 }
-:root[data-theme='green'] {
-  --accent: #1f845a;
+:root[data-theme-color='purple'] {
+  --accent: #9333ea;
+  --theme-light: #f3e8ff;
+  --theme-lighter: #faf5ff;
+  --theme-border: #d8b4fe;
 }
-:root[data-theme='orange'] {
-  --accent: #c25a10;
+:root[data-theme-color='green'] {
+  --accent: #16a34a;
+  --theme-light: #dcfce7;
+  --theme-lighter: #f0fdf4;
+  --theme-border: #bbf7d0;
 }
-:root[data-theme='rose'] {
-  --accent: #be3b63;
+:root[data-theme-color='orange'] {
+  --accent: #ea580c;
+  --theme-light: #ffedd5;
+  --theme-lighter: #fff7ed;
+  --theme-border: #fed7aa;
 }
-:root[data-theme='violet'] {
-  --accent: #7c4dcc;
+:root[data-theme-color='rose'] {
+  --accent: #e11d48;
+  --theme-light: #ffe4e6;
+  --theme-lighter: #fff1f2;
+  --theme-border: #fecdd3;
 }
-:root[data-theme='dark'] {
-  --background: #f5f5f4;
-  --foreground: #202123;
-  --accent: #4f5b66;
+:root[data-theme-color='cyan'] {
+  --accent: #0891b2;
+  --theme-light: #cffafe;
+  --theme-lighter: #ecfeff;
+  --theme-border: #a5f3fc;
+}
+:root[data-theme-color='indigo'] {
+  --accent: #4f46e5;
+  --theme-light: #e0e7ff;
+  --theme-lighter: #eef2ff;
+  --theme-border: #c7d2fe;
+}
+:root[data-theme-color='teal'] {
+  --accent: #0d9488;
+  --theme-light: #ccfbf1;
+  --theme-lighter: #f0fdfa;
+  --theme-border: #99f6e4;
 }
 
 * {
@@ -64,8 +95,43 @@ body {
   color: var(--foreground);
 }
 
+/* 桌面工具页使用轻量滚动条，避免长列表滚动条抢占视觉层级。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 button {
   font: inherit;
+}
+
+select {
+  border-color: #e2e8f0 !important;
+  color: #334155;
+}
+
+select:focus {
+  border-color: var(--accent) !important;
+  outline: 2px solid var(--theme-light);
+  outline-offset: 0;
+}
+
+input[type='checkbox'] {
+  accent-color: var(--accent);
 }
 
 button:focus-visible {

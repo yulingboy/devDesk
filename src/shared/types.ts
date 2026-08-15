@@ -76,6 +76,9 @@ export interface AppApi {
     writeLog: (entry: RendererLogEntry) => Promise<void>
     reportError: (report: RendererErrorReport) => Promise<void>
   }
+  dialog: {
+    selectDirectory: (defaultPath?: string) => Promise<string | null>
+  }
   window: {
     getState: () => Promise<WindowState>
     minimize: () => Promise<void>
@@ -138,6 +141,8 @@ export interface AppApi {
     useRegistry: (id: string) => Promise<NodeState>
     testRegistry: (id: string) => Promise<NodeRegistry[]>
     packages: (keyword?: string) => Promise<GlobalPackage[]>
+    setPackageManager: (manager: string) => Promise<NodeState>
+    setPackageRegistry: (manager: string, registry: string) => Promise<NodeState>
     installPackage: (name: string) => Promise<GlobalPackage[]>
     removePackage: (name: string) => Promise<GlobalPackage[]>
     updatePackage: (name: string) => Promise<GlobalPackage[]>
@@ -154,8 +159,12 @@ export interface AppApi {
     import: (data: DataExport) => Promise<AppSettings>
     importFile: () => Promise<AppSettings>
     openData: () => Promise<void>
+    changeDataDirectory: () => Promise<AppSettings>
     clearBusinessData: () => Promise<AppSettings>
     environmentCheck: () => Promise<EnvironmentCheck[]>
+    stopEnvironmentCheck: () => Promise<void>
+    openEnvironmentGuide: (id: string) => Promise<void>
+    onEnvironmentCheckUpdated: (listener: (checks: EnvironmentCheck[]) => void) => () => void
     dataStats: () => Promise<DataStats>
     openDeveloperTools: () => Promise<void>
   }

@@ -41,11 +41,13 @@ export function OverviewCards({
       {items.map(({ label, value, detail, icon: Icon }) => (
         <Card className="p-4" key={label}>
           <div className="mb-5 flex items-start justify-between">
-            <p className="text-sm font-medium text-[#55595e]">{label}</p>
-            <Icon aria-hidden="true" className="text-[#85878a]" size={18} />
+            <p className="text-sm font-medium text-slate-600">{label}</p>
+            <div className="grid size-8 place-items-center rounded-lg bg-[var(--theme-lighter)] text-[var(--accent)]">
+              <Icon aria-hidden="true" size={17} />
+            </div>
           </div>
-          <p className="text-2xl font-semibold">{value}</p>
-          <p className="mt-1 text-xs text-[#85878a]">{detail}</p>
+          <p className="text-2xl font-semibold text-slate-800">{value}</p>
+          <p className="mt-1 text-xs text-slate-400">{detail}</p>
         </Card>
       ))}
     </div>

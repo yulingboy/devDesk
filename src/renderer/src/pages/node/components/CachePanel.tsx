@@ -36,23 +36,23 @@ export function CachePanel({ state, onState, report }: CachePanelProps): React.J
       <CardContent className="space-y-2">
         {state?.caches.map((cache) => (
           <div
-            className="flex items-center gap-3 rounded-md border border-[#e7e8e9] p-3"
+            className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
             key={cache.name}
           >
-            <HardDrive className="text-[#62666a]" size={17} />
+            <HardDrive className="text-slate-600" size={17} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{cache.name}</p>
-              <p className="truncate text-xs text-[#777b80]" title={cache.path}>
+              <p className="truncate text-xs text-slate-500" title={cache.path}>
                 {cache.path}
               </p>
             </div>
-            <span className="text-xs text-[#62666a]">
+            <span className="text-xs text-slate-600">
               {cache.exists ? formatBytes(cache.sizeBytes) : '不存在'}
             </span>
           </div>
         ))}
         {!state?.caches.length && (
-          <p className="py-5 text-center text-sm text-[#85878a]">
+          <p className="py-5 text-center text-sm text-slate-400">
             点击刷新按钮扫描缓存路径和大小。
           </p>
         )}

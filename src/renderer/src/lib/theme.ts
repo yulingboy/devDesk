@@ -1,12 +1,18 @@
 import type { ThemeName } from '@shared/domain'
 
-/** 把持久化主题映射到根节点，系统模式会随系统明暗偏好变化。 */
-export function applyTheme(theme: ThemeName): void {
-  const resolved =
-    theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : theme
-  document.documentElement.dataset.theme = resolved
+const themeNames: ThemeName[] = [
+  'blue',
+  'purple',
+  'green',
+  'orange',
+  'rose',
+  'cyan',
+  'indigo',
+  'teal'
+]
+
+/** 旧版本主题统一迁移为蓝色，避免升级后主题选择处于无效状态。 */
+export function applyTheme(theme: ThemeName | string): void {
+  const resolved = themeNames.includes(theme as ThemeName) ? theme : 'blue'
+  document.documentElement.dataset.themeColor = resolved
 }

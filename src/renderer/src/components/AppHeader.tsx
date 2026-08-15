@@ -31,23 +31,22 @@ export function AppHeader(): React.JSX.Element {
 
   return (
     <header
-      className={`app-drag-region flex h-11 shrink-0 items-center border-b border-[#e2e3e4] bg-[#fbfbfa] text-[#202123] ${
+      className={`app-drag-region flex h-12 shrink-0 items-center border-b border-slate-200 bg-white/90 text-slate-800 backdrop-blur-md ${
         windowState.isFocused ? '' : 'opacity-90'
       }`}
     >
       {isMac && <div aria-hidden="true" className="w-[78px] shrink-0" />}
       <div className={`flex min-w-0 flex-1 items-center gap-2.5 ${isMac ? 'pr-4' : 'px-4'}`}>
-        <div className="grid size-6 shrink-0 place-items-center rounded bg-[#22a06b]">
-          <MonitorCog aria-hidden="true" size={15} strokeWidth={2.2} />
+        <div className="grid size-6 shrink-0 place-items-center rounded-md bg-[var(--accent)] text-white shadow-sm">
+          <MonitorCog aria-hidden="true" size={14} strokeWidth={2.2} />
         </div>
-        <span className="truncate text-[13px] font-semibold">开发工坊</span>
-        <span className="hidden text-xs text-[#7b898f] sm:inline">Environment Studio</span>
+        <span className="truncate text-sm font-medium text-slate-700">开发工坊</span>
       </div>
 
       <div className="app-no-drag flex h-full items-center">
-        <div className="mr-3 hidden items-center gap-2 text-[11px] text-[#69777d] md:flex">
+        <div className="mr-4 hidden items-center gap-2 text-[11px] text-slate-400 md:flex">
           <span
-            className={`size-1.5 rounded-full ${hasDesktopRuntime ? 'bg-[#34c987]' : 'bg-[#e2b203]'}`}
+            className={`size-1.5 rounded-full ${hasDesktopRuntime ? 'bg-emerald-500' : 'bg-amber-500'}`}
           />
           <span>{hasDesktopRuntime ? '本地服务已就绪' : '浏览器预览'}</span>
         </div>
@@ -103,8 +102,8 @@ function WindowButton({
   return (
     <Button
       aria-label={label}
-      className={`h-full w-11 rounded-none text-[#69777d] transition-colors disabled:cursor-default disabled:opacity-40 ${
-        close ? 'hover:bg-[#c9372c] hover:text-white' : 'hover:bg-[#f0f3f4] hover:text-[#182126]'
+      className={`h-full w-11 rounded-none text-slate-500 transition-colors disabled:cursor-default disabled:opacity-40 ${
+        close ? 'hover:bg-red-500 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
       }`}
       disabled={disabled}
       onClick={onClick}

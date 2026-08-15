@@ -4,6 +4,9 @@ export const IPC_CHANNELS = {
     reportError: 'app:report-error',
     writeLog: 'app:write-log'
   },
+  dialog: {
+    selectDirectory: 'dialog:select-directory'
+  },
   window: {
     getState: 'window:get-state',
     minimize: 'window:minimize',
@@ -63,6 +66,8 @@ export const IPC_CHANNELS = {
     useRegistry: 'node:use-registry',
     testRegistry: 'node:test-registry',
     packages: 'node:packages',
+    setPackageManager: 'node:set-package-manager',
+    setPackageRegistry: 'node:set-package-registry',
     installPackage: 'node:install-package',
     removePackage: 'node:remove-package',
     updatePackage: 'node:update-package',
@@ -79,8 +84,12 @@ export const IPC_CHANNELS = {
     import: 'settings:import',
     importFile: 'settings:import-file',
     openData: 'settings:open-data',
+    changeDataDirectory: 'settings:change-data-directory',
     clearBusinessData: 'settings:clear-business-data',
     environmentCheck: 'settings:environment-check',
+    environmentCheckUpdated: 'settings:environment-check-updated',
+    stopEnvironmentCheck: 'settings:stop-environment-check',
+    openEnvironmentGuide: 'settings:open-environment-guide',
     dataStats: 'settings:data-stats',
     openDeveloperTools: 'settings:open-developer-tools'
   }

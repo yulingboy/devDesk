@@ -9,6 +9,7 @@ import { rendererLogger } from '@/lib/logger'
 import { CachePanel } from './components/CachePanel'
 import { PackagePanel } from './components/PackagePanel'
 import { RegistryPanel } from './components/RegistryPanel'
+import { PageHeader } from '@/components/PageHeader'
 
 export function NodePage(): React.JSX.Element {
   const [state, setState] = useState<NodeState | null>(null)
@@ -44,7 +45,8 @@ export function NodePage(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-8 py-8">
+    <div className="mx-auto max-w-6xl space-y-5 p-6">
+      <PageHeader title="Node 管理" subtitle="管理版本、镜像、包管理器、全局包与缓存" />
       <div className="grid gap-4 md:grid-cols-4">
         {[
           ['当前版本', state?.currentVersion || '--'],
@@ -53,7 +55,7 @@ export function NodePage(): React.JSX.Element {
           ['镜像', state?.registry || '--']
         ].map(([label, value]) => (
           <Card className="p-4" key={label}>
-            <p className="text-xs text-[#85878a]">{label}</p>
+            <p className="text-xs text-slate-400">{label}</p>
             <p className="mt-2 truncate text-sm font-semibold">{value}</p>
           </Card>
         ))}
@@ -71,13 +73,13 @@ export function NodePage(): React.JSX.Element {
         <CardContent className="space-y-2">
           {state?.installed.map((install) => (
             <div
-              className="flex items-center gap-3 rounded-md border border-[#e7e8e9] p-3"
+              className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
               key={install.version}
             >
               <p className="font-mono text-sm">v{install.version}</p>
               {install.isCurrent && <Badge variant="success">当前</Badge>}
               {install.isDefault && <Badge variant="secondary">默认</Badge>}
-              <span className="flex-1 text-xs text-[#85878a]">{install.path}</span>
+              <span className="flex-1 text-xs text-slate-400">{install.path}</span>
               <Button
                 onClick={() =>
                   void window.api?.node
@@ -108,7 +110,7 @@ export function NodePage(): React.JSX.Element {
             </div>
           ))}
           {!state?.installed.length && (
-            <p className="py-6 text-center text-sm text-[#85878a]">
+            <p className="py-6 text-center text-sm text-slate-400">
               尚未发现 nvm 管理的 Node 版本。
             </p>
           )}
@@ -127,7 +129,7 @@ export function NodePage(): React.JSX.Element {
               value={keyword}
             />
             <select
-              className="h-9 rounded-md border border-[#d9dadb] bg-white px-3 text-sm"
+              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
               onChange={(event) => setChannel(event.target.value as typeof channel)}
               value={channel}
             >
@@ -142,7 +144,7 @@ export function NodePage(): React.JSX.Element {
           <div className="grid gap-2 md:grid-cols-2">
             {releases.slice(0, 20).map((release) => (
               <div
-                className="flex items-center gap-3 rounded-md border border-[#e7e8e9] px-3 py-2"
+                className="flex items-center gap-3 rounded-md border border-slate-100 px-3 py-2"
                 key={release.version}
               >
                 <span className="font-mono text-sm">{release.version}</span>
@@ -159,11 +161,11 @@ export function NodePage(): React.JSX.Element {
               </div>
             ))}
           </div>
-          <p className="text-xs text-[#777b80]">{status}</p>
+          <p className="text-xs text-slate-500">{status}</p>
         </CardContent>
       </Card>
       <RegistryPanel onState={setState} report={report} state={state} />
-      <PackagePanel report={report} state={state} />
+      <PackagePanel onState={setState} report={report} state={state} />
       <CachePanel onState={setState} report={report} state={state} />
       <Card>
         <CardHeader>
@@ -175,21 +177,21 @@ export function NodePage(): React.JSX.Element {
             .slice()
             .reverse()
             .map((task) => (
-              <details className="rounded-md border border-[#e7e8e9] p-3" key={task.id}>
+              <details className="rounded-md border border-slate-100 p-3" key={task.id}>
                 <summary className="flex cursor-pointer items-center gap-3 text-sm">
                   <span className="font-mono">Node {task.version}</span>
                   <Badge variant={task.status === 'completed' ? 'success' : 'secondary'}>
                     {task.message}
                   </Badge>
-                  <span className="ml-auto text-xs text-[#85878a]">{task.progress}%</span>
+                  <span className="ml-auto text-xs text-slate-400">{task.progress}%</span>
                 </summary>
-                <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-[#f4f4f2] p-3 text-xs text-[#62666a]">
+                <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs text-slate-600">
                   {task.logs.join('\n') || '暂无日志'}
                 </pre>
               </details>
             ))}
           {!state?.tasks.length && (
-            <p className="py-5 text-center text-sm text-[#85878a]">暂无 Node 安装任务。</p>
+            <p className="py-5 text-center text-sm text-slate-400">暂无 Node 安装任务。</p>
           )}
         </CardContent>
       </Card>

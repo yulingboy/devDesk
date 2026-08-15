@@ -10,12 +10,13 @@ import {
   Trash2
 } from 'lucide-react'
 import type { HostRecord } from '@shared/domain'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { rendererLogger } from '@/lib/logger'
+import { PageHeader } from '@/components/PageHeader'
+import { Drawer } from '@/components/ui/drawer'
 
 const emptyRecord: HostRecord = { id: '', ip: '', domain: '', enabled: true, remark: '' }
 
@@ -24,6 +25,7 @@ export function HostsPage(): React.JSX.Element {
   const [draft, setDraft] = useState<HostRecord>(emptyRecord)
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const showError = useCallback((error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
@@ -52,6 +54,7 @@ export function HostsPage(): React.JSX.Element {
       .then((value) => {
         setRecords(value)
         setDraft(emptyRecord)
+        setDrawerOpen(false)
         setStatus('Hosts 记录已保存')
       })
       .catch(showError)
@@ -63,14 +66,43 @@ export function HostsPage(): React.JSX.Element {
       .then(setRecords)
       .catch(showError)
   }
+  /** Hosts 使用整表写入语义，快速开关也经过同一串行保存通道。 */
+  const toggleEnabled = (id: string): void => {
+    const next = records.map((record) =>
+      record.id === id ? { ...record, enabled: !record.enabled } : record
+    )
+    void window.api?.hosts
+      .save(next)
+      .then((value) => {
+        setRecords(value)
+        setStatus('记录状态已更新')
+      })
+      .catch(showError)
+  }
   const copy = (value: string): void => {
     void navigator.clipboard.writeText(value).then(() => setStatus('已复制到剪贴板'))
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-8 py-8">
+    <div className="mx-auto max-w-6xl space-y-5 p-6">
+      <PageHeader
+        extra={
+          <Button
+            onClick={() => {
+              setDraft(emptyRecord)
+              setDrawerOpen(true)
+            }}
+            variant="success"
+          >
+            <Plus size={15} />
+            新增记录
+          </Button>
+        }
+        title="Host 管理"
+        subtitle="管理本机 Hosts 映射、备份与 DNS 缓存"
+      />
       <Card>
-        <CardHeader className="flex-row items-start justify-between border-b border-[#e7e8e9]">
+        <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
           <div>
             <CardTitle>Hosts 记录</CardTitle>
             <CardDescription>应用只维护受管区块，不覆盖其他系统内容。</CardDescription>
@@ -126,9 +158,9 @@ export function HostsPage(): React.JSX.Element {
               <RefreshCw size={16} />
             </Button>
           </div>
-          <div className="overflow-x-auto rounded-md border border-[#e7e8e9]">
+          <div className="overflow-x-auto rounded-md border border-slate-100">
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#f7f7f5] text-xs text-[#777b80]">
+              <thead className="bg-slate-50 text-xs text-slate-500">
                 <tr>
                   <th className="px-3 py-2">状态</th>
                   <th className="px-3 py-2">IP</th>
@@ -139,15 +171,27 @@ export function HostsPage(): React.JSX.Element {
               </thead>
               <tbody>
                 {filtered.map((record) => (
-                  <tr className="border-t border-[#eef0f1]" key={record.id}>
+                  <tr className="border-t border-slate-100" key={record.id}>
                     <td className="px-3 py-2">
-                      <Badge variant={record.enabled ? 'success' : 'secondary'}>
-                        {record.enabled ? '启用' : '禁用'}
-                      </Badge>
+                      <button
+                        aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
+                        className={`relative h-5 w-9 rounded-full transition-colors ${
+                          record.enabled ? 'bg-[var(--accent)]' : 'bg-slate-300'
+                        }`}
+                        onClick={() => toggleEnabled(record.id)}
+                        title={record.enabled ? '点击禁用' : '点击启用'}
+                        type="button"
+                      >
+                        <span
+                          className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-transform ${
+                            record.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                          }`}
+                        />
+                      </button>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{record.ip}</td>
                     <td className="px-3 py-2">{record.domain}</td>
-                    <td className="px-3 py-2 text-[#777b80]">{record.remark || '--'}</td>
+                    <td className="px-3 py-2 text-slate-500">{record.remark || '--'}</td>
                     <td className="px-3 py-2 text-right">
                       <Button
                         onClick={() => copy(`${record.ip} ${record.domain}`)}
@@ -167,7 +211,14 @@ export function HostsPage(): React.JSX.Element {
                       >
                         <ExternalLink size={14} />
                       </Button>
-                      <Button onClick={() => setDraft(record)} size="sm" variant="ghost">
+                      <Button
+                        onClick={() => {
+                          setDraft(record)
+                          setDrawerOpen(true)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                      >
                         编辑
                       </Button>
                       <Button
@@ -183,7 +234,7 @@ export function HostsPage(): React.JSX.Element {
                 ))}
                 {!filtered.length && (
                   <tr>
-                    <td className="px-3 py-10 text-center text-sm text-[#85878a]" colSpan={5}>
+                    <td className="px-3 py-10 text-center text-sm text-slate-400" colSpan={5}>
                       {query ? '没有匹配记录' : '暂无受管 Hosts 记录'}
                     </td>
                   </tr>
@@ -193,12 +244,24 @@ export function HostsPage(): React.JSX.Element {
           </div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{draft.id ? '编辑记录' : '新增记录'}</CardTitle>
-          <CardDescription>首次写入前会自动备份原始 Hosts 文件。</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
+      <Drawer
+        description="首次写入前会自动备份原始 Hosts 文件；保存失败时会保留当前输入。"
+        footer={
+          <>
+            <Button onClick={() => setDrawerOpen(false)} variant="secondary">
+              取消
+            </Button>
+            <Button onClick={save} variant="success">
+              <Save size={15} />
+              保存
+            </Button>
+          </>
+        }
+        onClose={() => setDrawerOpen(false)}
+        open={drawerOpen}
+        title={draft.id ? '编辑 Host 记录' : '新增 Host 记录'}
+      >
+        <div className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="host-ip">IP 地址</Label>
             <Input
@@ -235,24 +298,14 @@ export function HostsPage(): React.JSX.Element {
             />
             <Label htmlFor="host-enabled">启用记录</Label>
           </div>
-          <div className="flex items-center gap-2 md:col-span-2">
-            <Button onClick={save} variant="success">
-              <Save size={15} />
-              保存记录
-            </Button>
-            <Button onClick={() => setDraft(emptyRecord)} variant="ghost">
-              <Plus size={15} />
-              清空表单
-            </Button>
-          </div>
           {status && (
-            <p className="flex items-center gap-2 text-xs text-[#69777d] md:col-span-3">
+            <p className="flex items-center gap-2 rounded-md bg-slate-50 p-3 text-xs text-slate-500">
               <FileWarning size={14} />
               {status}
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </Drawer>
     </div>
   )
 }

@@ -10,16 +10,17 @@ import { Label } from '@/components/ui/label'
 import { rendererLogger } from '@/lib/logger'
 import { applyTheme } from '@/lib/theme'
 import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
+import { PageHeader } from '@/components/PageHeader'
 
 const themeOptions: Array<{ value: ThemeName; label: string; color: string }> = [
-  { value: 'light', label: '经典', color: '#202123' },
-  { value: 'dark', label: '石墨', color: '#4f5b66' },
-  { value: 'system', label: '跟随系统', color: '#8a8d91' },
   { value: 'blue', label: '蓝色', color: '#2563eb' },
-  { value: 'green', label: '绿色', color: '#1f845a' },
-  { value: 'orange', label: '橙色', color: '#c25a10' },
-  { value: 'rose', label: '玫红', color: '#be3b63' },
-  { value: 'violet', label: '紫色', color: '#7c4dcc' }
+  { value: 'purple', label: '紫色', color: '#9333ea' },
+  { value: 'green', label: '绿色', color: '#16a34a' },
+  { value: 'orange', label: '橙色', color: '#ea580c' },
+  { value: 'rose', label: '玫红', color: '#e11d48' },
+  { value: 'cyan', label: '青色', color: '#0891b2' },
+  { value: 'indigo', label: '靛蓝', color: '#4f46e5' },
+  { value: 'teal', label: '蓝绿', color: '#0d9488' }
 ]
 
 function formatBytes(value: number): string {
@@ -51,9 +52,7 @@ export function SettingsPage(): React.JSX.Element {
       .catch(report)
   }, [])
   if (!settings)
-    return (
-      <div className="mx-auto max-w-5xl px-8 py-10 text-sm text-[#85878a]">正在读取设置...</div>
-    )
+    return <div className="mx-auto max-w-6xl p-6 text-sm text-slate-400">正在读取设置...</div>
   const save = (): void => {
     void window.api?.settings
       .save(settings)
@@ -87,7 +86,8 @@ export function SettingsPage(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 px-8 py-8">
+    <div className="mx-auto max-w-6xl space-y-5 p-6">
+      <PageHeader title="系统设置" subtitle="配置应用行为、主题、数据与诊断工具" />
       <Card>
         <CardHeader>
           <CardTitle>通用设置</CardTitle>
@@ -95,13 +95,13 @@ export function SettingsPage(): React.JSX.Element {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <Label>主题色</Label>
               <div className="grid grid-cols-4 gap-2">
                 {themeOptions.map((theme) => (
                   <button
                     aria-label={`使用${theme.label}主题`}
-                    className={`flex h-9 items-center gap-2 rounded-md border px-2 text-xs ${settings.general.theme === theme.value ? 'border-[#202123] bg-[#f2f2f0]' : 'border-[#d9dadb] bg-white'}`}
+                    className={`flex h-9 items-center gap-2 rounded-md border px-2 text-xs transition-colors ${settings.general.theme === theme.value ? 'border-[var(--accent)] bg-[var(--theme-lighter)] text-[var(--accent)]' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                     key={theme.value}
                     onClick={() => {
                       applyTheme(theme.value)
@@ -158,7 +158,7 @@ export function SettingsPage(): React.JSX.Element {
               重置
             </Button>
           </div>
-          <p className="text-xs text-[#777b80]">{status}</p>
+          <p className="text-xs text-slate-500">{status}</p>
         </CardContent>
       </Card>
       <Card>
@@ -198,7 +198,7 @@ export function SettingsPage(): React.JSX.Element {
           <div className="space-y-2">
             <Label htmlFor="node-package-manager">默认包管理器</Label>
             <select
-              className="h-9 w-full rounded-md border border-[#d9dadb] bg-white px-3 text-sm"
+              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
               id="node-package-manager"
               onChange={(event) =>
                 setSettings({
@@ -259,6 +259,21 @@ export function SettingsPage(): React.JSX.Element {
           <Button
             onClick={() =>
               void window.api?.settings
+                .changeDataDirectory()
+                .then((value) => {
+                  setSettings(value)
+                  setStatus('数据目录已迁移并切换')
+                })
+                .catch(report)
+            }
+            variant="secondary"
+          >
+            <FolderOpen size={15} />
+            更改数据目录
+          </Button>
+          <Button
+            onClick={() =>
+              void window.api?.settings
                 .export()
                 .then((data) =>
                   navigator.clipboard
@@ -312,7 +327,7 @@ export function SettingsPage(): React.JSX.Element {
             <div className="space-y-2">
               <Label htmlFor="log-level">日志级别</Label>
               <select
-                className="h-9 w-full rounded-md border border-[#d9dadb] bg-white px-3 text-sm"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
                 id="log-level"
                 onChange={(event) =>
                   setSettings({
@@ -362,23 +377,23 @@ export function SettingsPage(): React.JSX.Element {
         </CardHeader>
         <CardContent className="grid gap-3 text-sm md:grid-cols-3">
           <div>
-            <p className="text-xs text-[#85878a]">应用版本</p>
+            <p className="text-xs text-slate-400">应用版本</p>
             <p className="mt-1 font-mono">{runtime?.appVersion || '--'}</p>
           </div>
           <div>
-            <p className="text-xs text-[#85878a]">Electron / Chrome</p>
+            <p className="text-xs text-slate-400">Electron / Chrome</p>
             <p className="mt-1 font-mono">
               {runtime ? `${runtime.versions.electron} / ${runtime.versions.chrome}` : '--'}
             </p>
           </div>
           <div>
-            <p className="text-xs text-[#85878a]">Node / 架构</p>
+            <p className="text-xs text-slate-400">Node / 架构</p>
             <p className="mt-1 font-mono">
               {runtime ? `${runtime.versions.node} / ${runtime.arch}` : '--'}
             </p>
           </div>
           <div className="md:col-span-3">
-            <p className="text-xs text-[#85878a]">许可证</p>
+            <p className="text-xs text-slate-400">许可证</p>
             <p className="mt-1">MIT License · 构建日期 {new Date().toLocaleDateString('zh-CN')}</p>
           </div>
         </CardContent>

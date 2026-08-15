@@ -29,6 +29,9 @@ const api: AppApi = {
     writeLog: (entry: RendererLogEntry) => invoke<void>(IPC_CHANNELS.app.writeLog, entry),
     reportError: (report: RendererErrorReport) => invoke<void>(IPC_CHANNELS.app.reportError, report)
   },
+  dialog: {
+    selectDirectory: (defaultPath) => invoke(IPC_CHANNELS.dialog.selectDirectory, defaultPath)
+  },
   window: {
     getState: () => invoke<WindowState>(IPC_CHANNELS.window.getState),
     minimize: () => invoke<void>(IPC_CHANNELS.window.minimize),
@@ -100,6 +103,9 @@ const api: AppApi = {
     useRegistry: (id) => invoke(IPC_CHANNELS.node.useRegistry, id),
     testRegistry: (id) => invoke(IPC_CHANNELS.node.testRegistry, id),
     packages: (keyword) => invoke(IPC_CHANNELS.node.packages, keyword),
+    setPackageManager: (manager) => invoke(IPC_CHANNELS.node.setPackageManager, manager),
+    setPackageRegistry: (manager, registry) =>
+      invoke(IPC_CHANNELS.node.setPackageRegistry, manager, registry),
     installPackage: (name) => invoke(IPC_CHANNELS.node.installPackage, name),
     removePackage: (name) => invoke(IPC_CHANNELS.node.removePackage, name),
     updatePackage: (name) => invoke(IPC_CHANNELS.node.updatePackage, name),
@@ -123,8 +129,20 @@ const api: AppApi = {
     import: (data) => invoke(IPC_CHANNELS.settings.import, data),
     importFile: () => invoke(IPC_CHANNELS.settings.importFile),
     openData: () => invoke(IPC_CHANNELS.settings.openData),
+    changeDataDirectory: () => invoke(IPC_CHANNELS.settings.changeDataDirectory),
     clearBusinessData: () => invoke(IPC_CHANNELS.settings.clearBusinessData),
     environmentCheck: () => invoke(IPC_CHANNELS.settings.environmentCheck),
+    stopEnvironmentCheck: () => invoke(IPC_CHANNELS.settings.stopEnvironmentCheck),
+    openEnvironmentGuide: (id) => invoke(IPC_CHANNELS.settings.openEnvironmentGuide, id),
+    onEnvironmentCheckUpdated: (listener) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        checks: Parameters<typeof listener>[0]
+      ): void => listener(checks)
+      ipcRenderer.on(IPC_CHANNELS.settings.environmentCheckUpdated, handler)
+      return () =>
+        ipcRenderer.removeListener(IPC_CHANNELS.settings.environmentCheckUpdated, handler)
+    },
     dataStats: () => invoke(IPC_CHANNELS.settings.dataStats),
     openDeveloperTools: () => invoke(IPC_CHANNELS.settings.openDeveloperTools)
   }

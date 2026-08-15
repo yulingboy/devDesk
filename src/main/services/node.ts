@@ -1,8 +1,9 @@
-import { access, lstat, readdir } from 'node:fs/promises'
+import { access, lstat, readFile, readdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import type { Worker } from 'node:worker_threads'
 import type {
   GlobalPackage,
   NodeCacheSnapshot,
@@ -12,11 +13,13 @@ import type {
   NodeRelease,
   NodeState
 } from '@shared/domain'
-import { store } from '@main/infrastructure/store'
+import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, requiredText } from './common'
+import createNodeInstallWorker from '@main/workers/node-install-worker?nodeWorker'
 
 const execFileAsync = promisify(execFile)
 const packageManagerNames = ['npm', 'pnpm', 'yarn', 'bun'] as const
+type PackageManagerName = (typeof packageManagerNames)[number]
 
 const defaultRegistries = (): NodeRegistry[] => [
   { id: 'registry-npm', name: 'npm', url: 'https://registry.npmjs.org', isCurrent: true },
@@ -71,7 +74,7 @@ async function commandVersion(command: string): Promise<string> {
 }
 
 async function installedVersions(): Promise<NodeInstall[]> {
-  const nvmDirectory = join(homedir(), '.nvm', 'versions', 'node')
+  const nvmDirectory = getNodeVersionsDirectory()
   const entries = await readdir(nvmDirectory).catch(() => [])
   const current = (await commandVersion('node')).replace(/^v/, '')
   return entries
@@ -84,8 +87,102 @@ async function installedVersions(): Promise<NodeInstall[]> {
     }))
 }
 
+function getNodeVersionsDirectory(): string {
+  if (process.platform === 'win32') {
+    return process.env.NVM_HOME || join(homedir(), 'AppData', 'Roaming', 'nvm')
+  }
+  return process.env.NVM_DIR
+    ? join(process.env.NVM_DIR, 'versions', 'node')
+    : join(homedir(), '.nvm', 'versions', 'node')
+}
+
+function resolveArchive(version: string): { fileName: string; fileTokens: string[] } {
+  const arch = process.arch === 'ia32' ? 'x86' : process.arch
+  if (!['x64', 'arm64', 'x86'].includes(arch)) throw new Error(`不支持的系统架构：${process.arch}`)
+  if (process.platform === 'win32') {
+    const token = `win-${arch}`
+    return { fileName: `node-v${version}-${token}.zip`, fileTokens: [token, `${token}-zip`] }
+  }
+  if (process.platform === 'darwin') {
+    const token = `darwin-${arch}`
+    const osxToken = arch === 'arm64' ? 'osx-arm64-tar' : 'osx-x64-tar'
+    return { fileName: `node-v${version}-${token}.tar.gz`, fileTokens: [token, osxToken] }
+  }
+  if (process.platform === 'linux') {
+    const token = `linux-${arch}`
+    return { fileName: `node-v${version}-${token}.tar.gz`, fileTokens: [token] }
+  }
+  throw new Error(`不支持的系统平台：${process.platform}`)
+}
+
+type InstallWorkerEvent =
+  | { type: 'progress'; progress: number; message: string }
+  | { type: 'log'; message: string }
+  | { type: 'completed' }
+  | { type: 'failed'; message: string }
+
+function waitForWorker(
+  worker: Worker,
+  onEvent: (event: InstallWorkerEvent) => Promise<void>
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let queue = Promise.resolve()
+    let failure = ''
+    worker.on('message', (event: InstallWorkerEvent) => {
+      if (event.type === 'failed') failure = event.message
+      queue = queue.then(() => onEvent(event))
+    })
+    worker.once('error', reject)
+    worker.once('exit', (code) => {
+      void queue
+        .then(() => {
+          if (code === 0 && !failure) resolve()
+          else reject(new Error(failure || `Node 安装 worker 异常退出（${code}）`))
+        })
+        .catch(reject)
+    })
+  })
+}
+
 async function readPackageManagerRegistry(name: string): Promise<string> {
-  return name === 'bun' ? '' : runCommand(name, ['config', 'get', 'registry']).catch(() => '')
+  if (name !== 'bun') return runCommand(name, ['config', 'get', 'registry']).catch(() => '')
+  const content = await readFile(join(homedir(), '.bunfig.toml'), 'utf8').catch(() => '')
+  let inInstallSection = false
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (/^\[.+\]$/.test(line)) inInstallSection = line === '[install]'
+    const dotted = line.match(/^install\.registry\s*=\s*["'](.+)["']$/)?.[1]
+    const section = inInstallSection ? line.match(/^registry\s*=\s*["'](.+)["']$/)?.[1] : undefined
+    if (dotted || section) return dotted || section || ''
+  }
+  return ''
+}
+
+async function writeBunRegistry(registry: string): Promise<void> {
+  const path = join(homedir(), '.bunfig.toml')
+  const lines = (await readFile(path, 'utf8').catch(() => '')).split(/\r?\n/)
+  const installStart = lines.findIndex((line) => line.trim() === '[install]')
+  if (installStart < 0) {
+    if (lines.some((line) => line.trim())) lines.push('')
+    lines.push('[install]', `registry = "${registry}"`)
+  } else {
+    let installEnd = lines.findIndex(
+      (line, index) => index > installStart && /^\s*\[.+\]\s*$/.test(line)
+    )
+    if (installEnd < 0) installEnd = lines.length
+    const registryLine = lines.findIndex(
+      (line, index) => index > installStart && index < installEnd && /^\s*registry\s*=/.test(line)
+    )
+    if (registryLine >= 0) lines[registryLine] = `registry = "${registry}"`
+    else lines.splice(installStart + 1, 0, `registry = "${registry}"`)
+  }
+  await writeFile(path, `${lines.join('\n').trimEnd()}\n`, 'utf8')
+}
+
+function validatePackageManager(value: string): PackageManagerName {
+  if (!packageManagerNames.includes(value as PackageManagerName))
+    throw new Error(`不支持的包管理器：${value}`)
+  return value as PackageManagerName
 }
 
 async function packageManagerStatus(defaultName: string): Promise<NodeState['packageManagers']> {
@@ -176,9 +273,9 @@ export async function installNode(
   const task = {
     id: createId('node-task'),
     version,
-    status: 'running' as const,
-    progress: 10,
-    message: '正在调用 nvm 安装',
+    status: 'waiting' as const,
+    progress: 0,
+    message: '等待安装',
     startedAt: new Date().toISOString(),
     logs: [`${new Date().toLocaleString()} 开始安装 Node ${version}`]
   }
@@ -186,24 +283,69 @@ export async function installNode(
   await store.node.write(started)
   onProgress?.(started)
   try {
-    const existing = (await getNodeState()).installed.some((item) => item.version === version)
+    const existingInstall = (await getNodeState()).installed.find(
+      (item) => item.version === version
+    )
+    let existing = false
+    if (existingInstall) {
+      const executable =
+        process.platform === 'win32'
+          ? join(existingInstall.path, 'node.exe')
+          : join(existingInstall.path, 'bin', 'node')
+      existing =
+        (await execFileAsync(executable, ['--version'])
+          .then(({ stdout }) => stdout.trim().replace(/^v/, '') === version)
+          .catch(() => false)) === true
+    }
     if (!existing) {
-      const downloading = {
-        ...(await getNodeState()),
-        tasks: (await getNodeState()).tasks.map((item) =>
-          item.id === task.id
-            ? {
-                ...item,
-                progress: 45,
-                message: '正在下载并安装 Node',
-                logs: [...item.logs, 'nvm 已开始下载和校验安装包']
-              }
-            : item
-        )
-      }
-      await store.node.write(downloading)
-      onProgress?.(downloading)
-      await runNvm(`nvm install ${version}`)
+      const settings = await store.settings.read()
+      const releases = (await fetch(settings.node.indexUrl).then((response) =>
+        response.json()
+      )) as NodeRelease[]
+      const release = releases.find((item) => item.version.replace(/^v/, '') === version)
+      if (!release) throw new Error(`未找到 Node ${version} 的发布信息`)
+      const archive = resolveArchive(version)
+      if (
+        release.files?.length &&
+        !archive.fileTokens.some((token) => release.files?.includes(token))
+      )
+        throw new Error(`Node ${version} 没有适用于当前系统和架构的安装包`)
+      const source = settings.node.downloadSource.replace(/\/+$/, '')
+      const downloads = join(getStoreDirectory(), 'node-downloads')
+      const worker = createNodeInstallWorker({
+        workerData: {
+          archivePath: join(downloads, archive.fileName),
+          checksumUrl: `${source}/v${version}/SHASUMS256.txt`,
+          downloadUrl: `${source}/v${version}/${archive.fileName}`,
+          extractPath: join(downloads, `extract-${version}-${task.id}`),
+          fileName: archive.fileName,
+          installPath: join(getNodeVersionsDirectory(), `v${version}`),
+          version
+        }
+      })
+      await waitForWorker(worker, async (event) => {
+        if (event.type === 'failed' || event.type === 'completed') return
+        const latest = normalizeState(await store.node.read())
+        const next = {
+          ...latest,
+          tasks: latest.tasks.map((item) =>
+            item.id === task.id
+              ? {
+                  ...item,
+                  status:
+                    event.type === 'progress' && event.progress >= 76
+                      ? ('extracting' as const)
+                      : ('downloading' as const),
+                  progress: event.type === 'progress' ? event.progress : item.progress,
+                  message: event.type === 'progress' ? event.message : item.message,
+                  logs: event.type === 'log' ? [...item.logs, event.message] : item.logs
+                }
+              : item
+          )
+        }
+        await store.node.write(next)
+        onProgress?.(next)
+      })
     }
     const after = await getNodeState()
     const completed = {
@@ -400,6 +542,42 @@ export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]>
   await store.node.write({ ...state, globalPackages: packages })
   const query = keyword.trim().toLowerCase()
   return query ? packages.filter((item) => item.name.toLowerCase().includes(query)) : packages
+}
+
+/** 更改默认包管理器时同步设置文件，Node 概览和全局包操作随即使用新值。 */
+export async function setPackageManager(managerInput: string): Promise<NodeState> {
+  const manager = validatePackageManager(managerInput)
+  if (!(await commandVersion(manager))) throw new Error(`包管理器 ${manager} 尚未安装`)
+  const settings = await store.settings.read()
+  await store.settings.write({
+    ...settings,
+    node: { ...settings.node, packageManager: manager }
+  })
+  return getNodeState()
+}
+
+/** npm、pnpm 和 yarn 通过各自 CLI 维护 Registry，bun 写入用户级 bunfig.toml。 */
+export async function setPackageManagerRegistry(
+  managerInput: string,
+  registryInput: string
+): Promise<NodeState> {
+  const manager = validatePackageManager(managerInput)
+  const registry = validateRegistryUrl(registryInput)
+  if (!(await commandVersion(manager))) throw new Error(`包管理器 ${manager} 尚未安装`)
+  if (manager === 'bun') await writeBunRegistry(registry)
+  else
+    await runCommand(manager, ['config', 'set', 'registry', registry]).catch(() => {
+      throw new Error(`设置 ${manager} Registry 失败，请检查配置文件权限`)
+    })
+  const settings = await store.settings.read()
+  await store.settings.write({
+    ...settings,
+    node: {
+      ...settings.node,
+      registry: settings.node.packageManager === manager ? registry : settings.node.registry
+    }
+  })
+  return getNodeState()
 }
 
 async function mutateGlobalPackage(

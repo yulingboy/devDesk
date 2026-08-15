@@ -3,8 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
-import { getAppPaths } from '@main/infrastructure/paths'
-import { store } from '@main/infrastructure/store'
+import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidEmail, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
@@ -43,7 +42,7 @@ async function readGlobal(): Promise<GitState['global']> {
 }
 
 async function writeProfile(identity: GitIdentity, keys: SSHKey[]): Promise<void> {
-  const directory = join(getAppPaths().data, 'git-rules')
+  const directory = join(getStoreDirectory(), 'git-rules')
   await mkdir(directory, { recursive: true })
   const key = keys.find((item) => item.id === identity.sshKeyId && item.privateKeyPath)
   const sshSection = key?.privateKeyPath
@@ -61,7 +60,7 @@ export async function syncGitRules(): Promise<void> {
   const identities = await store.gitIdentities.read()
   const keys = await store.sshKeys.read()
   const workspaces = await store.workspaces.read()
-  const directory = join(getAppPaths().data, 'git-rules')
+  const directory = join(getStoreDirectory(), 'git-rules')
   await mkdir(directory, { recursive: true })
   for (const identity of identities) await writeProfile(identity, keys)
   const lines = workspaces.flatMap((workspace) => {
@@ -90,7 +89,7 @@ export async function getGitState(): Promise<GitState> {
   return {
     global: await readGlobal(),
     identities: await store.gitIdentities.read(),
-    profileDirectory: join(getAppPaths().data, 'git-rules')
+    profileDirectory: join(getStoreDirectory(), 'git-rules')
   }
 }
 

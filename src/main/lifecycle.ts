@@ -15,9 +15,9 @@ const windowPool = new WindowPool()
 
 /** 注册应用启动、单实例恢复和退出清理流程。 */
 export function registerAppLifecycle(): void {
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     const paths = initializeAppPaths()
-    initializeStore(paths)
+    await initializeStore(paths)
     initializeLogger(paths)
     electronApp.setAppUserModelId('com.envtool.app')
     log.info('应用开始启动', { version: app.getVersion(), paths })
