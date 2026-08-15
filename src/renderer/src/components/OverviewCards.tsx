@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Braces, FolderKanban, GitBranch, KeyRound } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { SystemOverviewSnapshot } from '@shared/domain'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const overviewItems: Array<{ label: string; value: string; detail: string; icon: LucideIcon }> = [
   { label: '工作区', value: '0', detail: '尚未配置', icon: FolderKanban },
@@ -46,7 +47,11 @@ export function OverviewCards({
               <Icon aria-hidden="true" size={17} />
             </div>
           </div>
-          <p className="text-2xl font-semibold text-slate-800">{value}</p>
+          {(label === 'Node 版本' && !snapshot) || (label !== 'Node 版本' && !counts) ? (
+            <Skeleton className="h-7 w-16" />
+          ) : (
+            <p className="text-2xl font-semibold text-slate-800">{value}</p>
+          )}
           <p className="mt-1 text-xs text-slate-400">{detail}</p>
         </Card>
       ))}

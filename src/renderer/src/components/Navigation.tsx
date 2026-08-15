@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { CircleHelp, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { TooltipButton } from '@/components/TooltipButton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { appRoutes } from '@/routes'
 
@@ -19,61 +20,69 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
       <div
         className={cn('flex h-13 items-center px-3', collapsed ? 'justify-center' : 'justify-end')}
       >
-        <Button
+        <TooltipButton
           aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
           className={cn('text-slate-400', collapsed && 'w-10')}
           onClick={() => setCollapsed((value) => !value)}
           size="icon"
-          title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          tooltip={collapsed ? '展开侧边栏' : '收起侧边栏'}
           variant="ghost"
         >
           {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-        </Button>
+        </TooltipButton>
       </div>
 
       <nav aria-label="主导航" className="flex-1 space-y-0.5 overflow-y-auto px-1.5 py-1">
         {/* 路由元数据是导航的唯一来源，展开与收起状态共享同一组选中规则。 */}
         {appRoutes.map(({ path, label, icon: Icon }) => (
-          <NavLink
-            aria-label={collapsed ? label : undefined}
-            className={({ isActive }) =>
-              cn(
-                'flex h-10 w-full items-center rounded-lg text-[13px] transition-colors',
-                collapsed ? 'justify-center px-0' : 'gap-3 px-3',
-                isActive
-                  ? 'bg-[var(--theme-lighter)] font-medium text-[var(--accent)]'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              )
-            }
-            end={path === '/'}
-            key={path}
-            title={collapsed ? label : undefined}
-            to={path}
-          >
-            <Icon aria-hidden="true" className="shrink-0" size={17} strokeWidth={1.8} />
-            {!collapsed && <span className="truncate">{label}</span>}
-          </NavLink>
+          <Tooltip key={path}>
+            <TooltipTrigger asChild>
+              <NavLink
+                aria-label={collapsed ? label : undefined}
+                className={({ isActive }) =>
+                  cn(
+                    'flex h-10 w-full items-center rounded-lg text-[13px] transition-colors',
+                    collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+                    isActive
+                      ? 'bg-[var(--theme-lighter)] font-medium text-[var(--accent)]'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  )
+                }
+                end={path === '/'}
+                to={path}
+              >
+                <Icon aria-hidden="true" className="shrink-0" size={17} strokeWidth={1.8} />
+                {!collapsed && <span className="truncate">{label}</span>}
+              </NavLink>
+            </TooltipTrigger>
+            {collapsed && <TooltipContent side="right">{label}</TooltipContent>}
+          </Tooltip>
         ))}
       </nav>
 
       <div className="border-t border-slate-100 p-2">
-        <Button
+        <TooltipButton
           aria-label="帮助与反馈"
           className={cn(collapsed ? 'w-full px-0' : 'w-full justify-start px-3')}
           size="sm"
-          title="帮助与反馈"
+          tooltip="帮助与反馈"
           variant="ghost"
         >
           <CircleHelp size={16} />
           {!collapsed && <span>帮助与反馈</span>}
-        </Button>
+        </TooltipButton>
         <div
           className={cn(
             'mt-1 flex h-8 items-center text-[11px] text-slate-400',
             collapsed ? 'justify-center' : 'justify-between px-3'
           )}
         >
-          <span className="size-2 rounded-full bg-emerald-500" title="本地服务已就绪" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="size-2 rounded-full bg-emerald-500" />
+            </TooltipTrigger>
+            <TooltipContent side="right">本地服务已就绪</TooltipContent>
+          </Tooltip>
           {!collapsed && <span>本地模式 · v{appVersion}</span>}
         </div>
       </div>

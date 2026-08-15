@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Boxes, GitBranch, Pencil, Play, Plus, Save, Trash2 } from 'lucide-react'
 import type { ProjectTemplate, Workspace } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
@@ -8,10 +9,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
-import { PageHeader } from '@/components/PageHeader'
 import { Drawer } from '@/components/ui/drawer'
 import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/TooltipButton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 const emptyTemplate: ProjectTemplate = {
   id: '',
@@ -29,9 +40,11 @@ export function TemplatesPage(): React.JSX.Element {
   const [status, setStatus] = useState('')
   const [query, setQuery] = useState('')
   const [drawerMode, setDrawerMode] = useState<'template' | 'project' | null>(null)
+  const [loading, setLoading] = useState(true)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
+    toast.error(message)
     rendererLogger.error('模板操作失败', { error: message })
   }
   const load = (): void => {
@@ -45,6 +58,7 @@ export function TemplatesPage(): React.JSX.Element {
         }
       })
       .catch(report)
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
   const save = (): void => {
@@ -54,7 +68,8 @@ export function TemplatesPage(): React.JSX.Element {
         setTemplates(value)
         setDraft(emptyTemplate)
         setDrawerMode(null)
-        setStatus('模板已保存')
+        setStatus('')
+        toast.success('模板已保存')
       })
       .catch(report)
   }
@@ -68,11 +83,18 @@ export function TemplatesPage(): React.JSX.Element {
     [query, templates]
   )
 
+  if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-6">
-      <PageHeader
-        extra={
-          <>
+    <div className="mx-auto max-w-6xl space-y-3 p-4">
+      <Card>
+        <CardHeader className="flex-row items-start justify-between">
+          <div>
+            <CardTitle>项目模板</CardTitle>
+            <CardDescription>
+              Git 模板使用浅克隆，本地模板会排除 .git、node_modules 和构建目录。
+            </CardDescription>
+          </div>
+          <div className="flex gap-1">
             <Button
               disabled={!templates.length || !workspaces.length}
               onClick={() => {
@@ -81,7 +103,7 @@ export function TemplatesPage(): React.JSX.Element {
               }}
               variant="secondary"
             >
-              <Play size={15} />
+              <Play size={14} />
               创建项目
             </Button>
             <Button
@@ -91,20 +113,10 @@ export function TemplatesPage(): React.JSX.Element {
               }}
               variant="success"
             >
-              <Plus size={15} />
+              <Plus size={14} />
               新增模板
             </Button>
-          </>
-        }
-        title="项目模板"
-        subtitle="维护模板并快速创建新的工作区项目"
-      />
-      <Card>
-        <CardHeader>
-          <CardTitle>项目模板</CardTitle>
-          <CardDescription>
-            Git 模板使用浅克隆，本地模板会排除 .git、node_modules 和构建目录。
-          </CardDescription>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
@@ -127,41 +139,42 @@ export function TemplatesPage(): React.JSX.Element {
                 </div>
                 <p className="truncate text-xs text-slate-500">{template.source}</p>
               </div>
-              <Button
+              <TooltipButton
                 disabled={!workspaces.length}
                 onClick={() => {
                   setCreateTemplateId(template.id)
                   setDrawerMode('project')
                 }}
                 size="sm"
-                title={workspaces.length ? '使用此模板创建项目' : '请先创建工作区'}
+                tooltip={workspaces.length ? '使用此模板创建项目' : '请先创建工作区'}
                 variant="secondary"
               >
                 <Play size={14} />
                 创建项目
-              </Button>
-              <Button
+              </TooltipButton>
+              <TooltipButton
                 onClick={() => {
                   setDraft(template)
                   setDrawerMode('template')
                 }}
                 size="icon"
-                title="编辑模板"
+                tooltip="编辑模板"
                 variant="ghost"
               >
                 <Pencil size={15} />
-              </Button>
-              <Button
-                onClick={() => {
-                  if (window.confirm(`删除模板“${template.name}”？`))
-                    void window.api?.templates.remove(template.id).then(setTemplates).catch(report)
-                }}
-                size="icon"
-                title="删除模板"
-                variant="ghost"
+              </TooltipButton>
+              <ConfirmAction
+                description={`删除模板“${template.name}”不会删除已经创建的项目，但模板记录无法恢复。`}
+                onConfirm={() =>
+                  void window.api?.templates.remove(template.id).then(setTemplates).catch(report)
+                }
+                title="删除项目模板？"
+                triggerTooltip="删除模板"
               >
-                <Trash2 size={15} />
-              </Button>
+                <Button aria-label="删除模板" size="icon" variant="ghost">
+                  <Trash2 size={15} />
+                </Button>
+              </ConfirmAction>
             </div>
           ))}
           {!filtered.length && (
@@ -171,7 +184,11 @@ export function TemplatesPage(): React.JSX.Element {
           )}
         </CardContent>
       </Card>
-      {status && <p className="text-xs text-slate-500">{status}</p>}
+      {status && (
+        <Alert variant="destructive">
+          <AlertDescription>{status}</AlertDescription>
+        </Alert>
+      )}
       <Drawer
         description="支持 Git 仓库和本地目录两种来源，模板名称必须唯一。"
         footer={
@@ -189,7 +206,7 @@ export function TemplatesPage(): React.JSX.Element {
         open={drawerMode === 'template'}
         title={draft.id ? '编辑模板' : '新增模板'}
       >
-        <div className="space-y-5">
+        <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="template-name">名称</Label>
             <Input
@@ -200,17 +217,20 @@ export function TemplatesPage(): React.JSX.Element {
           </div>
           <div className="space-y-2">
             <Label htmlFor="template-type">类型</Label>
-            <select
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-              id="template-type"
-              onChange={(event) =>
-                setDraft({ ...draft, type: event.target.value as ProjectTemplate['type'] })
-              }
+            <Select
               value={draft.type}
+              onValueChange={(value) =>
+                setDraft({ ...draft, type: value as ProjectTemplate['type'] })
+              }
             >
-              <option value="local">本地目录</option>
-              <option value="git">Git 仓库</option>
-            </select>
+              <SelectTrigger id="template-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">本地目录</SelectItem>
+                <SelectItem value="git">Git 仓库</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="template-source">来源</Label>
@@ -244,7 +264,7 @@ export function TemplatesPage(): React.JSX.Element {
         onClose={() => setDrawerMode(null)}
         onCreated={(value) => {
           setWorkspaces(value)
-          setStatus('项目创建成功')
+          toast.success('项目创建成功')
         }}
         onError={report}
         open={drawerMode === 'project'}

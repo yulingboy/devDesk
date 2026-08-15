@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import {
   Code2,
   FolderKanban,
   FolderOpen,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -19,10 +21,27 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
-import { PageHeader } from '@/components/PageHeader'
 import { Drawer } from '@/components/ui/drawer'
 import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/TooltipButton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 const emptyWorkspace: Workspace = { id: '', name: '', rootPath: '', description: '', projects: [] }
 
@@ -35,9 +54,11 @@ export function WorkspacesPage(): React.JSX.Element {
   const [status, setStatus] = useState('')
   const [drawerMode, setDrawerMode] = useState<'workspace' | 'project' | null>(null)
   const [createWorkspaceId, setCreateWorkspaceId] = useState<string>()
+  const [loading, setLoading] = useState(true)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
+    toast.error(message)
     rendererLogger.error('工作区操作失败', { error: message })
   }
   const load = (): void => {
@@ -52,6 +73,7 @@ export function WorkspacesPage(): React.JSX.Element {
         if (templateValue) setTemplates(templateValue)
       })
       .catch(report)
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
   const save = (): void => {
@@ -61,7 +83,8 @@ export function WorkspacesPage(): React.JSX.Element {
         setWorkspaces(value)
         setDraft(emptyWorkspace)
         setDrawerMode(null)
-        setStatus('工作区已保存')
+        setStatus('')
+        toast.success('工作区已保存')
       })
       .catch(report)
   }
@@ -70,7 +93,7 @@ export function WorkspacesPage(): React.JSX.Element {
       .scan(id)
       .then((value) => {
         setWorkspaces(value)
-        setStatus('项目扫描完成')
+        toast.success('项目扫描完成')
       })
       .catch(report)
   }
@@ -93,33 +116,30 @@ export function WorkspacesPage(): React.JSX.Element {
     [query, workspaces]
   )
 
+  if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-6">
-      <PageHeader
-        extra={
-          <Button
-            onClick={() => {
-              setDraft(emptyWorkspace)
-              setDrawerMode('workspace')
-            }}
-            variant="success"
-          >
-            <Plus size={15} />
-            新增工作区
-          </Button>
-        }
-        title="工作区"
-        subtitle="管理项目根目录、Git 身份和仓库状态"
-      />
+    <div className="mx-auto max-w-6xl space-y-3 p-4">
       <Card>
         <CardHeader className="flex-row items-start justify-between">
           <div>
             <CardTitle>工作区</CardTitle>
             <CardDescription>只扫描根目录第一层非隐藏目录，最多导入 500 个项目。</CardDescription>
           </div>
-          <Button onClick={load} size="icon" title="刷新工作区" variant="ghost">
-            <RefreshCw size={16} />
-          </Button>
+          <div className="flex gap-1">
+            <Button
+              onClick={() => {
+                setDraft(emptyWorkspace)
+                setDrawerMode('workspace')
+              }}
+              variant="success"
+            >
+              <Plus size={14} />
+              新增工作区
+            </Button>
+            <TooltipButton onClick={load} size="icon" tooltip="刷新工作区" variant="ghost">
+              <RefreshCw size={15} />
+            </TooltipButton>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
@@ -138,62 +158,67 @@ export function WorkspacesPage(): React.JSX.Element {
                   <p className="truncate text-xs text-slate-500">{workspace.rootPath}</p>
                   <p className="mt-1 text-xs text-slate-400">{workspace.projects.length} 个项目</p>
                 </div>
-                <Button
-                  onClick={() => {
-                    setDraft(workspace)
-                    setDrawerMode('workspace')
-                  }}
-                  size="icon"
-                  title="编辑工作区"
-                  variant="ghost"
+                <DropdownMenu>
+                  <Tooltip>
+                    <DropdownMenuTrigger asChild>
+                      <TooltipTrigger asChild>
+                        <Button aria-label="工作区操作" size="icon" variant="ghost">
+                          <MoreHorizontal size={15} />
+                        </Button>
+                      </TooltipTrigger>
+                    </DropdownMenuTrigger>
+                    <TooltipContent>工作区操作</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setDraft(workspace)
+                        setDrawerMode('workspace')
+                      }}
+                    >
+                      <Pencil size={14} />
+                      编辑工作区
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        if (!templates.length) {
+                          toast.warning('暂无可用模板，请先到“项目模板”页新增模板')
+                          return
+                        }
+                        setCreateWorkspaceId(workspace.id)
+                        setDrawerMode('project')
+                      }}
+                    >
+                      <Rocket size={14} />
+                      从模板创建项目
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => void window.api?.workspaces.open(workspace.id).catch(report)}
+                    >
+                      <FolderOpen size={14} />
+                      打开目录
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => scan(workspace.id)}>
+                      <ScanSearch size={14} />
+                      扫描项目
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ConfirmAction
+                  description={`删除工作区“${workspace.name}”会同时移除应用内项目记录和 Git 路径规则，不会删除磁盘目录。`}
+                  onConfirm={() =>
+                    void window.api?.workspaces
+                      .remove(workspace.id)
+                      .then(setWorkspaces)
+                      .catch(report)
+                  }
+                  title="删除工作区？"
+                  triggerTooltip="删除工作区"
                 >
-                  <Pencil size={15} />
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (!templates.length) {
-                      setStatus('暂无可用模板，请先到“项目模板”页新增模板')
-                      return
-                    }
-                    setCreateWorkspaceId(workspace.id)
-                    setDrawerMode('project')
-                  }}
-                  size="icon"
-                  title={templates.length ? '从模板创建项目' : '请先新增项目模板'}
-                  variant="ghost"
-                >
-                  <Rocket size={15} />
-                </Button>
-                <Button
-                  onClick={() => void window.api?.workspaces.open(workspace.id).catch(report)}
-                  size="icon"
-                  title="打开目录"
-                  variant="ghost"
-                >
-                  <FolderOpen size={15} />
-                </Button>
-                <Button
-                  onClick={() => scan(workspace.id)}
-                  size="icon"
-                  title="扫描项目"
-                  variant="ghost"
-                >
-                  <ScanSearch size={15} />
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (window.confirm(`删除工作区“${workspace.name}”？项目记录也会被删除。`))
-                      void window.api?.workspaces
-                        .remove(workspace.id)
-                        .then(setWorkspaces)
-                        .catch(report)
-                  }}
-                  size="icon"
-                  title="删除工作区"
-                  variant="ghost"
-                >
-                  <Trash2 size={15} />
-                </Button>
+                  <Button aria-label="删除工作区" size="icon" variant="ghost">
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
               </div>
               {workspace.projects.length > 0 && (
                 <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-2">
@@ -202,12 +227,12 @@ export function WorkspacesPage(): React.JSX.Element {
                       className="flex items-center gap-1 rounded-md border border-slate-100 bg-white p-1"
                       key={project.id}
                     >
-                      <button
-                        className="min-w-0 flex-1 truncate px-2 py-1 text-left text-xs"
+                      <Button
+                        className="h-auto min-w-0 flex-1 justify-start truncate px-2 py-1 text-left text-xs"
                         onClick={() =>
                           void window.api?.workspaces.openProject(project.path).catch(report)
                         }
-                        type="button"
+                        variant="ghost"
                       >
                         <span className="truncate">
                           <span className="font-medium">{project.name}</span>
@@ -215,7 +240,7 @@ export function WorkspacesPage(): React.JSX.Element {
                             {project.branch ?? '非 Git 项目'}
                           </span>
                         </span>
-                      </button>
+                      </Button>
                       {project.gitError ? (
                         <Badge variant="outline">状态未知</Badge>
                       ) : (
@@ -223,16 +248,16 @@ export function WorkspacesPage(): React.JSX.Element {
                           {project.dirty ? '有改动' : '干净'}
                         </Badge>
                       )}
-                      <Button
+                      <TooltipButton
                         onClick={() =>
                           void window.api?.workspaces.openProjectEditor(project.path).catch(report)
                         }
                         size="icon"
-                        title="在 VS Code 中打开"
+                        tooltip="在 VS Code 中打开"
                         variant="ghost"
                       >
                         <Code2 size={14} />
-                      </Button>
+                      </TooltipButton>
                     </div>
                   ))}
                 </div>
@@ -263,7 +288,7 @@ export function WorkspacesPage(): React.JSX.Element {
         open={drawerMode === 'workspace'}
         title={draft.id ? '编辑工作区' : '新增工作区'}
       >
-        <div className="space-y-5">
+        <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="workspace-name">名称</Label>
             <Input
@@ -290,23 +315,30 @@ export function WorkspacesPage(): React.JSX.Element {
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="workspace-identity">Git 身份</Label>
-            <select
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-              id="workspace-identity"
-              onChange={(event) =>
-                setDraft({ ...draft, gitIdentityId: event.target.value || undefined })
+            <Select
+              value={draft.gitIdentityId ?? 'none'}
+              onValueChange={(value) =>
+                setDraft({ ...draft, gitIdentityId: value === 'none' ? undefined : value })
               }
-              value={draft.gitIdentityId ?? ''}
             >
-              <option value="">不绑定</option>
-              {identities.map((identity) => (
-                <option key={identity.id} value={identity.id}>
-                  {identity.name} · {identity.email}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="workspace-identity">
+                <SelectValue placeholder="不绑定" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">不绑定</SelectItem>
+                {identities.map((identity) => (
+                  <SelectItem key={identity.id} value={identity.id}>
+                    {identity.name} · {identity.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <p className="text-xs text-slate-500">{status}</p>
+          {status && (
+            <Alert variant="destructive">
+              <AlertDescription>{status}</AlertDescription>
+            </Alert>
+          )}
         </div>
       </Drawer>
       <ProjectCreateDrawer
@@ -314,7 +346,7 @@ export function WorkspacesPage(): React.JSX.Element {
         onClose={() => setDrawerMode(null)}
         onCreated={(value) => {
           setWorkspaces(value)
-          setStatus('项目创建成功')
+          toast.success('项目创建成功')
         }}
         onError={report}
         open={drawerMode === 'project'}

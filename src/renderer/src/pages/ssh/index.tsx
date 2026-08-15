@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { Copy, KeyRound, Pencil, Plus, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
 import type { SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
@@ -8,8 +9,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
-import { PageHeader } from '@/components/PageHeader'
 import { Drawer } from '@/components/ui/drawer'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/TooltipButton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 const emptyDraft: SSHKeyDraft = { name: '', publicKey: '', source: 'manual' }
 
@@ -25,14 +36,20 @@ export function SshPage(): React.JSX.Element {
     passphrase: ''
   })
   const [drawerMode, setDrawerMode] = useState<'generate' | 'manual' | 'edit' | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
+    toast.error(message)
     rendererLogger.error('SSH 操作失败', { error: message })
   }
   const load = (): void => {
-    void window.api?.ssh.list().then(setKeys).catch(report)
+    void window.api?.ssh
+      .list()
+      .then(setKeys)
+      .catch(report)
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
   const filtered = useMemo(
@@ -51,7 +68,8 @@ export function SshPage(): React.JSX.Element {
         setKeys(value)
         setDraft(emptyDraft)
         setDrawerMode(null)
-        setStatus('SSH 公钥已保存')
+        setStatus('')
+        toast.success('SSH 公钥已保存')
       })
       .catch(report)
   }
@@ -61,16 +79,21 @@ export function SshPage(): React.JSX.Element {
       .then((value) => {
         setKeys(value)
         setDrawerMode(null)
-        setStatus('SSH 密钥已生成，私钥仅保留在系统路径中')
+        toast.success('SSH 密钥已生成，私钥仅保留在系统路径中')
       })
       .catch(report)
   }
 
+  if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-6">
-      <PageHeader
-        extra={
-          <>
+    <div className="mx-auto max-w-6xl space-y-3 p-4">
+      <Card>
+        <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
+          <div>
+            <CardTitle>SSH 密钥</CardTitle>
+            <CardDescription>只读取和保存公钥、指纹与私钥路径，不会保存私钥内容。</CardDescription>
+          </div>
+          <div className="flex items-center gap-1">
             <Button
               onClick={() => {
                 setDraft(emptyDraft)
@@ -78,27 +101,17 @@ export function SshPage(): React.JSX.Element {
               }}
               variant="secondary"
             >
-              <Plus size={15} />
+              <Plus size={14} />
               录入公钥
             </Button>
             <Button onClick={() => setDrawerMode('generate')} variant="success">
-              <Sparkles size={15} />
+              <Sparkles size={14} />
               生成密钥
             </Button>
-          </>
-        }
-        title="SSH 密钥"
-        subtitle="发现、录入和生成本机 SSH 公钥"
-      />
-      <Card>
-        <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
-          <div>
-            <CardTitle>SSH 密钥</CardTitle>
-            <CardDescription>只读取和保存公钥、指纹与私钥路径，不会保存私钥内容。</CardDescription>
+            <TooltipButton onClick={load} size="icon" tooltip="重新发现本机公钥" variant="ghost">
+              <RefreshCw size={15} />
+            </TooltipButton>
           </div>
-          <Button onClick={load} size="icon" title="重新发现本机公钥" variant="ghost">
-            <RefreshCw size={16} />
-          </Button>
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
           <Input
@@ -129,7 +142,7 @@ export function SshPage(): React.JSX.Element {
                     {key.fingerprint}
                   </p>
                 </div>
-                <Button
+                <TooltipButton
                   onClick={() => {
                     setDraft({
                       id: key.id,
@@ -141,34 +154,33 @@ export function SshPage(): React.JSX.Element {
                     setDrawerMode('edit')
                   }}
                   size="icon"
-                  title="编辑公钥"
+                  tooltip="编辑公钥"
                   variant="ghost"
                 >
                   <Pencil size={15} />
-                </Button>
-                <Button
+                </TooltipButton>
+                <TooltipButton
                   onClick={() =>
                     void navigator.clipboard
                       .writeText(key.publicKey)
-                      .then(() => setStatus('公钥已复制'))
+                      .then(() => toast.success('公钥已复制'))
                   }
                   size="icon"
-                  title="复制公钥"
+                  tooltip="复制公钥"
                   variant="ghost"
                 >
                   <Copy size={15} />
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (window.confirm(`删除密钥元数据“${key.name}”？关联 Git 身份会解除绑定。`))
-                      void window.api?.ssh.remove(key.id).then(setKeys).catch(report)
-                  }}
-                  size="icon"
-                  title="删除密钥"
-                  variant="ghost"
+                </TooltipButton>
+                <ConfirmAction
+                  description={`将删除密钥元数据“${key.name}”，关联的 Git 身份会解除绑定；磁盘上的密钥文件不会删除。`}
+                  onConfirm={() => void window.api?.ssh.remove(key.id).then(setKeys).catch(report)}
+                  title="删除 SSH 密钥元数据？"
+                  triggerTooltip="删除密钥"
                 >
-                  <Trash2 size={15} />
-                </Button>
+                  <Button aria-label="删除密钥" size="icon" variant="ghost">
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
               </div>
             ))}
             {!filtered.length && (
@@ -207,7 +219,7 @@ export function SshPage(): React.JSX.Element {
         }
       >
         {drawerMode !== 'generate' ? (
-          <div className="space-y-5">
+          <div className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="key-name">名称</Label>
               <Input
@@ -227,10 +239,12 @@ export function SshPage(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              不设置口令会降低私钥安全性，重要密钥建议配置口令。
-            </div>
+          <div className="space-y-3">
+            <Alert variant="warning">
+              <AlertDescription>
+                不设置口令会降低私钥安全性，重要密钥建议配置口令。
+              </AlertDescription>
+            </Alert>
             <div className="space-y-2">
               <Label htmlFor="generate-name">文件名</Label>
               <Input
@@ -243,20 +257,23 @@ export function SshPage(): React.JSX.Element {
             </div>
             <div className="space-y-2">
               <Label htmlFor="generate-algorithm">算法</Label>
-              <select
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                id="generate-algorithm"
-                onChange={(event) =>
+              <Select
+                value={generateOptions.algorithm}
+                onValueChange={(value) =>
                   setGenerateOptions({
                     ...generateOptions,
-                    algorithm: event.target.value as SSHKeyGenerateOptions['algorithm']
+                    algorithm: value as SSHKeyGenerateOptions['algorithm']
                   })
                 }
-                value={generateOptions.algorithm}
               >
-                <option value="ed25519">ed25519</option>
-                <option value="rsa">RSA 4096</option>
-              </select>
+                <SelectTrigger id="generate-algorithm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ed25519">ed25519</SelectItem>
+                  <SelectItem value="rsa">RSA 4096</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="generate-comment">注释</Label>
@@ -280,7 +297,11 @@ export function SshPage(): React.JSX.Element {
                 value={generateOptions.passphrase}
               />
             </div>
-            <p className="text-xs text-slate-500">{status}</p>
+            {status && (
+              <Alert variant="destructive">
+                <AlertDescription>{status}</AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
       </Drawer>

@@ -45,10 +45,37 @@ function parseManaged(raw: string): HostRecord[] {
     .filter((record) => isValidIpv4(record.ip) && isValidDomain(record.domain))
 }
 
+/** 首次接管时读取系统 Hosts 中未被注释的 IPv4 映射，避免已有记录显示为空。 */
+function parseSystemRecords(raw: string): HostRecord[] {
+  const start = raw.indexOf(startMarker)
+  const end = raw.indexOf(endMarker)
+  const unmanaged =
+    start >= 0 && end >= start ? `${raw.slice(0, start)}${raw.slice(end + endMarker.length)}` : raw
+  return unmanaged
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !line.startsWith('#') &&
+        !line.startsWith(startMarker) &&
+        !line.startsWith(endMarker)
+    )
+    .map((line) => line.split('#')[0].trim().split(/\s+/))
+    .filter((parts) => parts.length >= 2 && isValidIpv4(parts[0]) && isValidDomain(parts[1]))
+    .map(([ip, domain, ...remarkParts]) => ({
+      id: createId('host'),
+      ip,
+      domain,
+      enabled: true,
+      remark: remarkParts.join(' ')
+    }))
+}
+
 export async function listHosts(): Promise<HostRecord[]> {
   const raw = await readFile(hostsPath(), 'utf8').catch(() => '')
   const records = await store.hosts.read()
-  return records.length ? records : parseManaged(raw)
+  return records.length ? records : [...parseManaged(raw), ...parseSystemRecords(raw)]
 }
 
 function validateRecords(records: HostRecord[]): HostRecord[] {
@@ -85,10 +112,23 @@ export async function saveHosts(input: HostRecord[]): Promise<HostRecord[]> {
   ].join('\n')
   const start = raw.indexOf(startMarker)
   const end = raw.indexOf(endMarker)
+  const baseRaw =
+    start < 0 || end < start
+      ? raw
+          .split('\n')
+          .filter((line) => {
+            const parts = line.trim().split(/\s+/)
+            return !(
+              parts.length >= 2 &&
+              records.some((record) => record.ip === parts[0] && record.domain === parts[1])
+            )
+          })
+          .join('\n')
+      : raw
   const next =
     start >= 0 && end >= start
       ? `${raw.slice(0, start)}${managed}${raw.slice(end + endMarker.length)}`
-      : `${raw.trimEnd()}\n\n${managed}\n`
+      : `${baseRaw.trimEnd()}\n\n${managed}\n`
   try {
     await writeFile(path, next, 'utf8')
     await store.hosts.write(records)

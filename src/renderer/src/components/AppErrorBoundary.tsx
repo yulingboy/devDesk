@@ -3,6 +3,7 @@ import { CircleAlert, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { rendererLogger } from '@/lib/logger'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 interface Props {
   children: ReactNode
@@ -36,13 +37,15 @@ export class AppErrorBoundary extends Component<Props, State> {
       <main className="grid min-h-screen place-items-center bg-slate-50 p-6 text-slate-800">
         <Card className="w-full max-w-md shadow-sm">
           <CardContent className="p-6 pt-6">
-            <div className="mb-4 grid size-10 place-items-center rounded-md bg-red-50 text-red-600">
-              <CircleAlert aria-hidden="true" size={21} />
-            </div>
-            <h1 className="text-lg font-semibold">页面加载失败</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              错误已写入本地日志。重新加载后如果仍然失败，请在系统设置中查看日志目录。
-            </p>
+            <Alert variant="destructive">
+              <CircleAlert aria-hidden="true" size={18} />
+              <div>
+                <AlertTitle>页面加载失败</AlertTitle>
+                <AlertDescription>
+                  错误已写入本地日志。重新加载后如果仍然失败，请在系统设置中查看日志目录。
+                </AlertDescription>
+              </div>
+            </Alert>
             <Button className="mt-5" onClick={() => window.location.reload()} variant="success">
               <RotateCcw aria-hidden="true" size={15} />
               重新加载

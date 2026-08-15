@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Copy, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
@@ -7,8 +8,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { rendererLogger } from '@/lib/logger'
-import { PageHeader } from '@/components/PageHeader'
 import { Drawer } from '@/components/ui/drawer'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger
+} from '@/components/ui/accordion'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/TooltipButton'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 const emptyIdentity: GitIdentity = { id: '', name: '', username: '', email: '' }
 
@@ -20,9 +37,11 @@ export function GitPage(): React.JSX.Element {
   const [status, setStatus] = useState('')
   const [files, setFiles] = useState<GitFileSnapshot[]>([])
   const [drawerMode, setDrawerMode] = useState<'global' | 'identity' | null>(null)
+  const [loading, setLoading] = useState(true)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
+    toast.error(message)
     rendererLogger.error('Git 操作失败', { error: message })
   }
   const load = (): void => {
@@ -36,6 +55,7 @@ export function GitPage(): React.JSX.Element {
         if (fileValue) setFiles(fileValue)
       })
       .catch(report)
+      .finally(() => setLoading(false))
   }
   useEffect(load, [])
   const saveGlobal = (): void => {
@@ -44,7 +64,7 @@ export function GitPage(): React.JSX.Element {
       .then((value) => {
         setState(value)
         setDrawerMode(null)
-        setStatus('全局 Git 配置已写入真实配置文件')
+        toast.success('全局 Git 配置已写入真实配置文件')
       })
       .catch(report)
   }
@@ -55,33 +75,29 @@ export function GitPage(): React.JSX.Element {
         setState(value)
         setIdentity(emptyIdentity)
         setDrawerMode(null)
-        setStatus('Git 身份已保存并生成 profile')
+        toast.success('Git 身份已保存并生成 profile')
       })
       .catch(report)
   }
 
+  if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-6">
-      <PageHeader
-        extra={
-          <Button
-            onClick={() => {
-              setIdentity(emptyIdentity)
-              setDrawerMode('identity')
-            }}
-            variant="success"
-          >
-            <Plus size={15} />
-            新增配置
-          </Button>
-        }
-        title="Git 配置"
-        subtitle="维护全局配置、项目身份和工作区规则"
-      />
+    <div className="mx-auto max-w-6xl space-y-3 p-4">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-start justify-between">
           <CardTitle>全局 Git 配置</CardTitle>
-          <CardDescription>来源文件：{state?.global.sourceFile ?? '读取中'}</CardDescription>
+          <div className="flex items-center gap-2">
+            <CardDescription>来源文件：{state?.global.sourceFile ?? '读取中'}</CardDescription>
+            <Button
+              onClick={() => {
+                setIdentity(emptyIdentity)
+                setDrawerMode('identity')
+              }}
+              variant="success"
+            >
+              <Plus size={14} /> 新增配置
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="flex items-center justify-between gap-4">
           <div className="text-sm text-slate-600">
@@ -103,19 +119,25 @@ export function GitPage(): React.JSX.Element {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {files.map((file) => (
-            <details className="rounded-md border border-slate-100 p-3" key={file.path}>
-              <summary className="cursor-pointer text-sm font-medium">
-                {file.name}
-                <span className="ml-2 font-mono text-xs font-normal text-slate-500">
-                  {file.path}
-                </span>
-              </summary>
-              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
-              </pre>
-            </details>
-          ))}
+          <Accordion className="space-y-2" type="multiple">
+            {files.map((file) => (
+              <AccordionItem key={file.path} value={file.path}>
+                <AccordionTrigger>
+                  <span>
+                    {file.name}
+                    <span className="ml-2 font-mono text-[11px] font-normal text-slate-500">
+                      {file.path}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                    {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
+                  </pre>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </CardContent>
       </Card>
       <Card>
@@ -139,42 +161,47 @@ export function GitPage(): React.JSX.Element {
                   {item.username} · {item.email}
                 </p>
               </div>
-              <Button
+              <TooltipButton
                 onClick={() => {
                   setIdentity(item)
                   setDrawerMode('identity')
                 }}
                 size="icon"
-                title="编辑身份"
+                tooltip="编辑身份"
                 variant="ghost"
               >
                 <Pencil size={15} />
-              </Button>
-              <Button
+              </TooltipButton>
+              <TooltipButton
                 onClick={() => {
                   setIdentity({ ...item, id: '', name: `${item.name}-copy` })
                   setDrawerMode('identity')
                 }}
                 size="icon"
-                title="复制身份"
+                tooltip="复制身份"
                 variant="ghost"
               >
                 <Copy size={15} />
-              </Button>
-              <Button
-                onClick={() => {
-                  if (window.confirm(`删除身份“${item.name}”？`))
-                    void window.api?.git.removeIdentity(item.id).then(setState).catch(report)
-                }}
-                size="icon"
-                title="删除身份"
-                variant="ghost"
+              </TooltipButton>
+              <ConfirmAction
+                description={`删除身份“${item.name}”后将无法恢复；被工作区引用时操作会被拒绝。`}
+                onConfirm={() =>
+                  void window.api?.git.removeIdentity(item.id).then(setState).catch(report)
+                }
+                title="删除 Git 身份？"
+                triggerTooltip="删除身份"
               >
-                <Trash2 size={15} />
-              </Button>
+                <Button aria-label="删除身份" size="icon" variant="ghost">
+                  <Trash2 size={15} />
+                </Button>
+              </ConfirmAction>
             </div>
           ))}
-          <p className="text-xs text-slate-500">{status}</p>
+          {status && (
+            <Alert variant="destructive">
+              <AlertDescription>{status}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
       <Drawer
@@ -205,10 +232,12 @@ export function GitPage(): React.JSX.Element {
         }
       >
         {drawerMode === 'global' ? (
-          <div className="space-y-5">
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              保存后会立即写入 {state?.global.sourceFile || '~/.gitconfig'}。
-            </div>
+          <div className="space-y-3">
+            <Alert variant="warning">
+              <AlertDescription>
+                保存后会立即写入 {state?.global.sourceFile || '~/.gitconfig'}。
+              </AlertDescription>
+            </Alert>
             <div className="space-y-2">
               <Label htmlFor="global-name">用户名</Label>
               <Input
@@ -227,7 +256,7 @@ export function GitPage(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-3">
             <div className="space-y-2">
               <Label htmlFor="identity-name">身份名称</Label>
               <Input
@@ -254,21 +283,24 @@ export function GitPage(): React.JSX.Element {
             </div>
             <div className="space-y-2">
               <Label htmlFor="identity-key">SSH 密钥</Label>
-              <select
-                className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
-                id="identity-key"
-                onChange={(event) =>
-                  setIdentity({ ...identity, sshKeyId: event.target.value || undefined })
+              <Select
+                onValueChange={(value) =>
+                  setIdentity({ ...identity, sshKeyId: value === 'none' ? undefined : value })
                 }
-                value={identity.sshKeyId ?? ''}
+                value={identity.sshKeyId ?? 'none'}
               >
-                <option value="">不绑定</option>
-                {keys.map((key) => (
-                  <option key={key.id} value={key.id}>
-                    {key.name} · {key.fingerprint}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="identity-key">
+                  <SelectValue placeholder="不绑定" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">不绑定</SelectItem>
+                  {keys.map((key) => (
+                    <SelectItem key={key.id} value={key.id}>
+                      {key.name} · {key.fingerprint}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         )}

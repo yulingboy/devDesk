@@ -7,14 +7,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Drawer } from '@/components/ui/drawer'
 import { Label } from '@/components/ui/label'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { TooltipButton } from '@/components/TooltipButton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface PackagePanelProps {
   state: NodeState | null
   report: (error: unknown) => void
   onState: (state: NodeState) => void
+  section?: 'all' | 'managers' | 'packages'
 }
 
-export function PackagePanel({ state, report, onState }: PackagePanelProps): React.JSX.Element {
+export function PackagePanel({
+  state,
+  report,
+  onState,
+  section = 'all'
+}: PackagePanelProps): React.JSX.Element {
   const [packages, setPackages] = useState<GlobalPackage[]>([])
   const [keyword, setKeyword] = useState('')
   const [packageName, setPackageName] = useState('')
@@ -34,115 +43,135 @@ export function PackagePanel({ state, report, onState }: PackagePanelProps): Rea
     <Card>
       <CardHeader className="flex-row items-start justify-between">
         <div>
-          <CardTitle>包管理器与全局包</CardTitle>
+          <CardTitle>
+            {section === 'managers'
+              ? '包管理器'
+              : section === 'packages'
+                ? '全局包'
+                : '包管理器与全局包'}
+          </CardTitle>
           <CardDescription>
             全局包操作使用当前默认包管理器 {state?.packageManager || '--'}。
           </CardDescription>
         </div>
-        <Button
-          disabled={!state?.packageManagerVersion}
-          onClick={() => setDrawerMode('package')}
-          variant="secondary"
-        >
-          <Plus size={15} />
-          安装全局包
-        </Button>
+        {section !== 'managers' && (
+          <Button
+            disabled={!state?.packageManagerVersion}
+            onClick={() => setDrawerMode('package')}
+            variant="secondary"
+          >
+            <Plus size={14} />
+            安装全局包
+          </Button>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2 sm:grid-cols-4">
-          {state?.packageManagers.map((manager) => (
-            <div className="rounded-md border border-slate-100 p-3" key={manager.name}>
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-sm font-semibold">{manager.name}</p>
-                {manager.isDefault && <Badge variant="success">默认</Badge>}
+        {section !== 'packages' && (
+          <div className="grid gap-2 sm:grid-cols-4">
+            {state?.packageManagers.map((manager) => (
+              <div className="rounded-md border border-slate-100 p-3" key={manager.name}>
+                <div className="flex items-center justify-between">
+                  <p className="font-mono text-sm font-semibold">{manager.name}</p>
+                  {manager.isDefault && <Badge variant="success">默认</Badge>}
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {manager.available ? `v${manager.version}` : '未安装'}
+                </p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="mt-1 truncate text-[11px] text-slate-400">
+                      {manager.registry || '无 Registry 信息'}
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent>{manager.registry || '无 Registry 信息'}</TooltipContent>
+                </Tooltip>
+                <div className="mt-3 flex gap-1 border-t border-slate-100 pt-2">
+                  <Button
+                    disabled={!manager.available || manager.isDefault}
+                    onClick={() =>
+                      void window.api?.node
+                        .setPackageManager(manager.name)
+                        .then(onState)
+                        .catch(report)
+                    }
+                    size="sm"
+                    variant="ghost"
+                  >
+                    设为默认
+                  </Button>
+                  <TooltipButton
+                    disabled={!manager.available}
+                    onClick={() => {
+                      setEditingManager(manager)
+                      setRegistry(manager.registry)
+                      setDrawerMode('registry')
+                    }}
+                    size="icon"
+                    tooltip={`设置 ${manager.name} Registry`}
+                    variant="ghost"
+                  >
+                    <Pencil size={13} />
+                  </TooltipButton>
+                </div>
               </div>
-              <p className="mt-2 text-xs text-slate-500">
-                {manager.available ? `v${manager.version}` : '未安装'}
-              </p>
-              <p className="mt-1 truncate text-[11px] text-slate-400" title={manager.registry}>
-                {manager.registry || '无 Registry 信息'}
-              </p>
-              <div className="mt-3 flex gap-1 border-t border-slate-100 pt-2">
-                <Button
-                  disabled={!manager.available || manager.isDefault}
-                  onClick={() =>
-                    void window.api?.node
-                      .setPackageManager(manager.name)
-                      .then(onState)
-                      .catch(report)
-                  }
-                  size="sm"
-                  variant="ghost"
-                >
-                  设为默认
-                </Button>
-                <Button
-                  disabled={!manager.available}
-                  onClick={() => {
-                    setEditingManager(manager)
-                    setRegistry(manager.registry)
-                    setDrawerMode('registry')
-                  }}
-                  size="icon"
-                  title={`设置 ${manager.name} Registry`}
-                  variant="ghost"
-                >
-                  <Pencil size={13} />
-                </Button>
-              </div>
+            ))}
+          </div>
+        )}
+        {section !== 'managers' && (
+          <>
+            <div className="flex gap-2">
+              <Input
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="搜索全局包"
+                value={keyword}
+              />
+              <TooltipButton onClick={load} size="icon" tooltip="刷新全局包" variant="secondary">
+                <RefreshCw size={15} />
+              </TooltipButton>
             </div>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="搜索全局包"
-            value={keyword}
-          />
-          <Button onClick={load} size="icon" title="刷新全局包" variant="secondary">
-            <RefreshCw size={15} />
-          </Button>
-        </div>
-        <div className="space-y-2">
-          {packages.map((item) => (
-            <div
-              className="flex items-center gap-3 rounded-md border border-slate-100 px-3 py-2"
-              key={item.name}
-            >
-              <p className="min-w-0 flex-1 truncate font-mono text-sm">{item.name}</p>
-              <Badge variant="secondary">{item.current || '未知'}</Badge>
-              {item.latest && item.latest !== item.current && (
-                <Badge variant="outline">可更新 {item.latest}</Badge>
+            <div className="space-y-2">
+              {packages.map((item) => (
+                <div
+                  className="flex items-center gap-3 rounded-md border border-slate-100 px-3 py-2"
+                  key={item.name}
+                >
+                  <p className="min-w-0 flex-1 truncate font-mono text-sm">{item.name}</p>
+                  <Badge variant="secondary">{item.current || '未知'}</Badge>
+                  {item.latest && item.latest !== item.current && (
+                    <Badge variant="outline">可更新 {item.latest}</Badge>
+                  )}
+                  <TooltipButton
+                    onClick={() =>
+                      void window.api?.node.updatePackage(item.name).then(setPackages).catch(report)
+                    }
+                    size="icon"
+                    tooltip="更新包"
+                    variant="ghost"
+                  >
+                    <RefreshCw size={14} />
+                  </TooltipButton>
+                  <ConfirmAction
+                    description={`将从当前默认包管理器中卸载全局包“${item.name}”。`}
+                    onConfirm={() =>
+                      void window.api?.node.removePackage(item.name).then(setPackages).catch(report)
+                    }
+                    title="卸载全局包？"
+                    triggerTooltip="卸载包"
+                  >
+                    <Button aria-label="卸载包" size="icon" variant="ghost">
+                      <Trash2 size={14} />
+                    </Button>
+                  </ConfirmAction>
+                </div>
+              ))}
+              {!packages.length && (
+                <p className="py-5 text-center text-sm text-slate-400">
+                  未发现全局包，或当前包管理器不支持读取。
+                </p>
               )}
-              <Button
-                onClick={() =>
-                  void window.api?.node.updatePackage(item.name).then(setPackages).catch(report)
-                }
-                size="icon"
-                title="更新包"
-                variant="ghost"
-              >
-                <RefreshCw size={14} />
-              </Button>
-              <Button
-                onClick={() => {
-                  if (window.confirm(`卸载全局包“${item.name}”？`))
-                    void window.api?.node.removePackage(item.name).then(setPackages).catch(report)
-                }}
-                size="icon"
-                title="卸载包"
-                variant="ghost"
-              >
-                <Trash2 size={14} />
-              </Button>
             </div>
-          ))}
-          {!packages.length && (
-            <p className="py-5 text-center text-sm text-slate-400">
-              未发现全局包，或当前包管理器不支持读取。
-            </p>
-          )}
-        </div>
+          </>
+        )}
       </CardContent>
       <Drawer
         description={`将使用 ${state?.packageManager || '默认包管理器'} 执行全局安装，请确认包名和 Registry。`}

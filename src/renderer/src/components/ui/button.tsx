@@ -1,35 +1,21 @@
 import type { ButtonHTMLAttributes } from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
+import { forwardRef } from 'react'
+import { Slot } from '@radix-ui/react-slot'
+import type { VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
-
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/35 disabled:pointer-events-none disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        default: 'bg-slate-800 text-white hover:bg-slate-700',
-        secondary: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
-        ghost: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
-        outline: 'border border-slate-200 bg-transparent text-slate-700 hover:bg-slate-50',
-        success: 'bg-[var(--accent)] text-white hover:brightness-90'
-      },
-      size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 px-3 text-xs',
-        lg: 'h-10 px-5',
-        icon: 'size-9'
-      }
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default'
-    }
-  }
-)
+import { buttonVariants } from '@/components/ui/button-variants'
 
 export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
-
-export function Button({ className, variant, size, ...props }: ButtonProps): React.JSX.Element {
-  return <button className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+  asChild?: boolean
 }
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ asChild = false, className, variant, size, ...props }, ref) => {
+    const Comp = asChild ? Slot : 'button'
+    return (
+      <Comp className={cn(buttonVariants({ variant, size }), className)} ref={ref} {...props} />
+    )
+  }
+)
+Button.displayName = 'Button'

@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { TooltipButton } from '@/components/TooltipButton'
 
 interface RegistryPanelProps {
   state: NodeState | null
@@ -91,32 +93,37 @@ export function RegistryPanel({ state, onState, report }: RegistryPanelProps): R
               >
                 测速
               </Button>
-              <Button
+              <TooltipButton
                 onClick={() => {
                   setDraft({ id: registry.id, name: registry.name, url: registry.url })
                   setDrawerOpen(true)
                 }}
                 size="icon"
-                title="编辑镜像"
+                tooltip="编辑镜像"
                 variant="ghost"
               >
                 <Pencil size={15} />
-              </Button>
-              <Button
-                disabled={registry.isCurrent}
-                onClick={() => {
-                  if (window.confirm(`删除镜像“${registry.name}”？`))
-                    void window.api?.node
-                      .removeRegistry(registry.id)
-                      .then((registries) => state && onState({ ...state, registries }))
-                      .catch(report)
-                }}
-                size="icon"
-                title="删除镜像"
-                variant="ghost"
+              </TooltipButton>
+              <ConfirmAction
+                description={`删除镜像“${registry.name}”后需要重新新增才能恢复。当前镜像不能删除。`}
+                onConfirm={() =>
+                  void window.api?.node
+                    .removeRegistry(registry.id)
+                    .then((registries) => state && onState({ ...state, registries }))
+                    .catch(report)
+                }
+                title="删除 Registry 镜像？"
+                triggerTooltip="删除镜像"
               >
-                <Trash2 size={15} />
-              </Button>
+                <Button
+                  aria-label="删除镜像"
+                  disabled={registry.isCurrent}
+                  size="icon"
+                  variant="ghost"
+                >
+                  <Trash2 size={15} />
+                </Button>
+              </ConfirmAction>
             </div>
           ))}
         </CardContent>
@@ -138,7 +145,7 @@ export function RegistryPanel({ state, onState, report }: RegistryPanelProps): R
         open={drawerOpen}
         title={draft.id ? '编辑 Registry 镜像' : '新增 Registry 镜像'}
       >
-        <div className="space-y-5">
+        <div className="space-y-3">
           <div className="space-y-2">
             <Label htmlFor="registry-name">镜像名称</Label>
             <Input

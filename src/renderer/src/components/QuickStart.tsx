@@ -14,7 +14,7 @@ export function QuickStart(): React.JSX.Element {
       <CardContent className="p-2">
         {quickStartItems.map((label) => (
           <Button
-            className="h-10 w-full justify-between px-3 text-left text-sm text-slate-600"
+            className="h-8 w-full justify-between px-2.5 text-left text-xs text-slate-600"
             key={label}
             type="button"
             variant="ghost"

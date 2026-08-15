@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Minus, MonitorCog, PanelTop, Square, X } from 'lucide-react'
 import type { WindowState } from '@shared/types'
-import { Button } from '@/components/ui/button'
+import { TooltipButton } from '@/components/TooltipButton'
 import { rendererLogger } from '@/lib/logger'
 
 const defaultWindowState: WindowState = {
@@ -100,18 +100,18 @@ function WindowButton({
   onClick: () => void
 }): React.JSX.Element {
   return (
-    <Button
+    <TooltipButton
       aria-label={label}
       className={`h-full w-11 rounded-none text-slate-500 transition-colors disabled:cursor-default disabled:opacity-40 ${
         close ? 'hover:bg-red-500 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
       }`}
       disabled={disabled}
       onClick={onClick}
-      title={label}
+      tooltip={label}
       variant="ghost"
     >
       {children}
-    </Button>
+    </TooltipButton>
   )
 }
 

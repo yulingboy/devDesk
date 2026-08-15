@@ -7,11 +7,12 @@ import { OverviewCards } from '@/components/OverviewCards'
 import { QuickStart } from '@/components/QuickStart'
 import { rendererLogger } from '@/lib/logger'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 export function HomePage(): React.JSX.Element {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
   const [snapshot, setSnapshot] = useState<SystemOverviewSnapshot | null>(null)
-  const [counts, setCounts] = useState({ workspaces: 0, identities: 0, keys: 0 })
+  const [counts, setCounts] = useState<{ workspaces: number; identities: number; keys: number }>()
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const hasDesktopRuntime = Boolean(window.api)
 
@@ -70,10 +71,10 @@ export function HomePage(): React.JSX.Element {
   })
 
   return (
-    <div className="h-full overflow-auto bg-slate-50/40 p-6">
+    <div className="h-full overflow-auto bg-slate-50/40 p-4">
       <div className="mx-auto flex max-w-6xl flex-col gap-5">
         <Card>
-          <CardContent className="flex flex-wrap items-start justify-between gap-4 p-6">
+          <CardContent className="flex flex-wrap items-start justify-between gap-3 p-4">
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--theme-lighter)] px-3 py-1 text-xs text-[var(--accent)]">
                 <span className="size-1.5 rounded-full bg-[var(--accent)]" />
@@ -159,9 +160,12 @@ function Info({ label, value }: { label: string; value: string }): React.JSX.Ele
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-3">
       <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 truncate font-medium text-slate-700" title={value}>
-        {value}
-      </p>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <p className="mt-1 truncate font-medium text-slate-700">{value}</p>
+        </TooltipTrigger>
+        <TooltipContent>{value}</TooltipContent>
+      </Tooltip>
     </div>
   )
 }

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { AppHeader } from '@/components/AppHeader'
 import { Navigation } from '@/components/Navigation'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { applyTheme } from '@/lib/theme'
 
 export function AppShell({ appVersion }: { appVersion: string }): React.JSX.Element {
@@ -23,14 +25,17 @@ export function AppShell({ appVersion }: { appVersion: string }): React.JSX.Elem
   }, [])
 
   return (
-    <div className="flex h-screen min-h-[640px] flex-col bg-slate-50 text-slate-900">
-      <AppHeader />
-      <div className="flex min-h-0 flex-1">
-        <Navigation appVersion={displayVersion} />
-        <main className="min-w-0 flex-1 overflow-auto bg-slate-50/60">
-          <Outlet />
-        </main>
+    <TooltipProvider delayDuration={350}>
+      <div className="flex h-screen min-h-[640px] flex-col bg-slate-50 text-slate-900">
+        <AppHeader />
+        <div className="flex min-h-0 flex-1">
+          <Navigation appVersion={displayVersion} />
+          <main className="min-w-0 flex-1 overflow-auto bg-slate-50/60">
+            <Outlet />
+          </main>
+        </div>
+        <Toaster />
       </div>
-    </div>
+    </TooltipProvider>
   )
 }

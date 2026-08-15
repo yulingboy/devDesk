@@ -4,7 +4,14 @@ import type { ProjectTemplate, Workspace } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { FormDescription, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 
 interface ProjectCreateDrawerProps {
   defaultTemplateId?: string
@@ -95,9 +102,9 @@ export function ProjectCreateDrawer({
       open={open}
       title="从模板创建项目"
     >
-      <div className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="create-project-template">项目模板</Label>
+      <div className="space-y-3">
+        <FormItem>
+          <FormLabel htmlFor="create-project-template">项目模板</FormLabel>
           {fixedTemplate ? (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
               {fixedTemplate.name}
@@ -106,49 +113,53 @@ export function ProjectCreateDrawer({
               </span>
             </div>
           ) : (
-            <select
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            <Select
               disabled={submitting}
-              id="create-project-template"
-              onChange={(event) => setTemplateId(event.target.value)}
-              value={selectedTemplateId}
+              onValueChange={setTemplateId}
+              value={selectedTemplateId || undefined}
             >
-              <option value="">请选择模板</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}（{template.type === 'git' ? 'Git' : '本地'}）
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="create-project-template">
+                <SelectValue placeholder="请选择模板" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}（{template.type === 'git' ? 'Git' : '本地'}）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="create-project-workspace">目标工作区</Label>
+        </FormItem>
+        <FormItem>
+          <FormLabel htmlFor="create-project-workspace">目标工作区</FormLabel>
           {fixedWorkspace ? (
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
               <p>{fixedWorkspace.name}</p>
               <p className="mt-1 truncate text-xs text-slate-400">{fixedWorkspace.rootPath}</p>
             </div>
           ) : (
-            <select
-              className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+            <Select
               disabled={submitting}
-              id="create-project-workspace"
-              onChange={(event) => setWorkspaceId(event.target.value)}
-              value={selectedWorkspaceId}
+              onValueChange={setWorkspaceId}
+              value={selectedWorkspaceId || undefined}
             >
-              <option value="">请选择工作区</option>
-              {workspaces.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="create-project-workspace">
+                <SelectValue placeholder="请选择工作区" />
+              </SelectTrigger>
+              <SelectContent>
+                {workspaces.map((workspace) => (
+                  <SelectItem key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-          <p className="text-xs text-slate-400">项目将作为工作区根目录下的一级目录。</p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="create-project-name">项目名称</Label>
+          <FormDescription>项目将作为工作区根目录下的一级目录。</FormDescription>
+        </FormItem>
+        <FormItem>
+          <FormLabel htmlFor="create-project-name">项目名称</FormLabel>
           <Input
             autoFocus
             disabled={submitting}
@@ -160,10 +171,8 @@ export function ProjectCreateDrawer({
             placeholder="例如 my-app"
             value={projectName}
           />
-        </div>
-        {errorMessage && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">{errorMessage}</p>
-        )}
+        </FormItem>
+        {errorMessage && <FormMessage>{errorMessage}</FormMessage>}
       </div>
     </Drawer>
   )

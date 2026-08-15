@@ -10,6 +10,7 @@ import { getStoreDirectory, setStoreDirectory, store } from '@main/infrastructur
 import { setMinimizeToTray } from '@main/tray'
 import { setLogLevel } from '@main/infrastructure/logger'
 import { syncGitRules } from '@main/services/git'
+import { listSshKeys } from '@main/services/ssh'
 
 const execFileAsync = promisify(execFile)
 const supportedThemes: ThemeName[] = [
@@ -188,7 +189,7 @@ export async function getDataStats(): Promise<DataStats> {
     directoryStats(directory),
     store.gitIdentities.read().catch(() => []),
     store.workspaces.read().catch(() => []),
-    store.sshKeys.read().catch(() => [])
+    listSshKeys().catch(() => [])
   ])
   return {
     directory,
