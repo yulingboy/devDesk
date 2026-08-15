@@ -17,26 +17,26 @@ export function CardHeader({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>): React.JSX.Element {
-  return <div className={cn('flex flex-col gap-1 p-4', className)} {...props} />
+  return <div className={cn('flex flex-col gap-0.5 p-3', className)} {...props} />
 }
 
 export function CardTitle({
   className,
   ...props
 }: HTMLAttributes<HTMLHeadingElement>): React.JSX.Element {
-  return <h3 className={cn('text-sm font-semibold text-slate-800', className)} {...props} />
+  return <h3 className={cn('text-xs font-semibold text-slate-800', className)} {...props} />
 }
 
 export function CardDescription({
   className,
   ...props
 }: HTMLAttributes<HTMLParagraphElement>): React.JSX.Element {
-  return <p className={cn('text-xs leading-5 text-slate-500', className)} {...props} />
+  return <p className={cn('text-[11px] leading-4 text-slate-500', className)} {...props} />
 }
 
 export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>): React.JSX.Element {
-  return <div className={cn('p-4 pt-0', className)} {...props} />
+  return <div className={cn('p-3 pt-0', className)} {...props} />
 }

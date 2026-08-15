@@ -26,7 +26,7 @@ export function Tabs({
 }: TabsProps): React.JSX.Element {
   return (
     <TabsPrimitive.Root
-      className={cn('space-y-3', className)}
+      className={cn('space-y-2.5', className)}
       defaultValue={defaultValue ?? items[0]?.value}
       onValueChange={onValueChange}
       value={value}
@@ -37,7 +37,7 @@ export function Tabs({
       >
         {items.map((item) => (
           <TabsPrimitive.Trigger
-            className="shrink-0 border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 data-[state=active]:border-[var(--accent)] data-[state=active]:text-[var(--accent)]"
+            className="shrink-0 border-b-2 border-transparent px-2 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 data-[state=active]:border-[var(--accent)] data-[state=active]:text-[var(--accent)]"
             key={item.value}
             value={item.value}
           >

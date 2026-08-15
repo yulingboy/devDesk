@@ -17,7 +17,7 @@ export function EnvironmentPanel({
           <CardTitle>开发环境</CardTitle>
           <CardDescription>运行时与平台信息</CardDescription>
         </div>
-        <ShieldCheck aria-hidden="true" className="text-[var(--accent)]" size={19} />
+        <ShieldCheck aria-hidden="true" className="text-[var(--accent)]" />
       </CardHeader>
       <CardContent>
         <dl className="grid grid-cols-2 gap-x-8 gap-y-5">
@@ -64,12 +64,12 @@ function RuntimeRow({
 }): React.JSX.Element {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--theme-lighter)] text-[var(--accent)]">
-        <Icon aria-hidden="true" size={17} />
+      <div className="grid size-7 shrink-0 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
+        <Icon aria-hidden="true" />
       </div>
       <div className="min-w-0">
         <dt className="text-xs text-slate-400">{label}</dt>
-        <dd className="mt-0.5 truncate text-sm font-medium text-slate-700">{value}</dd>
+        <dd className="mt-0.5 truncate text-xs font-medium text-slate-700">{value}</dd>
       </div>
     </div>
   )

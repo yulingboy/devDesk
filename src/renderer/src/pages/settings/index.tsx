@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Code2, Database, FolderOpen, RotateCcw, Save, ShieldAlert } from 'lucide-react'
-import type { AppSettings, DataStats, ThemeName } from '@shared/domain'
+import type { AppSettings, DataStats } from '@shared/domain'
 import type { RuntimeInfo } from '@shared/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,23 +18,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs } from '@/components/ui/tabs'
 import { rendererLogger } from '@/lib/logger'
-import { applyTheme } from '@/lib/theme'
 import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-
-const themeOptions: Array<{ value: ThemeName; label: string; color: string }> = [
-  { value: 'blue', label: '蓝色', color: '#2563eb' },
-  { value: 'purple', label: '紫色', color: '#9333ea' },
-  { value: 'green', label: '绿色', color: '#16a34a' },
-  { value: 'orange', label: '橙色', color: '#ea580c' },
-  { value: 'rose', label: '玫红', color: '#e11d48' },
-  { value: 'cyan', label: '青色', color: '#0891b2' },
-  { value: 'indigo', label: '靛蓝', color: '#4f46e5' },
-  { value: 'teal', label: '蓝绿', color: '#0d9488' }
-]
 
 function formatBytes(value: number): string {
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
@@ -76,7 +63,7 @@ export function SettingsPage(): React.JSX.Element {
   if (loading) return <PageLoadingSkeleton />
   if (!settings) {
     return (
-      <div className="mx-auto max-w-6xl p-4">
+      <div className="h-full overflow-auto p-3">
         <Alert variant="destructive">
           <ShieldAlert size={16} />
           <AlertDescription className="flex items-center justify-between gap-3">
@@ -94,7 +81,6 @@ export function SettingsPage(): React.JSX.Element {
       .save(settings)
       .then((value) => {
         setSettings(value)
-        applyTheme(value.general.theme)
         setStatus('')
         toast.success('设置已保存')
       })
@@ -105,7 +91,6 @@ export function SettingsPage(): React.JSX.Element {
       .reset()
       .then((value) => {
         setSettings(value)
-        applyTheme(value.general.theme)
         toast.success('设置已恢复默认值')
       })
       .catch(report)
@@ -125,67 +110,52 @@ export function SettingsPage(): React.JSX.Element {
     <Card>
       <CardHeader>
         <CardTitle>通用设置</CardTitle>
-        <CardDescription>设置会保存到本机数据目录，并在下次启动时恢复。</CardDescription>
+        <CardDescription>界面固定使用 Codex 浅色风格，仅保留桌面行为设置。</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-2">
-          <Label>主题色</Label>
-          <ToggleGroup
-            className="grid grid-cols-4"
-            onValueChange={(value) => {
-              if (!value) return
-              applyTheme(value as ThemeName)
-              setSettings({
-                ...settings,
-                general: { ...settings.general, theme: value as ThemeName }
-              })
-            }}
-            type="single"
-            value={settings.general.theme}
-          >
-            {themeOptions.map((theme) => (
-              <ToggleGroupItem
-                aria-label={`使用${theme.label}主题`}
-                key={theme.value}
-                value={theme.value}
-              >
-                <span className="size-2.5 rounded-full" style={{ backgroundColor: theme.color }} />
-                {theme.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+      <CardContent>
+        <div className="divide-y divide-slate-100 border-y border-slate-100">
+          <label className="flex items-center justify-between gap-4 py-2.5">
+            <span>
+              <span className="block text-xs font-medium text-slate-700">开机自启</span>
+              <span className="mt-0.5 block text-[11px] text-slate-400">
+                登录系统后自动启动开发工坊
+              </span>
+            </span>
+            <Switch
+              checked={settings.general.launchAtLogin}
+              onCheckedChange={(checked) =>
+                setSettings({
+                  ...settings,
+                  general: { ...settings.general, launchAtLogin: checked }
+                })
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 py-2.5">
+            <span>
+              <span className="block text-xs font-medium text-slate-700">最小化到托盘</span>
+              <span className="mt-0.5 block text-[11px] text-slate-400">
+                关闭主窗口时保持后台服务运行
+              </span>
+            </span>
+            <Switch
+              checked={settings.general.minimizeToTray}
+              onCheckedChange={(checked) =>
+                setSettings({
+                  ...settings,
+                  general: { ...settings.general, minimizeToTray: checked }
+                })
+              }
+            />
+          </label>
         </div>
-        <label className="flex items-center gap-2 text-xs">
-          <Switch
-            checked={settings.general.launchAtLogin}
-            onCheckedChange={(checked) =>
-              setSettings({
-                ...settings,
-                general: { ...settings.general, launchAtLogin: checked }
-              })
-            }
-          />
-          开机自启
-        </label>
-        <label className="flex items-center gap-2 text-xs">
-          <Switch
-            checked={settings.general.minimizeToTray}
-            onCheckedChange={(checked) =>
-              setSettings({
-                ...settings,
-                general: { ...settings.general, minimizeToTray: checked }
-              })
-            }
-          />
-          关闭窗口时最小化到托盘
-        </label>
-        <div className="flex gap-2">
+        <div className="mt-3 flex gap-1.5">
           <Button onClick={save} variant="success">
             <Save size={14} />
             保存设置
           </Button>
           <ConfirmAction
-            description="将主题、启动行为和高级设置恢复为默认值，不会删除业务数据。"
+            description="将启动行为和高级设置恢复为默认值，不会删除业务数据。"
             onConfirm={reset}
             title="恢复默认设置？"
           >
@@ -444,7 +414,7 @@ export function SettingsPage(): React.JSX.Element {
   )
 
   return (
-    <div className="mx-auto max-w-6xl space-y-3 p-4">
+    <div className="h-full overflow-auto p-3">
       <Tabs
         items={[
           { value: 'general', label: '通用', content: general },

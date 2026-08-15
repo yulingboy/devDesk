@@ -38,21 +38,21 @@ export function OverviewCards({
     return item
   })
   return (
-    <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
       {items.map(({ label, value, detail, icon: Icon }) => (
-        <Card className="p-4" key={label}>
-          <div className="mb-5 flex items-start justify-between">
-            <p className="text-sm font-medium text-slate-600">{label}</p>
-            <div className="grid size-8 place-items-center rounded-lg bg-[var(--theme-lighter)] text-[var(--accent)]">
-              <Icon aria-hidden="true" size={17} />
+        <Card className="p-3" key={label}>
+          <div className="mb-3 flex items-start justify-between">
+            <p className="text-xs font-medium text-slate-600">{label}</p>
+            <div className="grid size-7 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
+              <Icon aria-hidden="true" />
             </div>
           </div>
           {(label === 'Node 版本' && !snapshot) || (label !== 'Node 版本' && !counts) ? (
             <Skeleton className="h-7 w-16" />
           ) : (
-            <p className="text-2xl font-semibold text-slate-800">{value}</p>
+            <p className="text-lg font-semibold text-slate-800">{value}</p>
           )}
-          <p className="mt-1 text-xs text-slate-400">{detail}</p>
+          <p className="mt-1 text-[11px] text-slate-400">{detail}</p>
         </Card>
       ))}
     </div>

@@ -9,11 +9,11 @@ export function ModulePlaceholderPage({ routePath }: { routePath: string }): Rea
   const Icon = route.icon
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-1 items-start p-4">
+    <div className="flex h-full items-start p-3">
       <Card className="w-full">
         <CardContent className="p-8 pt-8">
-          <div className="flex size-10 items-center justify-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
-            <Icon aria-hidden="true" size={20} />
+          <div className="flex size-8 items-center justify-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
+            <Icon aria-hidden="true" />
           </div>
           <h2 className="mt-5 text-lg font-semibold text-slate-800">{route.label}</h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">

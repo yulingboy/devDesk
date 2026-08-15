@@ -14,7 +14,7 @@ export const SelectTrigger = forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     className={cn(
-      'flex h-8 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--theme-light)] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+      'flex h-7 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--theme-light)] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
       className
     )}
     ref={ref}

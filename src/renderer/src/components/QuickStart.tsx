@@ -14,13 +14,13 @@ export function QuickStart(): React.JSX.Element {
       <CardContent className="p-2">
         {quickStartItems.map((label) => (
           <Button
-            className="h-8 w-full justify-between px-2.5 text-left text-xs text-slate-600"
+            className="h-7 w-full justify-between px-2 text-left text-[11px] text-slate-600"
             key={label}
             type="button"
             variant="ghost"
           >
             <span>{label}</span>
-            <ChevronRight aria-hidden="true" className="text-slate-400" size={16} />
+            <ChevronRight aria-hidden="true" className="text-slate-400" />
           </Button>
         ))}
       </CardContent>

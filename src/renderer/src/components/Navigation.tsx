@@ -14,15 +14,15 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
     <aside
       className={cn(
         'flex shrink-0 flex-col border-r border-slate-100 bg-white text-slate-800 transition-[width] duration-200',
-        collapsed ? 'w-16' : 'w-[220px]'
+        collapsed ? 'w-14' : 'w-[196px]'
       )}
     >
       <div
-        className={cn('flex h-13 items-center px-3', collapsed ? 'justify-center' : 'justify-end')}
+        className={cn('flex h-11 items-center px-2', collapsed ? 'justify-center' : 'justify-end')}
       >
         <TooltipButton
           aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
-          className={cn('text-slate-400', collapsed && 'w-10')}
+          className={cn('text-slate-400', collapsed && 'w-8')}
           onClick={() => setCollapsed((value) => !value)}
           size="icon"
           tooltip={collapsed ? '展开侧边栏' : '收起侧边栏'}
@@ -41,8 +41,8 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
                 aria-label={collapsed ? label : undefined}
                 className={({ isActive }) =>
                   cn(
-                    'flex h-10 w-full items-center rounded-lg text-[13px] transition-colors',
-                    collapsed ? 'justify-center px-0' : 'gap-3 px-3',
+                    'flex h-9 w-full items-center rounded-md text-xs transition-colors',
+                    collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
                     isActive
                       ? 'bg-[var(--theme-lighter)] font-medium text-[var(--accent)]'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -51,7 +51,7 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
                 end={path === '/'}
                 to={path}
               >
-                <Icon aria-hidden="true" className="shrink-0" size={17} strokeWidth={1.8} />
+                <Icon aria-hidden="true" className="shrink-0" />
                 {!collapsed && <span className="truncate">{label}</span>}
               </NavLink>
             </TooltipTrigger>

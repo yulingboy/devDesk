@@ -82,64 +82,68 @@ export function GitPage(): React.JSX.Element {
 
   if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-3 p-4">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between">
-          <CardTitle>全局 Git 配置</CardTitle>
-          <div className="flex items-center gap-2">
-            <CardDescription>来源文件：{state?.global.sourceFile ?? '读取中'}</CardDescription>
-            <Button
-              onClick={() => {
-                setIdentity(emptyIdentity)
-                setDrawerMode('identity')
-              }}
-              variant="success"
-            >
-              <Plus size={14} /> 新增配置
+    <div className="h-full space-y-2.5 overflow-auto p-3">
+      <div className="grid gap-2.5 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+        <Card>
+          <CardHeader className="flex-row items-start justify-between">
+            <CardTitle>全局 Git 配置</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardDescription>来源文件：{state?.global.sourceFile ?? '读取中'}</CardDescription>
+              <Button
+                onClick={() => {
+                  setIdentity(emptyIdentity)
+                  setDrawerMode('identity')
+                }}
+                variant="success"
+              >
+                <Plus size={14} /> 新增配置
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <div className="text-xs text-slate-600">
+              <span className="font-medium text-slate-800">
+                {global.username || '未配置用户名'}
+              </span>
+              <span className="mx-2 text-slate-300">·</span>
+              {global.email || '未配置邮箱'}
+            </div>
+            <Button onClick={() => setDrawerMode('global')} variant="secondary">
+              <Pencil size={15} />
+              编辑全局配置
             </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between gap-4">
-          <div className="text-sm text-slate-600">
-            <span className="font-medium text-slate-800">{global.username || '未配置用户名'}</span>
-            <span className="mx-2 text-slate-300">·</span>
-            {global.email || '未配置邮箱'}
-          </div>
-          <Button onClick={() => setDrawerMode('global')} variant="secondary">
-            <Pencil size={15} />
-            编辑全局配置
-          </Button>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>真实配置文件</CardTitle>
-          <CardDescription>
-            只读展示全局配置、身份 profile 和工作区 includeIf 规则。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Accordion className="space-y-2" type="multiple">
-            {files.map((file) => (
-              <AccordionItem key={file.path} value={file.path}>
-                <AccordionTrigger>
-                  <span>
-                    {file.name}
-                    <span className="ml-2 font-mono text-[11px] font-normal text-slate-500">
-                      {file.path}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>真实配置文件</CardTitle>
+            <CardDescription>
+              只读展示全局配置、身份 profile 和工作区 includeIf 规则。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Accordion className="space-y-2" type="multiple">
+              {files.map((file) => (
+                <AccordionItem key={file.path} value={file.path}>
+                  <AccordionTrigger>
+                    <span>
+                      {file.name}
+                      <span className="ml-2 font-mono text-[11px] font-normal text-slate-500">
+                        {file.path}
+                      </span>
                     </span>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                    {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
-                  </pre>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-2.5 text-[11px] text-slate-600">
+                      {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
+                    </pre>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </CardContent>
+        </Card>
+      </div>
       <Card>
         <CardHeader className="flex-row items-start justify-between">
           <div>

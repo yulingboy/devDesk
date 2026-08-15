@@ -27,55 +27,6 @@
   text-rendering: optimizeLegibility;
 }
 
-:root[data-theme-color='blue'] {
-  --accent: #2563eb;
-  --theme-light: #dbeafe;
-  --theme-lighter: #eff6ff;
-  --theme-border: #bfdbfe;
-}
-:root[data-theme-color='purple'] {
-  --accent: #9333ea;
-  --theme-light: #f3e8ff;
-  --theme-lighter: #faf5ff;
-  --theme-border: #d8b4fe;
-}
-:root[data-theme-color='green'] {
-  --accent: #16a34a;
-  --theme-light: #dcfce7;
-  --theme-lighter: #f0fdf4;
-  --theme-border: #bbf7d0;
-}
-:root[data-theme-color='orange'] {
-  --accent: #ea580c;
-  --theme-light: #ffedd5;
-  --theme-lighter: #fff7ed;
-  --theme-border: #fed7aa;
-}
-:root[data-theme-color='rose'] {
-  --accent: #e11d48;
-  --theme-light: #ffe4e6;
-  --theme-lighter: #fff1f2;
-  --theme-border: #fecdd3;
-}
-:root[data-theme-color='cyan'] {
-  --accent: #0891b2;
-  --theme-light: #cffafe;
-  --theme-lighter: #ecfeff;
-  --theme-border: #a5f3fc;
-}
-:root[data-theme-color='indigo'] {
-  --accent: #4f46e5;
-  --theme-light: #e0e7ff;
-  --theme-lighter: #eef2ff;
-  --theme-border: #c7d2fe;
-}
-:root[data-theme-color='teal'] {
-  --accent: #0d9488;
-  --theme-light: #ccfbf1;
-  --theme-lighter: #f0fdfa;
-  --theme-border: #99f6e4;
-}
-
 * {
   box-sizing: border-box;
 }
@@ -93,6 +44,14 @@ body {
   overflow: hidden;
   background: var(--background);
   color: var(--foreground);
+  font-size: 13px;
+}
+
+/* Codex 风格固定使用紧凑线性图标，避免页面因各处传入尺寸不同而失去一致性。 */
+svg.lucide {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
 }
 
 /* 桌面工具页使用轻量滚动条，避免长列表滚动条抢占视觉层级。 */
@@ -147,4 +106,20 @@ button:focus-visible {
 .app-no-drag,
 .app-no-drag * {
   -webkit-app-region: no-drag;
+}
+
+@keyframes route-loading-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  55% {
+    transform: translateX(25%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.route-loading-bar {
+  animation: route-loading-slide 0.7s ease-in-out infinite;
 }

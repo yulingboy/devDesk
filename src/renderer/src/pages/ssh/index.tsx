@@ -86,7 +86,7 @@ export function SshPage(): React.JSX.Element {
 
   if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="mx-auto max-w-6xl space-y-3 p-4">
+    <div className="h-full space-y-2.5 overflow-auto p-3">
       <Card>
         <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
           <div>

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 export const Table = forwardRef<HTMLTableElement, TableHTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
     <div className="relative w-full overflow-auto">
-      <table className={cn('w-full caption-bottom text-xs', className)} ref={ref} {...props} />
+      <table className={cn('w-full caption-bottom text-[11px]', className)} ref={ref} {...props} />
     </div>
   )
 )
@@ -41,7 +41,7 @@ TableRow.displayName = 'TableRow'
 export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
     <th
-      className={cn('h-8 px-3 text-left align-middle text-[11px] font-medium', className)}
+      className={cn('h-7 px-2.5 text-left align-middle text-[10px] font-medium', className)}
       ref={ref}
       {...props}
     />
@@ -50,7 +50,7 @@ export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLT
 TableHead.displayName = 'TableHead'
 export const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <td className={cn('px-3 py-2 align-middle', className)} ref={ref} {...props} />
+    <td className={cn('px-2.5 py-1.5 align-middle', className)} ref={ref} {...props} />
   )
 )
 TableCell.displayName = 'TableCell'

@@ -37,10 +37,10 @@ export function AppHeader(): React.JSX.Element {
     >
       {isMac && <div aria-hidden="true" className="w-[78px] shrink-0" />}
       <div className={`flex min-w-0 flex-1 items-center gap-2.5 ${isMac ? 'pr-4' : 'px-4'}`}>
-        <div className="grid size-6 shrink-0 place-items-center rounded-md bg-[var(--accent)] text-white shadow-sm">
-          <MonitorCog aria-hidden="true" size={14} strokeWidth={2.2} />
+        <div className="grid size-5 shrink-0 place-items-center rounded bg-[var(--accent)] text-white shadow-sm">
+          <MonitorCog aria-hidden="true" />
         </div>
-        <span className="truncate text-sm font-medium text-slate-700">开发工坊</span>
+        <span className="truncate text-xs font-medium text-slate-700">开发工坊</span>
       </div>
 
       <div className="app-no-drag flex h-full items-center">
@@ -102,7 +102,7 @@ function WindowButton({
   return (
     <TooltipButton
       aria-label={label}
-      className={`h-full w-11 rounded-none text-slate-500 transition-colors disabled:cursor-default disabled:opacity-40 ${
+      className={`h-full w-10 rounded-none text-slate-500 transition-colors disabled:cursor-default disabled:opacity-40 ${
         close ? 'hover:bg-red-500 hover:text-white' : 'hover:bg-slate-100 hover:text-slate-900'
       }`}
       disabled={disabled}
