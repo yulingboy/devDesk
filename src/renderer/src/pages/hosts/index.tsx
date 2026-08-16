@@ -32,6 +32,8 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Spinner } from '@/components/ui/spinner'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +66,7 @@ export function HostsPage(): React.JSX.Element {
       .finally(() => setLoading(false))
   }, [showError])
   useEffect(() => load(), [load])
+  const { isPending, run } = useAsyncAction(showError)
 
   const filtered = useMemo(
     () =>
@@ -72,7 +75,7 @@ export function HostsPage(): React.JSX.Element {
       ),
     [records, query]
   )
-  const save = (): void => {
+  const save = async (): Promise<void> => {
     if (!draft.ip || !draft.domain) {
       setStatus('请填写 IP 地址和域名')
       toast.error('请填写 IP 地址和域名')
@@ -81,35 +84,41 @@ export function HostsPage(): React.JSX.Element {
     const next = draft.id
       ? records.map((item) => (item.id === draft.id ? draft : item))
       : [...records, { ...draft, id: crypto.randomUUID() }]
-    void window.api?.hosts
-      .save(next)
-      .then((value) => {
-        setRecords(value)
-        setDraft(emptyRecord)
-        setDrawerOpen(false)
-        setStatus('')
-        toast.success('Hosts 记录已保存')
-      })
-      .catch(showError)
+    const value = await run('hosts-save', async () => {
+      const saved = await window.api?.hosts.save(next)
+      if (!saved) throw new Error('当前页面未连接桌面服务，无法保存 Hosts。')
+      return saved
+    })
+    if (value) {
+      setRecords(value)
+      setDraft(emptyRecord)
+      setDrawerOpen(false)
+      setStatus('')
+      toast.success('Hosts 记录已保存')
+    }
   }
-  const remove = (id: string): void => {
-    void window.api?.hosts
-      .save(records.filter((record) => record.id !== id))
-      .then(setRecords)
-      .catch(showError)
+  const remove = async (id: string): Promise<void> => {
+    const value = await run('hosts-save', async () => {
+      const saved = await window.api?.hosts.save(records.filter((record) => record.id !== id))
+      if (!saved) throw new Error('当前页面未连接桌面服务，无法删除 Hosts 记录。')
+      return saved
+    })
+    if (value) setRecords(value)
   }
   /** Hosts 使用整表写入语义，快速开关也经过同一串行保存通道。 */
-  const toggleEnabled = (id: string): void => {
+  const toggleEnabled = async (id: string): Promise<void> => {
     const next = records.map((record) =>
       record.id === id ? { ...record, enabled: !record.enabled } : record
     )
-    void window.api?.hosts
-      .save(next)
-      .then((value) => {
-        setRecords(value)
-        toast.success('记录状态已更新')
-      })
-      .catch(showError)
+    const value = await run('hosts-save', async () => {
+      const saved = await window.api?.hosts.save(next)
+      if (!saved) throw new Error('当前页面未连接桌面服务，无法更新 Hosts。')
+      return saved
+    })
+    if (value) {
+      setRecords(value)
+      toast.success('记录状态已更新')
+    }
   }
   const copy = (value: string): void => {
     void navigator.clipboard.writeText(value).then(() => toast.success('已复制到剪贴板'))
@@ -144,32 +153,33 @@ export function HostsPage(): React.JSX.Element {
               打开文件
             </Button>
             <Button
+              disabled={isPending('hosts-dns')}
               onClick={() =>
-                void window.api?.hosts
-                  .flushDns()
-                  .then(() => toast.success('DNS 缓存已刷新'))
-                  .catch(showError)
+                void run('hosts-dns', async () => {
+                  await window.api?.hosts.flushDns()
+                  toast.success('DNS 缓存已刷新')
+                })
               }
               size="sm"
               variant="secondary"
             >
-              <RefreshCw size={14} />
+              {isPending('hosts-dns') ? <Spinner /> : <RefreshCw size={14} />}
               刷新 DNS
             </Button>
             <Button
+              disabled={isPending('hosts-restore')}
               onClick={() =>
-                void window.api?.hosts
-                  .restoreBackup()
-                  .then((value) => {
-                    setRecords(value)
-                    toast.success('已恢复 Hosts 备份')
-                  })
-                  .catch(showError)
+                void run('hosts-restore', async () => {
+                  const value = await window.api?.hosts.restoreBackup()
+                  if (!value) throw new Error('当前页面未连接桌面服务，无法恢复 Hosts 备份。')
+                  setRecords(value)
+                  toast.success('已恢复 Hosts 备份')
+                })
               }
               size="sm"
               variant="outline"
             >
-              <RotateCcw size={14} />
+              {isPending('hosts-restore') ? <Spinner /> : <RotateCcw size={14} />}
               恢复备份
             </Button>
           </div>
@@ -205,7 +215,8 @@ export function HostsPage(): React.JSX.Element {
                           <Switch
                             aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
                             checked={record.enabled}
-                            onCheckedChange={() => toggleEnabled(record.id)}
+                            disabled={isPending('hosts-save')}
+                            onCheckedChange={() => void toggleEnabled(record.id)}
                           />
                         </TooltipTrigger>
                         <TooltipContent>{record.enabled ? '点击禁用' : '点击启用'}</TooltipContent>
@@ -282,8 +293,12 @@ export function HostsPage(): React.JSX.Element {
             <Button onClick={() => setDrawerOpen(false)} variant="secondary">
               取消
             </Button>
-            <Button onClick={save} variant="success">
-              <Save size={15} />
+            <Button
+              disabled={isPending('hosts-save')}
+              onClick={() => void save()}
+              variant="success"
+            >
+              {isPending('hosts-save') ? <Spinner /> : <Save size={15} />}
               保存
             </Button>
           </>

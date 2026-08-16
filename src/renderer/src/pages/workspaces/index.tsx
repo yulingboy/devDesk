@@ -15,7 +15,7 @@ import {
   Rocket,
   Trash2
 } from 'lucide-react'
-import type { GitIdentity, ProjectTemplate, Workspace } from '@shared/domain'
+import type { GitIdentity, ProjectTemplate, Workspace, WorkspaceScanResult } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,7 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Spinner } from '@/components/ui/spinner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -61,6 +62,8 @@ export function WorkspacesPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
+  const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
+  const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
@@ -95,17 +98,23 @@ export function WorkspacesPage(): React.JSX.Element {
       })
       .catch(report)
   }
-  const scan = (id: string): void => {
-    void window.api?.workspaces
-      .scanDetailed(id)
-      .then((result) => {
-        setWorkspaces(result.workspaces)
-        toast.success(
-          `项目扫描完成：新增 ${result.added}，移除 ${result.removed}${result.gitErrorCount ? `，${result.gitErrorCount} 个 Git 状态异常` : ''}`
-        )
-        if (result.truncated) toast.warning('目录超过 500 个，已按扫描上限展示')
-      })
-      .catch(report)
+  const scan = async (id: string): Promise<void> => {
+    if (scanningWorkspaceId) return
+    setScanningWorkspaceId(id)
+    try {
+      const result = await window.api?.workspaces.scanDetailed(id)
+      if (!result) throw new Error('当前页面未连接桌面服务，无法扫描工作区。')
+      setWorkspaces(result.workspaces)
+      setScanResults((current) => ({ ...current, [id]: result }))
+      toast.success(
+        `项目扫描完成：新增 ${result.added}，移除 ${result.removed}${result.gitErrorCount ? `，${result.gitErrorCount} 个 Git 状态异常` : ''}`
+      )
+      if (result.truncated) toast.warning('目录超过 500 个，已按扫描上限展示')
+    } catch (error) {
+      report(error)
+    } finally {
+      setScanningWorkspaceId(undefined)
+    }
   }
   const filtered = useMemo(
     () =>
@@ -127,6 +136,7 @@ export function WorkspacesPage(): React.JSX.Element {
   )
 
   const selectedWorkspace = filtered.find((item) => item.id === selectedWorkspaceId) ?? filtered[0]
+  const scanResult = selectedWorkspace ? scanResults[selectedWorkspace.id] : undefined
   if (loading) return <PageLoadingSkeleton />
   return (
     <div className="flex h-full min-h-0 gap-2.5 p-3">
@@ -162,8 +172,8 @@ export function WorkspacesPage(): React.JSX.Element {
         )}
       </aside>
       <div className="min-w-0 flex-1 overflow-auto">
-        <Card>
-          <CardHeader className="flex-row items-start justify-between">
+        <Card className="flex min-h-full flex-col">
+          <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
             <div>
               <CardTitle>工作区</CardTitle>
               <CardDescription>只扫描根目录第一层非隐藏目录，最多导入 500 个项目。</CardDescription>
@@ -184,14 +194,14 @@ export function WorkspacesPage(): React.JSX.Element {
               </TooltipButton>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 pt-3">
             <Input
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索工作区、项目或路径"
               value={query}
             />
             {(selectedWorkspace ? [selectedWorkspace] : []).map((workspace) => (
-              <div className="rounded-md border border-slate-100 p-4" key={workspace.id}>
+              <div className="min-h-0 flex-1" key={workspace.id}>
                 <div className="flex items-start gap-3">
                   <div className="grid size-9 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
                     <FolderKanban size={17} />
@@ -245,30 +255,64 @@ export function WorkspacesPage(): React.JSX.Element {
                         <FolderOpen size={14} />
                         打开目录
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => scan(workspace.id)}>
-                        <ScanSearch size={14} />
-                        扫描项目
+                      <DropdownMenuItem
+                        disabled={Boolean(scanningWorkspaceId)}
+                        onSelect={() => void scan(workspace.id)}
+                      >
+                        {scanningWorkspaceId === workspace.id ? (
+                          <Spinner />
+                        ) : (
+                          <ScanSearch size={14} />
+                        )}
+                        {scanningWorkspaceId === workspace.id ? '正在扫描' : '扫描项目'}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <ConfirmAction
                     description={`删除工作区“${workspace.name}”会同时移除应用内项目记录和 Git 路径规则，不会删除磁盘目录。`}
-                    onConfirm={() =>
-                      void window.api?.workspaces
-                        .remove(workspace.id)
-                        .then(setWorkspaces)
-                        .catch(report)
-                    }
+                    onConfirm={async () => {
+                      if (scanningWorkspaceId) return
+                      try {
+                        const next = await window.api?.workspaces.remove(workspace.id)
+                        if (!next) throw new Error('当前页面未连接桌面服务，无法删除工作区。')
+                        setWorkspaces(next)
+                        setScanResults((current) => {
+                          const nextResults = { ...current }
+                          delete nextResults[workspace.id]
+                          return nextResults
+                        })
+                      } catch (error) {
+                        report(error)
+                      }
+                    }}
                     title="删除工作区？"
                     triggerTooltip="删除工作区"
                   >
-                    <Button aria-label="删除工作区" size="icon" variant="ghost">
+                    <Button
+                      aria-label="删除工作区"
+                      disabled={Boolean(scanningWorkspaceId)}
+                      size="icon"
+                      variant="ghost"
+                    >
                       <Trash2 size={15} />
                     </Button>
                   </ConfirmAction>
                 </div>
+                {scanResult && (
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-y border-slate-100 py-2 text-[11px] text-slate-500">
+                    <span>上次扫描：新增 {scanResult.added}</span>
+                    <span>移除 {scanResult.removed}</span>
+                    <span>共发现 {scanResult.total} 个项目</span>
+                    {scanResult.truncated && <span className="text-amber-600">已达到扫描上限</span>}
+                    {scanResult.gitErrorCount > 0 && (
+                      <span className="text-amber-600">
+                        {scanResult.gitErrorCount} 个 Git 状态异常
+                      </span>
+                    )}
+                  </div>
+                )}
                 {workspace.projects.length > 0 && (
-                  <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-2">
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {workspace.projects.map((project) => (
                       <Item className="gap-1.5 bg-white p-1" key={project.id}>
                         <ItemContent>

@@ -22,6 +22,8 @@ import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 function formatBytes(value: number): string {
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
@@ -60,6 +62,7 @@ export function SettingsPage(): React.JSX.Element {
     load()
   }
   useEffect(load, [])
+  const { isPending, run } = useAsyncAction(report)
   if (loading) return <PageLoadingSkeleton />
   if (!settings) {
     return (
@@ -76,34 +79,40 @@ export function SettingsPage(): React.JSX.Element {
       </div>
     )
   }
-  const save = (): void => {
-    void window.api?.settings
-      .save(settings)
-      .then((value) => {
-        setSettings(value)
-        setStatus('')
-        toast.success('设置已保存')
-      })
-      .catch(report)
+  const save = async (): Promise<void> => {
+    const value = await run('settings-save', async () => {
+      const next = await window.api?.settings.save(settings)
+      if (!next) throw new Error('当前页面未连接桌面服务，无法保存设置。')
+      return next
+    })
+    if (value) {
+      setSettings(value)
+      setStatus('')
+      toast.success('设置已保存')
+    }
   }
-  const reset = (): void => {
-    void window.api?.settings
-      .reset()
-      .then((value) => {
-        setSettings(value)
-        toast.success('设置已恢复默认值')
-      })
-      .catch(report)
+  const reset = async (): Promise<void> => {
+    const value = await run('settings-reset', async () => {
+      const next = await window.api?.settings.reset()
+      if (!next) throw new Error('当前页面未连接桌面服务，无法恢复设置。')
+      return next
+    })
+    if (value) {
+      setSettings(value)
+      toast.success('设置已恢复默认值')
+    }
   }
-  const clear = (): void => {
-    void window.api?.settings
-      .clearBusinessData()
-      .then((value) => {
-        setSettings(value)
-        toast.success('业务数据已清空')
-        void window.api?.settings.dataStats().then(setDataStats)
-      })
-      .catch(report)
+  const clear = async (): Promise<void> => {
+    const value = await run('settings-clear', async () => {
+      const next = await window.api?.settings.clearBusinessData()
+      if (!next) throw new Error('当前页面未连接桌面服务，无法清空业务数据。')
+      return next
+    })
+    if (value) {
+      setSettings(value)
+      toast.success('业务数据已清空')
+      void window.api?.settings.dataStats().then(setDataStats)
+    }
   }
 
   const general = (
@@ -150,8 +159,12 @@ export function SettingsPage(): React.JSX.Element {
           </Label>
         </div>
         <div className="mt-3 flex gap-1.5">
-          <Button onClick={save} variant="success">
-            <Save size={14} />
+          <Button
+            disabled={isPending('settings-save')}
+            onClick={() => void save()}
+            variant="success"
+          >
+            {isPending('settings-save') ? <Spinner /> : <Save size={14} />}
             保存设置
           </Button>
           <ConfirmAction
@@ -219,32 +232,40 @@ export function SettingsPage(): React.JSX.Element {
           <FolderOpen size={14} />
           更改数据目录
         </Button>
-        <Button
-          onClick={() =>
-            void window.api?.settings
-              .export()
-              .then((value) =>
-                navigator.clipboard
-                  .writeText(JSON.stringify(value, null, 2))
-                  .then(() => toast.success('数据快照 JSON 已复制，可保存为备份文件'))
-              )
-              .catch(report)
-          }
-          variant="outline"
+        <ConfirmAction
+          confirmLabel="复制快照"
+          description="快照会复制到剪贴板，包含本机路径、Git profile 与 include 规则、SSH 公钥和 Hosts 备份元数据。它适合检查内容，不会自动生成文件。"
+          onConfirm={async () => {
+            await run('settings-export-snapshot', async () => {
+              const value = await window.api?.settings.export()
+              if (!value) throw new Error('当前页面未连接桌面服务，无法导出数据。')
+              await navigator.clipboard.writeText(JSON.stringify(value, null, 2))
+              toast.success('数据快照 JSON 已复制，可保存为备份文件')
+            })
+          }}
+          title="复制包含本机信息的数据快照？"
         >
-          导出快照
-        </Button>
-        <Button
-          onClick={() =>
-            void window.api?.settings
-              .exportFile()
-              .then(() => toast.success('数据已导出'))
-              .catch(report)
-          }
-          variant="outline"
+          <Button disabled={isPending('settings-export-snapshot')} variant="outline">
+            {isPending('settings-export-snapshot') && <Spinner />}
+            导出快照
+          </Button>
+        </ConfirmAction>
+        <ConfirmAction
+          confirmLabel="选择位置并导出"
+          description="文件备份包含本机路径、Git profile 与 include 规则、SSH 公钥和 Hosts 备份元数据。请仅保存到受信任的位置；与“导出快照”不同，此操作会打开文件保存对话框。"
+          onConfirm={async () => {
+            await run('settings-export-file', async () => {
+              await window.api?.settings.exportFile()
+              toast.success('数据已导出')
+            })
+          }}
+          title="导出包含本机信息的备份文件？"
         >
-          导出文件
-        </Button>
+          <Button disabled={isPending('settings-export-file')} variant="outline">
+            {isPending('settings-export-file') && <Spinner />}
+            导出文件
+          </Button>
+        </ConfirmAction>
         <Button
           onClick={() =>
             void window.api?.settings

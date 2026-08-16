@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { RuntimeInfo } from '@shared/types'
-import type { SystemOverviewSnapshot } from '@shared/domain'
+import type { NodeState, SystemOverviewSnapshot } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { EnvironmentPanel } from '@/components/EnvironmentPanel'
 import { OverviewCards } from '@/components/OverviewCards'
@@ -16,6 +16,12 @@ export function HomePage(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<SystemOverviewSnapshot | null>(null)
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
+  const [setupStatus, setSetupStatus] = useState({
+    sshReady: false,
+    gitReady: false,
+    workspaceReady: false,
+    nodeReady: false
+  })
   const hasDesktopRuntime = Boolean(window.api)
 
   useEffect(() => {
@@ -35,6 +41,25 @@ export function HomePage(): React.JSX.Element {
         })
       })
       .finally(() => setLoading(false))
+    void Promise.all([
+      window.api.ssh.list(),
+      window.api.git.getState(),
+      window.api.workspaces.list(),
+      window.api.node.getState()
+    ])
+      .then(([keys, git, workspaces, node]) => {
+        setSetupStatus({
+          sshReady: keys.length > 0,
+          gitReady: git.identities.length > 0,
+          workspaceReady: workspaces.length > 0,
+          nodeReady: isNodeReady(node)
+        })
+      })
+      .catch((error: unknown) => {
+        rendererLogger.warn('快速开始状态读取失败', {
+          error: error instanceof Error ? error.message : String(error)
+        })
+      })
     return unsubscribe
   }, [])
   useEffect(() => {
@@ -98,7 +123,7 @@ export function HomePage(): React.JSX.Element {
 
         <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.75fr)]">
           <EnvironmentPanel runtimeInfo={runtimeInfo} hasDesktopRuntime={hasDesktopRuntime} />
-          <QuickStart />
+          <QuickStart status={setupStatus} />
         </section>
         <section className="grid gap-2.5 lg:grid-cols-[1.2fr_0.8fr]">
           <Card>
@@ -144,6 +169,10 @@ export function HomePage(): React.JSX.Element {
       </div>
     </div>
   )
+}
+
+function isNodeReady(state: NodeState): boolean {
+  return Boolean(state.currentVersion || state.installed.length || state.packageManagerVersion)
 }
 
 function Info({ label, value }: { label: string; value: string }): React.JSX.Element {

@@ -13,6 +13,7 @@ import type {
   NodeRegistry,
   NodeRegistryDraft,
   NodeRelease,
+  NodeRuntimeCapabilities,
   NodeState,
   NodeTask
 } from '@shared/domain'
@@ -124,6 +125,46 @@ async function findNvmScript(): Promise<string | undefined> {
       return candidate
   }
   return undefined
+}
+
+async function getNodeCapabilities(): Promise<NodeRuntimeCapabilities> {
+  if (process.platform === 'win32') {
+    const available = Boolean(await commandVersion('nvm'))
+    return available
+      ? {
+          canInstall: true,
+          canSwitch: true,
+          canSetDefault: true,
+          canUseInTerminal: false,
+          message: '检测到 nvm-windows；切换版本会更新系统 Node 软链接。'
+        }
+      : {
+          canInstall: false,
+          canSwitch: false,
+          canSetDefault: false,
+          canUseInTerminal: false,
+          message: '未检测到 nvm-windows，无法安全管理 Node 版本。'
+        }
+  }
+  const available = Boolean(await findNvmScript())
+  return available
+    ? {
+        canInstall: true,
+        canSwitch: true,
+        canSetDefault: true,
+        canUseInTerminal: process.platform === 'darwin',
+        message:
+          process.platform === 'darwin'
+            ? '“在终端中使用”会在新 Terminal 会话中启用指定版本。'
+            : '可设置 nvm 默认版本。'
+      }
+    : {
+        canInstall: false,
+        canSwitch: false,
+        canSetDefault: false,
+        canUseInTerminal: false,
+        message: '未检测到 nvm，安装、切换和删除 Node 版本不可用。'
+      }
 }
 
 function resolveArchive(version: string): { fileName: string; fileTokens: string[] } {
@@ -246,12 +287,13 @@ export async function getNodeState(): Promise<NodeState> {
   const packageManagers = await packageManagerStatus(packageManager)
   const registry = settings.node.registry || saved.registry
   const defaultVersion = (await readNvmDefaultVersion()) || saved.defaultVersion
+  const capabilities = await getNodeCapabilities()
   const state: NodeState = {
     ...saved,
     currentVersion: (await commandVersion('node')).replace(/^v/, ''),
     defaultVersion,
     nodePath: process.env.PATH ?? '',
-    nvmAvailable: Boolean(await findNvmScript()),
+    nvmAvailable: capabilities.canInstall,
     nrmAvailable: Boolean(await commandVersion('nrm')),
     registry,
     packageManager,
@@ -262,7 +304,8 @@ export async function getNodeState(): Promise<NodeState> {
     installed: installed.map((item) => ({
       ...item,
       isDefault: item.version === defaultVersion
-    }))
+    })),
+    capabilities
   }
   await store.node.write(state)
   return state
@@ -375,6 +418,9 @@ export async function installNode(
 ): Promise<NodeState> {
   const version = requiredText(versionInput.version, 'Node 版本', 40).replace(/^v/, '')
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Node 版本号无效')
+  const capabilities = await getNodeCapabilities()
+  if (!capabilities.canInstall)
+    throw new Error(capabilities.message ?? '当前环境不支持安装 Node 版本')
   if (activeInstallVersions.has(version)) throw new Error(`Node ${version} 已有安装任务正在执行`)
   activeInstallVersions.add(version)
   const before = await store.node
@@ -550,6 +596,17 @@ export async function clearNodeTasks(): Promise<NodeState> {
 
 export async function switchNode(versionInput: string, setDefault: boolean): Promise<NodeState> {
   const version = requiredText(versionInput, 'Node 版本', 40).replace(/^v/, '')
+  if (process.platform === 'win32') {
+    if (!(await getNodeCapabilities()).canSwitch)
+      throw new Error('未检测到 nvm-windows，无法切换版本')
+    await runCommand('nvm', ['use', version]).catch(() => {
+      throw new Error('nvm-windows 切换失败，请以管理员权限确认版本已安装')
+    })
+    const state = await getNodeState()
+    const next = { ...state, defaultVersion: version }
+    await store.node.write(next)
+    return next
+  }
   if (!setDefault) throw new Error('桌面应用无法修改父终端环境，请使用“在终端中使用”或设为默认版本')
   await runNvm(`nvm alias default ${version}`)
   const state = await getNodeState()
@@ -580,7 +637,15 @@ export async function removeNode(versionInput: string): Promise<NodeState> {
   const state = await getNodeState()
   if (state.currentVersion === version)
     throw new Error('当前正在使用的 Node 版本不能删除，请先切换版本')
-  await runNvm(`nvm uninstall ${version}`)
+  if (process.platform === 'win32') {
+    if (!(await getNodeCapabilities()).canSwitch)
+      throw new Error('未检测到 nvm-windows，无法删除 Node 版本')
+    await runCommand('nvm', ['uninstall', version]).catch(() => {
+      throw new Error('nvm-windows 删除版本失败，请以管理员权限确认版本未被使用')
+    })
+  } else {
+    await runNvm(`nvm uninstall ${version}`)
+  }
   const next = await getNodeState()
   if (state.defaultVersion === version) {
     next.defaultVersion = ''
@@ -620,7 +685,10 @@ export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRe
   const registries = draft.id
     ? state.registries.map((item) => (item.id === draft.id ? nextItem : item))
     : [...state.registries, nextItem]
-  if (state.nrmAvailable) await runCommand('nrm', ['add', name, url]).catch(() => undefined)
+  if (state.nrmAvailable)
+    await runCommand('nrm', ['add', name, url]).catch(() => {
+      throw new Error('写入 nrm 镜像失败，本地镜像列表未保存，请检查 nrm 配置权限')
+    })
   await store.node.write({ ...state, registries })
   return registries
 }
@@ -631,7 +699,10 @@ export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
   if (!target) throw new Error('镜像不存在')
   if (target.isCurrent) throw new Error('当前正在使用的镜像不能删除，请先切换镜像')
   if (state.registries.length <= 1) throw new Error('至少需要保留一个镜像')
-  if (state.nrmAvailable) await runCommand('nrm', ['del', target.name]).catch(() => undefined)
+  if (state.nrmAvailable)
+    await runCommand('nrm', ['del', target.name]).catch(() => {
+      throw new Error('删除 nrm 镜像失败，本地镜像列表未变更，请检查 nrm 配置权限')
+    })
   const registries = state.registries.filter((item) => item.id !== id)
   await store.node.write({ ...state, registries })
   return registries
@@ -760,10 +831,46 @@ function parseOutdatedPackages(raw: string): Map<string, Pick<GlobalPackage, 'wa
   }
 }
 
+/** Yarn/Bun 不稳定地提供全局过期列表时，回退读取当前 Registry 的 dist-tags。 */
+async function enrichPackageLatest(
+  packages: GlobalPackage[],
+  registry: string
+): Promise<GlobalPackage[]> {
+  const targets = packages.filter((item) => !item.latest).slice(0, 80)
+  const latestByName = new Map<string, string>()
+  let cursor = 0
+  const load = async (): Promise<void> => {
+    while (true) {
+      const target = targets[cursor++]
+      if (!target) return
+      try {
+        const response = await fetch(
+          `${registry.replace(/\/$/, '')}/${encodeURIComponent(target.name)}`,
+          { signal: AbortSignal.timeout(8_000) }
+        )
+        const payload = (await response.json()) as { 'dist-tags'?: { latest?: unknown } }
+        const latest = payload['dist-tags']?.latest
+        if (response.ok && typeof latest === 'string') latestByName.set(target.name, latest)
+      } catch {
+        // 网络或私有 Registry 不可用时保留已读取的本地版本，不阻断全局包列表。
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, targets.length) }, load))
+  return packages.map((item) => ({
+    ...item,
+    latest: item.latest || latestByName.get(item.name),
+    wanted: item.wanted || latestByName.get(item.name)
+  }))
+}
+
 export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]> {
   const state = await getNodeState()
   if (!state.packageManagerVersion) throw new Error(`默认包管理器 ${state.packageManager} 不可用`)
-  const packages = await readGlobalPackages(state.packageManager)
+  const packages = await enrichPackageLatest(
+    await readGlobalPackages(state.packageManager),
+    state.registry
+  )
   await store.node.write({ ...state, globalPackages: packages })
   const query = keyword.trim().toLowerCase()
   return query ? packages.filter((item) => item.name.toLowerCase().includes(query)) : packages
@@ -773,7 +880,10 @@ export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]>
 export async function checkGlobalOutdated(): Promise<GlobalPackage[]> {
   const state = await getNodeState()
   if (!state.packageManagerVersion) throw new Error(`默认包管理器 ${state.packageManager} 不可用`)
-  const packages = await readGlobalPackages(state.packageManager)
+  const packages = await enrichPackageLatest(
+    await readGlobalPackages(state.packageManager),
+    state.registry
+  )
   await store.node.write({ ...state, globalPackages: packages })
   return packages
 }

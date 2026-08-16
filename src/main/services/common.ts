@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { isIP } from 'node:net'
 
 export function createId(prefix: string): string {
   return `${prefix}_${randomUUID()}`
@@ -22,6 +23,11 @@ export function isValidIpv4(value: string): boolean {
     parts.length === 4 &&
     parts.every((part) => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255)
   )
+}
+
+/** Hosts 同时支持 IPv4 与 IPv6；保留旧 IPv4 校验供需要 IPv4 约束的调用方使用。 */
+export function isValidIp(value: string): boolean {
+  return isIP(value) !== 0
 }
 
 export function isValidDomain(value: string): boolean {

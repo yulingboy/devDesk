@@ -129,6 +129,16 @@ export interface NodeState {
   registries: NodeRegistry[]
   globalPackages: GlobalPackage[]
   caches: NodeCacheSnapshot[]
+  /** 按当前系统、nvm 实现和可用命令计算，页面不得自行猜测操作是否可用。 */
+  capabilities?: NodeRuntimeCapabilities
+}
+
+export interface NodeRuntimeCapabilities {
+  canInstall: boolean
+  canSwitch: boolean
+  canSetDefault: boolean
+  canUseInTerminal: boolean
+  message?: string
 }
 
 export interface NodePackageManagerStatus {

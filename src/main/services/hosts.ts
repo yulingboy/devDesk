@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { shell } from 'electron'
 import type { HostRecord } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
-import { createId, isValidDomain, isValidIpv4, requiredText } from './common'
+import { createId, isValidDomain, isValidIp, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
 const startMarker = '# >>> env-tool managed hosts >>>'
@@ -66,10 +66,10 @@ function parseManaged(raw: string): HostRecord[] {
         remark: remarkParts.join(' ').replace(/^#\s*/, '')
       }
     })
-    .filter((record) => isValidIpv4(record.ip) && isValidDomain(record.domain))
+    .filter((record) => isValidIp(record.ip) && isValidDomain(record.domain))
 }
 
-/** 首次接管时读取系统 Hosts 中未被注释的 IPv4 映射，避免已有记录显示为空。 */
+/** 首次接管时读取系统 Hosts 中未被注释的 IPv4 / IPv6 映射，避免已有记录显示为空。 */
 function parseSystemRecords(raw: string): HostRecord[] {
   const start = raw.indexOf(startMarker)
   const end = raw.indexOf(endMarker)
@@ -86,7 +86,7 @@ function parseSystemRecords(raw: string): HostRecord[] {
         !line.startsWith(endMarker)
     )
     .map((line) => line.split('#')[0].trim().split(/\s+/))
-    .filter((parts) => parts.length >= 2 && isValidIpv4(parts[0]) && isValidDomain(parts[1]))
+    .filter((parts) => parts.length >= 2 && isValidIp(parts[0]) && isValidDomain(parts[1]))
     .map(([ip, domain, ...remarkParts]) => ({
       id: createId('host'),
       ip,
@@ -105,9 +105,10 @@ export async function listHosts(): Promise<HostRecord[]> {
 function validateRecords(records: HostRecord[]): HostRecord[] {
   const domains = new Set<string>()
   return records.map((record) => {
-    const ip = requiredText(record.ip, 'IP 地址', 15)
+    // IPv6 文本最长为 45 个字符，不能沿用 IPv4 的 15 字符限制。
+    const ip = requiredText(record.ip, 'IP 地址', 45)
     const domain = requiredText(record.domain, '域名', 253).toLowerCase()
-    if (!isValidIpv4(ip)) throw new Error(`IP 地址格式无效：${ip}`)
+    if (!isValidIp(ip)) throw new Error(`IP 地址格式无效：${ip}`)
     if (!isValidDomain(domain)) throw new Error(`域名格式无效：${domain}`)
     if (domains.has(domain)) throw new Error(`域名重复：${domain}`)
     domains.add(domain)
