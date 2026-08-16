@@ -30,8 +30,8 @@ describe('工作区项目发现', () => {
 
     const result = await discoverWorkspaceProjectPaths(root)
 
-    expect(result.paths).toEqual([project])
-    expect(result).toMatchObject({ total: 1, truncated: false })
+    expect(result.projects).toEqual([{ path: project, subprojectPaths: [] }])
+    expect(result).toMatchObject({ total: 1, subprojectTotal: 0, truncated: false })
   })
 
   it('从一级分组目录中发现 Java、Python、Go 和 Node 子项目', async () => {
@@ -43,21 +43,30 @@ describe('工作区项目发现', () => {
 
     const result = await discoverWorkspaceProjectPaths(root)
 
-    expect(result.paths).toEqual(expect.arrayContaining([java, python, go, node]))
-    expect(result.paths).not.toContain(join(root, 'backend'))
-    expect(result.paths).not.toContain(join(root, 'frontend'))
-    expect(result.total).toBe(4)
+    expect(result.projects).toEqual([
+      {
+        path: join(root, 'backend'),
+        subprojectPaths: [go, java, python]
+      },
+      {
+        path: join(root, 'frontend'),
+        subprojectPaths: [node]
+      }
+    ])
+    expect(result.total).toBe(2)
+    expect(result.subprojectTotal).toBe(4)
   })
 
-  it('父目录和子目录都是项目时保留两者', async () => {
+  it('父目录和子目录都是项目时只平铺父目录', async () => {
     const root = await createWorkspace()
     const parent = await createProject(root, 'platform', 'settings.gradle.kts')
     const child = await createProject(root, 'platform/api', 'go.mod')
 
     const result = await discoverWorkspaceProjectPaths(root)
 
-    expect(result.paths).toEqual(expect.arrayContaining([parent, child]))
-    expect(result.total).toBe(2)
+    expect(result.projects).toEqual([{ path: parent, subprojectPaths: [child] }])
+    expect(result.total).toBe(1)
+    expect(result.subprojectTotal).toBe(1)
   })
 
   it('忽略依赖、构建产物和隐藏目录', async () => {
@@ -70,7 +79,7 @@ describe('工作区项目发现', () => {
 
     const result = await discoverWorkspaceProjectPaths(root)
 
-    expect(result.paths).toEqual([project])
+    expect(result.projects).toEqual([{ path: project, subprojectPaths: [] }])
   })
 
   it('达到上限时截断结果并返回提示', async () => {
@@ -83,7 +92,23 @@ describe('工作区项目发现', () => {
 
     const result = await discoverWorkspaceProjectPaths(root, 3)
 
-    expect(result.paths).toHaveLength(3)
+    expect(result.projects).toHaveLength(3)
+    expect(result.total).toBe(4)
+    expect(result.truncated).toBe(true)
+  })
+
+  it('子项目按名称稳定排序且达到单项目上限时标记截断', async () => {
+    const root = await createWorkspace()
+    const second = await createProject(root, 'platform/service-b', 'go.mod')
+    const first = await createProject(root, 'platform/service-a', 'pom.xml')
+    await createProject(root, 'platform/service-c', 'pyproject.toml')
+
+    const result = await discoverWorkspaceProjectPaths(root, 500, 2)
+
+    expect(result.projects).toEqual([
+      { path: join(root, 'platform'), subprojectPaths: [first, second] }
+    ])
+    expect(result.subprojectTotal).toBe(2)
     expect(result.truncated).toBe(true)
   })
 })

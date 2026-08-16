@@ -14,7 +14,7 @@ export const SelectTrigger = forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     className={cn(
-      'flex h-7 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--theme-light)] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:truncate',
+      'flex h-7 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition-colors focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--theme-light)] disabled:cursor-not-allowed disabled:opacity-50 [&>span]:min-w-0 [&>span]:truncate',
       className
     )}
     ref={ref}
@@ -59,11 +59,12 @@ SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayNam
 export const SelectContent = forwardRef<
   ElementRef<typeof SelectPrimitive.Content>,
   ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
+>(({ align = 'start', className, children, position = 'popper', ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
+      align={align}
       className={cn(
-        'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-700 shadow-lg',
+        'relative z-50 max-h-72 !w-[var(--radix-select-trigger-width)] !min-w-[var(--radix-select-trigger-width)] !max-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-slate-200 bg-white text-slate-700 shadow-lg',
         position === 'popper' && 'translate-y-1',
         className
       )}
@@ -72,7 +73,9 @@ export const SelectContent = forwardRef<
       {...props}
     >
       <SelectScrollUpButton />
-      <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+      <SelectPrimitive.Viewport className="!w-full min-w-0 max-w-full overflow-hidden p-1">
+        {children}
+      </SelectPrimitive.Viewport>
       <SelectScrollDownButton />
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
@@ -97,7 +100,7 @@ export const SelectItem = forwardRef<
 >(({ className, children, ...props }, ref) => (
   <SelectPrimitive.Item
     className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-7 pr-2 text-xs outline-none focus:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex w-full min-w-0 cursor-default select-none items-center overflow-hidden rounded-sm py-1.5 pl-7 pr-2 text-xs outline-none focus:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:overflow-hidden',
       className
     )}
     ref={ref}
@@ -108,7 +111,9 @@ export const SelectItem = forwardRef<
         <Check className="size-3.5" />
       </SelectPrimitive.ItemIndicator>
     </span>
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    <SelectPrimitive.ItemText>
+      <span className="block max-w-full truncate whitespace-nowrap">{children}</span>
+    </SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ))
 SelectItem.displayName = SelectPrimitive.Item.displayName

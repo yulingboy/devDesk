@@ -52,6 +52,7 @@ export const IPC_CHANNELS = {
     scanDetailed: 'workspaces:scan-detailed',
     getProjectDetail: 'workspaces:get-project-detail',
     refreshProject: 'workspaces:refresh-project',
+    saveProjectRemark: 'workspaces:save-project-remark',
     addProject: 'workspaces:add-project',
     removeProject: 'workspaces:remove-project',
     installDependencies: 'workspaces:install-dependencies',

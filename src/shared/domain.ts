@@ -68,6 +68,29 @@ export interface Workspace {
   projects: Project[]
 }
 
+/** 一级项目下识别出的独立工程，仅用于表达目录层级，不承载运行时状态。 */
+export interface WorkspaceSubproject {
+  id: string
+  name: string
+  path: string
+  directoryExists?: boolean
+  lastScannedAt?: string
+}
+
+export const PROJECT_EDITOR_OPTIONS = [
+  { id: 'codex', label: 'Codex' },
+  { id: 'vscode', label: 'VS Code' },
+  { id: 'cursor', label: 'Cursor' },
+  { id: 'windsurf', label: 'Windsurf' },
+  { id: 'zed', label: 'Zed' },
+  { id: 'webstorm', label: 'WebStorm' },
+  { id: 'intellij-idea', label: 'IntelliJ IDEA' },
+  { id: 'pycharm', label: 'PyCharm' },
+  { id: 'goland', label: 'GoLand' }
+] as const
+
+export type ProjectEditorId = (typeof PROJECT_EDITOR_OPTIONS)[number]['id']
+
 export interface Project {
   id: string
   workspaceId: string
@@ -90,6 +113,10 @@ export interface Project {
   lastScannedAt?: string
   /** 手动纳入的项目目录被移动或删除后，仍保留记录供用户明确移除。 */
   directoryExists?: boolean
+  /** 工作区列表只展示一级项目，下一层识别出的工程收纳在这里。 */
+  subprojects?: WorkspaceSubproject[]
+  /** 用户维护的项目说明，扫描目录时必须原样保留。 */
+  remark?: string
   /** 用户行为字段独立于扫描结果，后续扫描不得覆盖。 */
   favorite?: boolean
   archived?: boolean

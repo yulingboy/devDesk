@@ -4,6 +4,8 @@ import { Save } from 'lucide-react'
 import type {
   GitIdentity,
   ProjectTemplate,
+  ProjectEditorId,
+  Project,
   SSHKey,
   Workspace,
   WorkspaceScanResult
@@ -27,6 +29,7 @@ import {
 } from '@/components/ui/select'
 import { ProjectGrid } from './components/ProjectGrid'
 import { ProjectDetailDrawer } from './components/ProjectDetailDrawer'
+import { ProjectRemarkDrawer } from './components/ProjectRemarkDrawer'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
 
@@ -49,6 +52,13 @@ export function WorkspacesPage(): React.JSX.Element {
   const [removingProject, setRemovingProject] = useState(false)
   const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
   const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
+  const [remarkDraft, setRemarkDraft] = useState<{
+    workspaceId: string
+    projectId: string
+    projectName: string
+    remark: string
+  }>()
+  const [savingRemark, setSavingRemark] = useState(false)
   const deepLinkHandled = useRef(false)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
@@ -112,8 +122,8 @@ export function WorkspacesPage(): React.JSX.Element {
       if (!result) throw new Error('当前页面未连接桌面服务，无法扫描工作区。')
       setWorkspaces(result.workspaces)
       setScanResults((current) => ({ ...current, [id]: result }))
-      toast.success(`项目扫描完成：新增 ${result.added}，移除 ${result.removed}`)
-      if (result.truncated) toast.warning('目录超过 500 个，已按扫描上限展示')
+      toast.success(`一级项目扫描完成：新增 ${result.added}，移除 ${result.removed}`)
+      if (result.truncated) toast.warning('目录数量超过扫描上限，已展示可安全读取的部分')
     } catch (error) {
       report(error)
     } finally {
@@ -134,14 +144,48 @@ export function WorkspacesPage(): React.JSX.Element {
   }
   const selectedWorkspace =
     workspaces.find((item) => item.id === selectedWorkspaceId) ?? workspaces[0]
+  const editProjectRemark = (project: Project): void => {
+    if (!selectedWorkspace) return
+    setSelectedProjectId(undefined)
+    setRemarkDraft({
+      workspaceId: selectedWorkspace.id,
+      projectId: project.id,
+      projectName: project.name,
+      remark: project.remark ?? ''
+    })
+  }
+  const saveProjectRemark = async (): Promise<void> => {
+    if (!remarkDraft || savingRemark) return
+    setSavingRemark(true)
+    try {
+      const next = await window.api?.workspaces.saveProjectRemark(
+        remarkDraft.workspaceId,
+        remarkDraft.projectId,
+        remarkDraft.remark
+      )
+      if (!next) throw new Error('当前页面未连接桌面服务，无法保存项目备注。')
+      setWorkspaces(next)
+      setRemarkDraft(undefined)
+      toast.success('项目备注已保存')
+    } catch (error) {
+      report(error)
+    } finally {
+      setSavingRemark(false)
+    }
+  }
   const visibleWorkspace = useMemo(
     () =>
       selectedWorkspace
         ? {
             ...selectedWorkspace,
-            projects: selectedWorkspace.projects.filter((project) =>
-              `${project.name} ${project.path}`.toLowerCase().includes(query.toLowerCase())
-            )
+            projects: selectedWorkspace.projects.filter((project) => {
+              const subprojectText = project.subprojects
+                ?.map((item) => `${item.name} ${item.path}`)
+                .join(' ')
+              return `${project.name} ${project.remark ?? ''} ${project.path} ${subprojectText ?? ''}`
+                .toLowerCase()
+                .includes(query.toLowerCase())
+            })
           }
         : undefined,
     [query, selectedWorkspace]
@@ -233,20 +277,21 @@ export function WorkspacesPage(): React.JSX.Element {
               workspace={visibleWorkspace}
             />
             <ProjectGrid
+              onEditRemark={editProjectRemark}
               onOpen={(project) => setSelectedProjectId(project.id)}
-              onOpenEditor={(path) =>
-                void window.api?.workspaces.openProjectEditor(path).catch(report)
+              onOpenEditor={(path, editor: ProjectEditorId) =>
+                void window.api?.workspaces.openProjectEditor(path, editor).catch(report)
               }
               onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
               projects={visibleWorkspace.projects}
               query={query}
-              rootPath={visibleWorkspace.rootPath}
               scanning={scanningWorkspaceId === visibleWorkspace.id}
             />
           </>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto bg-white">
             <ProjectGrid
+              onEditRemark={() => undefined}
               onOpen={() => undefined}
               onOpenEditor={() => undefined}
               onOpenFolder={() => undefined}
@@ -341,14 +386,28 @@ export function WorkspacesPage(): React.JSX.Element {
         <ProjectDetailDrawer
           identity={selectedIdentity}
           onClose={() => !removingProject && setSelectedProjectId(undefined)}
+          onEditRemark={editProjectRemark}
           onRemove={removeProject}
-          onOpenEditor={(path) => void window.api?.workspaces.openProjectEditor(path).catch(report)}
+          onOpenEditor={(path, editor: ProjectEditorId) =>
+            void window.api?.workspaces.openProjectEditor(path, editor).catch(report)
+          }
           onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
           open={Boolean(selectedProject)}
           project={selectedProject}
           removing={removingProject}
           sshKey={selectedSshKey}
           workspace={selectedWorkspace}
+        />
+        <ProjectRemarkDrawer
+          open={Boolean(remarkDraft)}
+          onChange={(remark) =>
+            setRemarkDraft((current) => (current ? { ...current, remark } : current))
+          }
+          onClose={() => !savingRemark && setRemarkDraft(undefined)}
+          onSave={() => void saveProjectRemark()}
+          projectName={remarkDraft?.projectName ?? ''}
+          saving={savingRemark}
+          value={remarkDraft?.remark ?? ''}
         />
       </div>
     </div>

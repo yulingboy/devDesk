@@ -135,7 +135,7 @@ export function WorkspaceToolbar({
         <Input
           className="h-7 min-w-48 flex-1 bg-slate-50/70 sm:max-w-80"
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="搜索项目名称或路径"
+          placeholder="搜索项目名称、备注或子项目"
           value={query}
         />
         <Button disabled={scanning} onClick={onScan} variant="secondary">

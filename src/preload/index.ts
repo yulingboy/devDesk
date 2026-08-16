@@ -85,12 +85,15 @@ const api: AppApi = {
     scan: (id) => invoke(IPC_CHANNELS.workspaces.scan, id),
     open: (id) => invoke(IPC_CHANNELS.workspaces.open, id),
     openProject: (path) => invoke(IPC_CHANNELS.workspaces.openProject, path),
-    openProjectEditor: (path) => invoke(IPC_CHANNELS.workspaces.openProjectEditor, path),
+    openProjectEditor: (path, editor) =>
+      invoke(IPC_CHANNELS.workspaces.openProjectEditor, path, editor),
     scanDetailed: (id) => invoke(IPC_CHANNELS.workspaces.scanDetailed, id),
     getProjectDetail: (workspaceId, projectId) =>
       invoke(IPC_CHANNELS.workspaces.getProjectDetail, workspaceId, projectId),
     refreshProject: (workspaceId, projectId) =>
       invoke(IPC_CHANNELS.workspaces.refreshProject, workspaceId, projectId),
+    saveProjectRemark: (workspaceId, projectId, remark) =>
+      invoke(IPC_CHANNELS.workspaces.saveProjectRemark, workspaceId, projectId, remark),
     addProject: (workspaceId, path) =>
       invoke(IPC_CHANNELS.workspaces.addProject, workspaceId, path),
     removeProject: (workspaceId, projectId) =>

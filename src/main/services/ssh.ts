@@ -19,6 +19,11 @@ function fingerprint(publicKey: string): string {
   return `SHA256:${digest}`
 }
 
+/** 自动发现的密钥不能使用随机 ID，否则列表刷新后 Git 身份将无法找回原密钥。 */
+export function createDiscoveredSshKeyId(publicKey: string): string {
+  return `ssh_discovered_${createHash('sha256').update(publicKey.trim()).digest('hex').slice(0, 24)}`
+}
+
 function parsePublicKey(
   raw: string,
   name: string,
@@ -61,13 +66,50 @@ export async function listSshKeys(): Promise<SSHKey[]> {
     if (!raw) continue
     try {
       const parsed = parsePublicKey(raw, basename(file, '.pub'), 'discovered', path.slice(0, -4))
-      if (!saved.some((item) => item.publicKey === parsed.publicKey)) discovered.push(parsed)
+      if (!saved.some((item) => item.publicKey === parsed.publicKey)) {
+        discovered.push({ ...parsed, id: createDiscoveredSshKeyId(parsed.publicKey) })
+      }
     } catch {
       // 忽略不符合公钥格式的文件，避免单个文件阻断整个密钥列表。
     }
   }
   const merged = [...saved, ...discovered]
   return Promise.all(merged.map(withPrivateKeyStatus))
+}
+
+/** 只持久化密钥原始信息，privateKeyExists 等运行时状态由列表接口重新派生。 */
+export function materializeSshKeyBinding(
+  saved: SSHKey[],
+  available: SSHKey[],
+  id: string
+): { key?: SSHKey; keys: SSHKey[] } {
+  const existing = saved.find((key) => key.id === id)
+  if (existing) return { key: existing, keys: saved }
+  const discovered = available.find((key) => key.id === id)
+  if (!discovered) return { keys: saved }
+  const persisted: SSHKey = {
+    id: discovered.id,
+    name: discovered.name,
+    algorithm: discovered.algorithm,
+    source: discovered.source,
+    publicKey: discovered.publicKey,
+    fingerprint: discovered.fingerprint,
+    privateKeyPath: discovered.privateKeyPath
+  }
+  return { key: persisted, keys: [...saved, persisted] }
+}
+
+/**
+ * Git 身份首次绑定自动发现的密钥时，将它纳入受管数据。
+ * 持久化后 profile 生成和后续重启都能继续解析同一个密钥 ID。
+ */
+export async function ensureSshKeyPersisted(id: string): Promise<SSHKey | undefined> {
+  const saved = await store.sshKeys.read()
+  const existing = saved.find((key) => key.id === id)
+  if (existing) return existing
+  const result = materializeSshKeyBinding(saved, await listSshKeys(), id)
+  if (result.key && result.keys !== saved) await store.sshKeys.write(result.keys)
+  return result.key
 }
 
 export async function saveSshKey(draft: SSHKeyDraft): Promise<SSHKey[]> {

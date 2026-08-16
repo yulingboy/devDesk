@@ -90,6 +90,7 @@ export function GitPage(): React.JSX.Element {
       .then((value) => {
         setState(value)
         setIdentity(emptyIdentity)
+        setStatus('')
         setDrawerMode(null)
         toast.success('Git 身份已保存并生成 profile')
       })

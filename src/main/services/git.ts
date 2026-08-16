@@ -11,6 +11,7 @@ import type {
 } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidEmail, requiredText } from './common'
+import { ensureSshKeyPersisted } from './ssh'
 
 const execFileAsync = promisify(execFile)
 
@@ -199,8 +200,8 @@ export async function saveGitIdentity(input: GitIdentity): Promise<GitState> {
     existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
   )
     throw new Error(`身份名称重复：${name}`)
-  if (input.sshKeyId && !(await store.sshKeys.read()).some((key) => key.id === input.sshKeyId))
-    throw new Error('关联的 SSH 密钥不存在')
+  if (input.sshKeyId && !(await ensureSshKeyPersisted(input.sshKeyId)))
+    throw new Error('关联的 SSH 密钥不存在，请重新选择')
   const identity = { ...input, id: input.id || createId('git'), name, username, email }
   await store.gitIdentities.write([...existing.filter((item) => item.id !== identity.id), identity])
   await syncGitRules()

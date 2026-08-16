@@ -4,6 +4,7 @@ import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child
 import { promisify } from 'node:util'
 import { BrowserWindow, shell } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
+import { PROJECT_EDITOR_OPTIONS, type ProjectEditorId } from '@shared/domain'
 import type {
   Project,
   ProjectDetail,
@@ -12,13 +13,19 @@ import type {
   ProjectTask,
   ProjectIssue,
   Workspace,
+  WorkspaceSubproject,
   WorkspaceScanResult
 } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
 import { createId, requiredText } from './common'
 import { syncGitRules } from './git'
 import { isNodeRequirementSatisfied, parseProjectPackageManager } from './project-environment'
-import { discoverWorkspaceProjectPaths } from './workspace-discovery'
+import {
+  discoverProjectSubprojectPaths,
+  discoverWorkspaceProjectPaths,
+  type DiscoveredWorkspaceProject
+} from './workspace-discovery'
+import { getTopLevelProjectPath, normalizeWorkspaceProjectHierarchy } from './workspace-hierarchy'
 
 const execFileAsync = promisify(execFile)
 const scanConcurrency = 6
@@ -26,6 +33,22 @@ const projectTasks = new Map<string, ProjectTask>()
 const projectProcesses = new Map<string, ChildProcessWithoutNullStreams>()
 const maxTaskLogs = 500
 let userShellEnvironmentPromise: Promise<NodeJS.ProcessEnv> | undefined
+
+const editorLaunchers: Record<
+  ProjectEditorId,
+  { macApplication: string; command: string; mode?: 'codex' }
+> = {
+  // Codex 通过官方 CLI 的 app 子命令打开工作区，确保进入 Codex 工作区而不是普通文件预览。
+  codex: { macApplication: 'ChatGPT', command: 'codex', mode: 'codex' },
+  vscode: { macApplication: 'Visual Studio Code', command: 'code' },
+  cursor: { macApplication: 'Cursor', command: 'cursor' },
+  windsurf: { macApplication: 'Windsurf', command: 'windsurf' },
+  zed: { macApplication: 'Zed', command: 'zed' },
+  webstorm: { macApplication: 'WebStorm', command: 'webstorm' },
+  'intellij-idea': { macApplication: 'IntelliJ IDEA', command: 'idea' },
+  pycharm: { macApplication: 'PyCharm', command: 'pycharm' },
+  goland: { macApplication: 'GoLand', command: 'goland' }
+}
 
 interface PackageJsonSnapshot {
   name?: unknown
@@ -289,6 +312,76 @@ async function scanProject(
   }
 }
 
+function findPreviousSubproject(
+  path: string,
+  previousProjects: Project[]
+): WorkspaceSubproject | undefined {
+  for (const project of previousProjects) {
+    const previous = project.subprojects?.find((item) => resolve(item.path) === path)
+    if (previous) return previous
+  }
+  // 旧版把二级项目平铺在 projects 中；扫描时复用其标识并迁移到父项目下。
+  const legacyProject = previousProjects.find((project) => resolve(project.path) === path)
+  return legacyProject
+    ? {
+        id: legacyProject.id,
+        name: legacyProject.name,
+        path: legacyProject.path,
+        directoryExists: legacyProject.directoryExists,
+        lastScannedAt: legacyProject.lastScannedAt
+      }
+    : undefined
+}
+
+function buildSubprojects(paths: string[], previousProjects: Project[]): WorkspaceSubproject[] {
+  const scannedAt = new Date().toISOString()
+  return paths.map((path) => {
+    const previous = findPreviousSubproject(path, previousProjects)
+    return {
+      ...previous,
+      id: previous?.id ?? createId('subproject'),
+      name: basename(path),
+      path,
+      directoryExists: true,
+      lastScannedAt: scannedAt
+    }
+  })
+}
+
+async function scanDiscoveredProject(
+  workspaceId: string,
+  discovered: DiscoveredWorkspaceProject,
+  previousProjects: Project[]
+): Promise<Project> {
+  const previous = previousProjects.find((project) => resolve(project.path) === discovered.path)
+  const project = await scanProject(workspaceId, discovered.path, previous)
+  return {
+    ...project,
+    name: basename(discovered.path),
+    path: discovered.path,
+    subprojects: buildSubprojects(discovered.subprojectPaths, previousProjects)
+  }
+}
+
+async function scanProjectWithSubprojects(
+  workspaceId: string,
+  project: Project,
+  previousProjects: Project[]
+): Promise<Project> {
+  const scanned = await scanProject(workspaceId, project.path, project)
+  if (scanned.directoryExists === false) {
+    return {
+      ...scanned,
+      subprojects: project.subprojects?.map((item) => ({ ...item, directoryExists: false }))
+    }
+  }
+  const discovery = await discoverProjectSubprojectPaths(project.path)
+  return {
+    ...scanned,
+    subprojects: buildSubprojects(discovery.paths, previousProjects)
+  }
+}
+
 async function findProject(
   workspaceId: string,
   projectId: string
@@ -483,7 +576,15 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function listWorkspaces(): Promise<Workspace[]> {
-  return store.workspaces.read()
+  const stored = await store.workspaces.read()
+  const normalized = stored.map(normalizeWorkspaceProjectHierarchy)
+  if (normalized.some((item) => item.changed)) {
+    const workspaces = normalized.map((item) => item.workspace)
+    // 一次性持久化兼容结果，保证后续详情、移除和深链接都使用同一组项目 ID。
+    await store.workspaces.write(workspaces)
+    return workspaces
+  }
+  return stored
 }
 
 export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
@@ -529,7 +630,7 @@ export async function scanWorkspace(id: string): Promise<Workspace[]> {
   return (await scanWorkspaceDetailed(id)).workspaces
 }
 
-/** 扫描支持根目录项目和一级分组下的子项目，不深入遍历依赖与构建产物。 */
+/** 扫描结果只平铺一级目录，识别到的下一层工程归入对应项目的 subprojects。 */
 export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanResult> {
   const existing = await store.workspaces.read()
   const workspace = existing.find((item) => item.id === id)
@@ -538,33 +639,38 @@ export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanRe
     throw new Error('无法读取工作区目录，请检查路径和权限')
   })
   const discoveredProjects = await mapWithConcurrency(
-    discovery.paths,
+    discovery.projects,
     scanConcurrency,
-    async (path) => {
-      const previous = workspace.projects.find((project) => project.path === path)
-      return scanProject(id, path, { ...previous, name: basename(path), path } as Project)
-    }
+    (discovered) => scanDiscoveredProject(id, discovered, workspace.projects)
   )
-  const discoveredPaths = new Set(discoveredProjects.map((item) => item.path))
+  const discoveredPaths = new Set(
+    discovery.projects.flatMap((project) => [project.path, ...project.subprojectPaths])
+  )
   // 手动纳入的外部项目不在工作区一级目录中，扫描时保留并刷新其真实状态。
   const manualProjects = await mapWithConcurrency(
     workspace.projects.filter(
       (project) => project.source === 'manual' && !discoveredPaths.has(project.path)
     ),
     scanConcurrency,
-    (project) => scanProject(id, project.path, project)
+    (project) => scanProjectWithSubprojects(id, project, workspace.projects)
   )
   const projects = [...discoveredProjects, ...manualProjects]
   const updated = { ...workspace, projects }
   await store.workspaces.write(existing.map((item) => (item.id === id ? updated : item)))
-  const knownPaths = new Set(workspace.projects.map((item) => item.path))
-  const scannedPaths = new Set(projects.map((item) => item.path))
+  const knownTopLevelPaths = new Set(
+    workspace.projects.map((item) => getTopLevelProjectPath(workspace.rootPath, item.path))
+  )
+  const knownScannedTopLevelPaths = new Set(
+    workspace.projects
+      .filter((item) => item.source !== 'manual')
+      .map((item) => getTopLevelProjectPath(workspace.rootPath, item.path))
+  )
+  const scannedTopLevelPaths = new Set(discoveredProjects.map((item) => item.path))
   return {
     workspaces: await listWorkspaces(),
-    added: projects.filter((item) => !knownPaths.has(item.path)).length,
-    removed: workspace.projects.filter(
-      (item) => item.source !== 'manual' && !scannedPaths.has(item.path)
-    ).length,
+    added: discoveredProjects.filter((item) => !knownTopLevelPaths.has(item.path)).length,
+    removed: [...knownScannedTopLevelPaths].filter((path) => !scannedTopLevelPaths.has(path))
+      .length,
     total: discovery.total,
     truncated: discovery.truncated,
     // 保留字段以兼容旧版 IPC 消费方；目录扫描不再读取 Git 状态。
@@ -584,12 +690,27 @@ export async function openProject(path: string): Promise<void> {
   if (error) throw new Error(`无法打开项目目录：${error}`)
 }
 
-export async function openProjectEditor(pathInput: string): Promise<void> {
+export async function openProjectEditor(
+  pathInput: string,
+  editorInput: string = 'vscode'
+): Promise<void> {
   const path = resolve(requiredText(pathInput, '项目路径', 1_000))
+  const editor = PROJECT_EDITOR_OPTIONS.find((item) => item.id === editorInput)
+  if (!editor) throw new Error('不支持指定的项目编辑器')
+  const launcher = editorLaunchers[editor.id]
   try {
-    await execFileAsync('code', [path], { timeout: 10_000 })
+    if (launcher.mode === 'codex') {
+      await execFileAsync(launcher.command, ['app', path], {
+        env: await getUserShellEnvironment(),
+        timeout: 10_000
+      })
+    } else if (process.platform === 'darwin') {
+      await execFileAsync('open', ['-a', launcher.macApplication, path], { timeout: 10_000 })
+    } else {
+      await execFileAsync(launcher.command, [path], { timeout: 10_000 })
+    }
   } catch {
-    throw new Error('无法打开编辑器，请确认 Visual Studio Code 已安装且 code 命令可用')
+    throw new Error(`无法使用 ${editor.label} 打开项目，请确认该编辑器已安装`)
   }
 }
 
@@ -617,7 +738,7 @@ export async function refreshProject(
   projectId: string
 ): Promise<ProjectDetail> {
   const { workspace, project } = await findProject(workspaceId, projectId)
-  const nextProject = await scanProject(workspace.id, project.path, project)
+  const nextProject = await scanProjectWithSubprojects(workspace.id, project, workspace.projects)
   const nextWorkspace = {
     ...workspace,
     projects: workspace.projects.map((item) => (item.id === project.id ? nextProject : item))
@@ -627,6 +748,30 @@ export async function refreshProject(
     workspaces.map((item) => (item.id === workspace.id ? nextWorkspace : item))
   )
   return buildProjectDetail(nextProject, nextWorkspace)
+}
+
+/** 项目备注属于用户数据，目录扫描和环境刷新均不得覆盖。 */
+export async function saveProjectRemark(
+  workspaceId: string,
+  projectId: string,
+  remarkInput: string
+): Promise<Workspace[]> {
+  const { workspace, project } = await findProject(workspaceId, projectId)
+  const remark = remarkInput.trim().slice(0, 200)
+  const workspaces = await store.workspaces.read()
+  await store.workspaces.write(
+    workspaces.map((item) =>
+      item.id === workspace.id
+        ? {
+            ...item,
+            projects: item.projects.map((candidate) =>
+              candidate.id === project.id ? { ...candidate, remark } : candidate
+            )
+          }
+        : item
+    )
+  )
+  return listWorkspaces()
 }
 
 /** 手动纳入项目只写应用内工作区记录，不移动、复制或删除用户磁盘文件。 */
@@ -643,13 +788,17 @@ export async function addProjectToWorkspace(
   if (!metadata?.isDirectory()) throw new Error('项目目录不存在或不是有效目录')
   if (workspace.projects.some((item) => resolve(item.path) === path))
     throw new Error('该目录已在当前工作区中')
-  const project = await scanProject(id, path, {
-    id: createId('project'),
-    workspaceId: id,
-    name: basename(path),
-    path,
-    source: 'manual'
-  })
+  const project = await scanProjectWithSubprojects(
+    id,
+    {
+      id: createId('project'),
+      workspaceId: id,
+      name: basename(path),
+      path,
+      source: 'manual'
+    },
+    workspace.projects
+  )
   await store.workspaces.write(
     workspaces.map((item) =>
       item.id === id ? { ...item, projects: [...item.projects, project] } : item

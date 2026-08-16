@@ -65,6 +65,7 @@ import {
   openWorkspace,
   openProject,
   openProjectEditor,
+  saveProjectRemark,
   scanWorkspaceDetailed,
   getProjectDetail,
   refreshProject,
@@ -214,14 +215,19 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.open, (_, id) => openWorkspace(String(id)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, path) => openProject(String(path)))
-  registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path) =>
-    openProjectEditor(String(path))
+  registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path, editor) =>
+    openProjectEditor(String(path), editor === undefined ? undefined : String(editor))
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.getProjectDetail, (_, workspaceId, projectId) =>
     getProjectDetail(String(workspaceId), String(projectId))
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.refreshProject, (_, workspaceId, projectId) =>
     refreshProject(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(
+    IPC_CHANNELS.workspaces.saveProjectRemark,
+    (_, workspaceId, projectId, remark) =>
+      saveProjectRemark(String(workspaceId), String(projectId), String(remark ?? ''))
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.addProject, (_, workspaceId, path) =>
     addProjectToWorkspace(String(workspaceId), String(path))

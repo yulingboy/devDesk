@@ -39,9 +39,15 @@ const projectMarkers = [
 ]
 
 export interface WorkspaceDiscoveryResult {
-  paths: string[]
+  projects: DiscoveredWorkspaceProject[]
   total: number
+  subprojectTotal: number
   truncated: boolean
+}
+
+export interface DiscoveredWorkspaceProject {
+  path: string
+  subprojectPaths: string[]
 }
 
 function shouldInspectDirectory(name: string): boolean {
@@ -59,48 +65,60 @@ async function hasProjectMarker(path: string): Promise<boolean> {
   return checks.some(Boolean)
 }
 
+/** 只检查项目目录的下一层，子项目不会继续递归形成无限层级。 */
+export async function discoverProjectSubprojectPaths(
+  projectPath: string,
+  limit = 200
+): Promise<{ paths: string[]; truncated: boolean }> {
+  const entries = await readdir(projectPath, { withFileTypes: true }).catch(() => [])
+  const directories = entries
+    .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name))
+    .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+  const inspectedDirectories = directories.slice(0, limit)
+  const paths = (
+    await Promise.all(
+      inspectedDirectories.map(async (entry) => {
+        const path = resolve(projectPath, entry.name)
+        return (await hasProjectMarker(path)) ? path : undefined
+      })
+    )
+  ).filter((path): path is string => Boolean(path))
+  return { paths, truncated: directories.length > inspectedDirectories.length }
+}
+
 /**
- * 工作区允许“项目目录”与“项目分组目录”并存。
- * 为避免误入依赖和构建产物，只向下检查一层子目录，并以跨语言标志文件识别子项目。
+ * 工作区根目录下的每个一级目录都是顶级项目。
+ * 其下一层仅作为子项目识别，不能再平铺到工作区项目列表中。
  */
 export async function discoverWorkspaceProjectPaths(
   rootPath: string,
-  limit = 500
+  limit = 500,
+  subprojectLimit = 200
 ): Promise<WorkspaceDiscoveryResult> {
   const entries = await readdir(rootPath, { withFileTypes: true })
   const directDirectories = entries
     .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name))
     .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
   const inspectedDirectories = directDirectories.slice(0, limit)
-  const groups = await Promise.all(
+  const projects = await Promise.all(
     inspectedDirectories.map(async (entry) => {
       const directPath = resolve(rootPath, entry.name)
-      const [directIsProject, nestedEntries] = await Promise.all([
-        hasProjectMarker(directPath),
-        readdir(directPath, { withFileTypes: true }).catch(() => [])
-      ])
-      const nestedDirectories = nestedEntries
-        .filter((nested) => nested.isDirectory() && shouldInspectDirectory(nested.name))
-        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
-      const nestedProjects = (
-        await Promise.all(
-          nestedDirectories.map(async (nested) => {
-            const nestedPath = resolve(directPath, nested.name)
-            return (await hasProjectMarker(nestedPath)) ? nestedPath : undefined
-          })
-        )
-      ).filter((path): path is string => Boolean(path))
-
-      // 没有可识别子项目时仍保留一级目录，兼容没有标准标志文件的本地项目。
-      return directIsProject || !nestedProjects.length
-        ? [directPath, ...nestedProjects]
-        : nestedProjects
+      const nested = await discoverProjectSubprojectPaths(directPath, subprojectLimit)
+      return {
+        project: { path: directPath, subprojectPaths: nested.paths },
+        truncated: nested.truncated
+      }
     })
   )
-  const paths = [...new Set(groups.flat())]
   return {
-    paths: paths.slice(0, limit),
-    total: paths.length,
-    truncated: directDirectories.length > inspectedDirectories.length || paths.length > limit
+    projects: projects.map((item) => item.project),
+    total: directDirectories.length,
+    subprojectTotal: projects.reduce(
+      (total, item) => total + item.project.subprojectPaths.length,
+      0
+    ),
+    truncated:
+      directDirectories.length > inspectedDirectories.length ||
+      projects.some((item) => item.truncated)
   }
 }

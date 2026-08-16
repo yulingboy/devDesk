@@ -1,14 +1,16 @@
-import { Code2, FolderKanban, FolderOpen, GitBranch, KeyRound, Trash2 } from 'lucide-react'
+import { FolderKanban, FolderOpen, FolderTree, GitBranch, KeyRound, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { GitIdentity, Project, SSHKey, Workspace } from '@shared/domain'
+import type { GitIdentity, Project, ProjectEditorId, SSHKey, Workspace } from '@shared/domain'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
-import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { TooltipButton } from '@/components/TooltipButton'
+import { ProjectEditorMenu } from './ProjectEditorMenu'
 
 interface ProjectDetailDrawerProps {
   identity?: GitIdentity
@@ -18,7 +20,8 @@ interface ProjectDetailDrawerProps {
   open: boolean
   removing: boolean
   onClose: () => void
-  onOpenEditor: (path: string) => void
+  onEditRemark: (project: Project) => void
+  onOpenEditor: (path: string, editor: ProjectEditorId) => void
   onOpenFolder: (path: string) => void
   onRemove: () => Promise<void>
 }
@@ -35,6 +38,7 @@ export function ProjectDetailDrawer({
   open,
   removing,
   onClose,
+  onEditRemark,
   onOpenEditor,
   onOpenFolder,
   onRemove
@@ -68,14 +72,15 @@ export function ProjectDetailDrawer({
               <FolderOpen />
               打开目录
             </Button>
-            <Button
-              disabled={!directoryAvailable}
-              onClick={() => onOpenEditor(project.path)}
-              variant="success"
-            >
-              <Code2 />
-              VS Code
+            <Button onClick={() => onEditRemark(project)} variant="outline">
+              编辑备注
             </Button>
+            <ProjectEditorMenu
+              labeled
+              disabled={!directoryAvailable}
+              onOpen={onOpenEditor}
+              path={project.path}
+            />
           </>
         ) : undefined
       }
@@ -116,7 +121,57 @@ export function ProjectDetailDrawer({
               <dd className="truncate font-mono text-[11px] text-slate-600">
                 {formatRelativePath(project.path, workspace.rootPath)}
               </dd>
+              <dt className="text-slate-400">备注</dt>
+              <dd className="truncate text-slate-700">{project.remark || '未填写备注'}</dd>
             </dl>
+          </section>
+
+          <Separator />
+
+          <section aria-labelledby="project-subprojects-title">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold text-slate-700" id="project-subprojects-title">
+                子项目
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                {project.subprojects?.length ?? 0} 个
+              </span>
+            </div>
+            {project.subprojects?.length ? (
+              <div className="space-y-1.5">
+                {project.subprojects.map((subproject) => (
+                  <Item key={subproject.id}>
+                    <FolderTree className="shrink-0 text-slate-400" size={15} />
+                    <ItemContent>
+                      <ItemTitle className="truncate">{subproject.name}</ItemTitle>
+                      <ItemDescription title={subproject.path}>
+                        {formatRelativePath(subproject.path, project.path)}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <ProjectEditorMenu
+                        disabled={subproject.directoryExists === false}
+                        onOpen={onOpenEditor}
+                        path={subproject.path}
+                      />
+                      <TooltipButton
+                        disabled={subproject.directoryExists === false}
+                        onClick={() => onOpenFolder(subproject.path)}
+                        size="icon"
+                        tooltip="打开子项目目录"
+                        variant="ghost"
+                      >
+                        <FolderOpen size={14} />
+                      </TooltipButton>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-md border border-dashed border-slate-200 px-3 py-2.5 text-[11px] text-slate-400">
+                当前一级目录下未识别到独立子项目。
+              </p>
+            )}
           </section>
 
           <Separator />

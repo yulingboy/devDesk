@@ -1,5 +1,5 @@
-import { Code2, FolderOpen, Info, TriangleAlert } from 'lucide-react'
-import type { Project } from '@shared/domain'
+import { FolderOpen, Info, Pencil, TriangleAlert } from 'lucide-react'
+import type { Project, ProjectEditorId } from '@shared/domain'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -11,24 +11,25 @@ import {
   TableRow
 } from '@/components/ui/table'
 import { TooltipButton } from '@/components/TooltipButton'
+import { ProjectEditorMenu } from './ProjectEditorMenu'
 
 interface ProjectGridProps {
   projects: Project[]
   query: string
-  rootPath?: string
   scanning: boolean
   onOpen: (project: Project) => void
-  onOpenEditor: (path: string) => void
+  onEditRemark: (project: Project) => void
+  onOpenEditor: (path: string, editor: ProjectEditorId) => void
   onOpenFolder: (path: string) => void
 }
 
-/** 工作区只展示项目目录，不根据具体语言、依赖或构建工具划分项目状态。 */
+/** 主列表只展示一级项目，子项目以数量提示并在详情抽屉中查看。 */
 export function ProjectGrid({
   projects,
   query,
-  rootPath,
   scanning,
   onOpen,
+  onEditRemark,
   onOpenEditor,
   onOpenFolder
 }: ProjectGridProps): React.JSX.Element {
@@ -39,9 +40,12 @@ export function ProjectGrid({
           <div className="flex h-14 items-center justify-between px-5" key={index}>
             <div className="space-y-1.5">
               <Skeleton className="h-3.5 w-32" />
-              <Skeleton className="h-2.5 w-64" />
             </div>
-            <Skeleton className="h-6 w-24" />
+            <div className="flex items-center gap-8">
+              <Skeleton className="h-2.5 w-32" />
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-6 w-24" />
+            </div>
           </div>
         ))}
       </div>
@@ -53,91 +57,120 @@ export function ProjectGrid({
       <Empty className="min-h-56 border-y border-slate-200 bg-white">
         <EmptyTitle>{query ? '没有匹配的项目' : '工作区中还没有项目'}</EmptyTitle>
         <EmptyDescription>
-          {query ? '修改项目名称或路径搜索条件。' : '扫描工作区，或手动纳入一个项目目录。'}
+          {query ? '修改项目名称、备注或子项目搜索条件。' : '扫描工作区，或手动纳入一个项目目录。'}
         </EmptyDescription>
       </Empty>
     )
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-white">
-      <Table>
-        <TableHeader className="sticky top-0 z-10">
+    <div className="flex min-h-0 flex-1 flex-col bg-white">
+      <Table className="table-fixed" containerClassName="shrink-0 overflow-hidden">
+        <ProjectColumns />
+        <TableHeader>
           <TableRow className="border-slate-200 bg-slate-50/80 hover:bg-slate-50/80">
             <TableHead>项目</TableHead>
-            <TableHead className="w-28 text-right">操作</TableHead>
+            <TableHead className="w-56">备注</TableHead>
+            <TableHead className="w-32">子项目</TableHead>
+            <TableHead className="w-32 text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
-          {projects.map((project) => (
-            <TableRow className="group h-14" key={project.id}>
-              <TableCell className="py-2.5">
-                <button
-                  className="block min-w-0 max-w-full text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                  onClick={() => onOpen(project)}
-                  type="button"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="max-w-[34rem] truncate text-[13px] font-semibold text-slate-800">
-                      {project.name}
-                    </span>
-                    {project.source === 'manual' && (
-                      <span className="text-[10px] text-slate-400">手动纳入</span>
-                    )}
-                    {project.directoryExists === false && (
-                      <TriangleAlert className="shrink-0 text-amber-600" size={13} />
-                    )}
-                  </span>
-                  <span
-                    className="mt-1 block max-w-[48rem] truncate text-[11px] text-slate-400"
-                    title={project.path}
-                  >
-                    {formatProjectPath(project.path, rootPath)}
-                  </span>
-                </button>
-              </TableCell>
-              <TableCell>
-                <div className="flex justify-end gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                  <TooltipButton
-                    onClick={() => onOpen(project)}
-                    size="icon"
-                    tooltip="查看项目详情"
-                    variant="ghost"
-                  >
-                    <Info size={14} />
-                  </TooltipButton>
-                  <TooltipButton
-                    disabled={project.directoryExists === false}
-                    onClick={() => onOpenEditor(project.path)}
-                    size="icon"
-                    tooltip="在 VS Code 中打开"
-                    variant="ghost"
-                  >
-                    <Code2 size={14} />
-                  </TooltipButton>
-                  <TooltipButton
-                    disabled={project.directoryExists === false}
-                    onClick={() => onOpenFolder(project.path)}
-                    size="icon"
-                    tooltip="打开项目目录"
-                    variant="ghost"
-                  >
-                    <FolderOpen size={14} />
-                  </TooltipButton>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
       </Table>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <Table className="table-fixed" containerClassName="overflow-visible">
+          <ProjectColumns />
+          <TableBody>
+            {projects.map((project) => (
+              <TableRow className="group h-14" key={project.id}>
+                <TableCell className="py-2.5">
+                  <button
+                    className="block min-w-0 max-w-full text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    onClick={() => onOpen(project)}
+                    type="button"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="max-w-[34rem] truncate text-[13px] font-semibold text-slate-800">
+                        {project.name}
+                      </span>
+                      {project.source === 'manual' && (
+                        <span className="text-[10px] text-slate-400">手动纳入</span>
+                      )}
+                      {project.directoryExists === false && (
+                        <TriangleAlert className="shrink-0 text-amber-600" size={13} />
+                      )}
+                    </span>
+                  </button>
+                </TableCell>
+                <TableCell
+                  className="max-w-56 truncate text-[11px] text-slate-500"
+                  title={project.remark || '未填写备注'}
+                >
+                  {project.remark || <span className="text-slate-300">未填写备注</span>}
+                </TableCell>
+                <TableCell className="text-[11px] text-slate-500">
+                  {project.subprojects?.length ? (
+                    <button
+                      className="rounded text-left outline-none hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      onClick={() => onOpen(project)}
+                      title={project.subprojects.map((item) => item.name).join('、')}
+                      type="button"
+                    >
+                      {project.subprojects.length} 个子项目
+                    </button>
+                  ) : (
+                    <span className="text-slate-300">--</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                    <TooltipButton
+                      onClick={() => onOpen(project)}
+                      size="icon"
+                      tooltip="查看项目详情"
+                      variant="ghost"
+                    >
+                      <Info size={14} />
+                    </TooltipButton>
+                    <TooltipButton
+                      onClick={() => onEditRemark(project)}
+                      size="icon"
+                      tooltip="编辑项目备注"
+                      variant="ghost"
+                    >
+                      <Pencil size={14} />
+                    </TooltipButton>
+                    <ProjectEditorMenu
+                      disabled={project.directoryExists === false}
+                      onOpen={onOpenEditor}
+                      path={project.path}
+                    />
+                    <TooltipButton
+                      disabled={project.directoryExists === false}
+                      onClick={() => onOpenFolder(project.path)}
+                      size="icon"
+                      tooltip="打开项目目录"
+                      variant="ghost"
+                    >
+                      <FolderOpen size={14} />
+                    </TooltipButton>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }
 
-/** 工作区内部项目优先显示相对路径，多级子项目仍能看出目录层级。 */
-function formatProjectPath(projectPath: string, rootPath?: string): string {
-  if (!rootPath) return projectPath
-  const normalizedRoot = rootPath.replace(/\/$/, '')
-  if (!projectPath.startsWith(`${normalizedRoot}/`)) return projectPath
-  return `./${projectPath.slice(normalizedRoot.length + 1)}`
+function ProjectColumns(): React.JSX.Element {
+  return (
+    <colgroup>
+      <col />
+      <col className="w-56" />
+      <col className="w-32" />
+      <col className="w-32" />
+    </colgroup>
+  )
 }
