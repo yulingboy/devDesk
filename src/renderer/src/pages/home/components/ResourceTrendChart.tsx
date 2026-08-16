@@ -31,9 +31,13 @@ const metrics: Array<{
 /** 复用 shadcn ChartContainer 和 Recharts，展示设备资源历史采样。 */
 export function ResourceTrendChart({ history }: ResourceTrendChartProps): React.JSX.Element {
   const [metric, setMetric] = useState<MetricKey>('memory')
-  const selected = metrics.find((item) => item.value === metric) ?? metrics[0]
+  const availableMetrics = metrics.filter(
+    (item) => item.value !== 'disk' || history.some((snapshot) => snapshot.disks.length > 0)
+  )
+  const effectiveMetric = availableMetrics.some((item) => item.value === metric) ? metric : 'memory'
+  const selected = metrics.find((item) => item.value === effectiveMetric) ?? metrics[0]
   const SelectedIcon = selected.icon
-  const latestValue = history.at(-1) ? getMetricValue(history.at(-1)!, metric) : null
+  const latestValue = history.at(-1) ? getMetricValue(history.at(-1)!, effectiveMetric) : null
   const chartConfig: ChartConfig = {
     usage: { label: selected.label, color: selected.color }
   }
@@ -61,7 +65,7 @@ export function ResourceTrendChart({ history }: ResourceTrendChartProps): React.
         <Tabs
           className="min-h-0 flex-1"
           fill
-          items={metrics.map((item) => ({
+          items={availableMetrics.map((item) => ({
             value: item.value,
             label: item.label,
             content: (
@@ -74,7 +78,7 @@ export function ResourceTrendChart({ history }: ResourceTrendChartProps): React.
             )
           }))}
           onValueChange={(value) => setMetric(value as MetricKey)}
-          value={metric}
+          value={effectiveMetric}
         />
       </CardContent>
     </Card>
@@ -98,7 +102,7 @@ function TrendPlot({
   }))
   return (
     <ChartContainer className="mt-1.5 h-[240px] w-full lg:h-[280px]" config={chartConfig}>
-      {data.length ? (
+      {data.some((item) => item.usage !== null) ? (
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
             <defs>
@@ -146,10 +150,10 @@ function TrendPlot({
   )
 }
 
-function getMetricValue(snapshot: SystemOverviewSnapshot, metric: MetricKey): number {
+function getMetricValue(snapshot: SystemOverviewSnapshot, metric: MetricKey): number | null {
   if (metric === 'cpu') return snapshot.cpu.usagePercent
   if (metric === 'memory') return snapshot.memory.usedPercent
-  if (!snapshot.disks.length) return 0
+  if (!snapshot.disks.length) return null
   return Math.round(
     snapshot.disks.reduce((total, disk) => total + disk.usedPercent, 0) / snapshot.disks.length
   )

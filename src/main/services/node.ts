@@ -18,6 +18,7 @@ import type {
   NodeTask
 } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
+import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import { createId, requiredText } from './common'
 import createNodeInstallWorker from '@main/workers/node-install-worker?nodeWorker'
 
@@ -27,6 +28,7 @@ type PackageManagerName = (typeof packageManagerNames)[number]
 const activeInstallWorkers = new Map<string, Worker>()
 const activeInstallVersions = new Set<string>()
 const cancelledTaskIds = new Set<string>()
+let nodeStateMutation: Promise<void> = Promise.resolve()
 
 const defaultRegistries = (): NodeRegistry[] => [
   { id: 'registry-npm', name: 'npm', url: 'https://registry.npmjs.org', isCurrent: true },
@@ -60,6 +62,8 @@ function normalizeState(value: NodeState | null): NodeState {
   return {
     ...fallback,
     ...value,
+    installed: Array.isArray(value?.installed) ? value.installed : [],
+    tasks: Array.isArray(value?.tasks) ? value.tasks : [],
     packageManagers: value?.packageManagers ?? [],
     registries: value?.registries?.length ? value.registries : fallback.registries,
     globalPackages: value?.globalPackages ?? [],
@@ -67,9 +71,33 @@ function normalizeState(value: NodeState | null): NodeState {
   }
 }
 
+/**
+ * Node 任务、缓存和包列表都保存在同一个 JSON 文件中。
+ * 变更必须在队列内重新读取最新快照，避免并发 IPC 用旧快照覆盖任务进度。
+ */
+async function updateNodeState(
+  updater: (state: NodeState) => NodeState | Promise<NodeState>
+): Promise<NodeState> {
+  const previous = nodeStateMutation
+  let resolveMutation!: () => void
+  nodeStateMutation = new Promise<void>((resolve) => {
+    resolveMutation = resolve
+  })
+  try {
+    await previous.catch(() => undefined)
+    const current = normalizeState(await store.node.read())
+    const next = await updater(current)
+    await store.node.write(next)
+    return next
+  } finally {
+    resolveMutation()
+  }
+}
+
 async function runCommand(command: string, args: string[]): Promise<string> {
+  const env = await getUserShellEnvironment()
   const { stdout } = await execFileAsync(command, args, {
-    env: { ...process.env, CI: '1', npm_config_yes: 'true' },
+    env: { ...env, CI: '1', npm_config_yes: 'true' },
     timeout: 120_000,
     maxBuffer: 8 * 1024 * 1024
   })
@@ -292,7 +320,8 @@ export async function getNodeState(): Promise<NodeState> {
     ...saved,
     currentVersion: (await commandVersion('node')).replace(/^v/, ''),
     defaultVersion,
-    nodePath: process.env.PATH ?? '',
+    // nodePath 表示实际可执行文件，不是 PATH 环境变量；完整路径快照由环境页单独展示。
+    nodePath: await runCommand('node', ['-p', 'process.execPath']).catch(() => saved.nodePath),
     nvmAvailable: capabilities.canInstall,
     nrmAvailable: Boolean(await commandVersion('nrm')),
     registry,
@@ -307,7 +336,6 @@ export async function getNodeState(): Promise<NodeState> {
     })),
     capabilities
   }
-  await store.node.write(state)
   return state
 }
 
@@ -423,13 +451,6 @@ export async function installNode(
     throw new Error(capabilities.message ?? '当前环境不支持安装 Node 版本')
   if (activeInstallVersions.has(version)) throw new Error(`Node ${version} 已有安装任务正在执行`)
   activeInstallVersions.add(version)
-  const before = await store.node
-    .read()
-    .then(normalizeState)
-    .catch((error: unknown) => {
-      activeInstallVersions.delete(version)
-      throw error
-    })
   const task = {
     id: createId('node-task'),
     version,
@@ -439,8 +460,10 @@ export async function installNode(
     startedAt: new Date().toISOString(),
     logs: [`${new Date().toLocaleString()} 开始安装 Node ${version}`]
   }
-  const started = { ...before, tasks: [...before.tasks, task] }
-  await store.node.write(started).catch((error: unknown) => {
+  const started = await updateNodeState((current) => ({
+    ...current,
+    tasks: [...current.tasks, task]
+  })).catch((error: unknown) => {
     activeInstallVersions.delete(version)
     throw error
   })
@@ -456,7 +479,10 @@ export async function installNode(
           ? join(existingInstall.path, 'node.exe')
           : join(existingInstall.path, 'bin', 'node')
       existing =
-        (await execFileAsync(executable, ['--version'])
+        (await execFileAsync(executable, ['--version'], {
+          env: await getUserShellEnvironment(),
+          timeout: 15_000
+        })
           .then(({ stdout }) => stdout.trim().replace(/^v/, '') === version)
           .catch(() => false)) === true
     }
@@ -489,8 +515,7 @@ export async function installNode(
       try {
         await waitForWorker(worker, async (event) => {
           if (event.type === 'failed' || event.type === 'completed') return
-          const latest = normalizeState(await store.node.read())
-          const next = {
+          const next = await updateNodeState((latest) => ({
             ...latest,
             tasks: latest.tasks.map((item) =>
               item.id === task.id
@@ -506,8 +531,7 @@ export async function installNode(
                   }
                 : item
             )
-          }
-          await store.node.write(next)
+          }))
           onProgress?.(next)
         })
       } finally {
@@ -515,9 +539,9 @@ export async function installNode(
       }
     }
     const after = await getNodeState()
-    const completed = {
+    const completed = await updateNodeState((latest) => ({
       ...after,
-      tasks: after.tasks.map((item) =>
+      tasks: latest.tasks.map((item) =>
         item.id === task.id
           ? {
               ...item,
@@ -529,8 +553,7 @@ export async function installNode(
             }
           : item
       )
-    }
-    await store.node.write(completed)
+    }))
     onProgress?.(completed)
     activeInstallVersions.delete(version)
     return completed
@@ -541,8 +564,7 @@ export async function installNode(
       : error instanceof Error
         ? error.message
         : '安装失败'
-    const latest = normalizeState(await store.node.read())
-    const failed = {
+    const failed = await updateNodeState((latest) => ({
       ...latest,
       tasks: latest.tasks.map((item) =>
         item.id === task.id
@@ -556,8 +578,7 @@ export async function installNode(
             }
           : item
       )
-    }
-    await store.node.write(failed)
+    }))
     onProgress?.(failed)
     activeInstallVersions.delete(version)
     throw error
@@ -585,13 +606,12 @@ export async function retryNodeTask(id: string): Promise<NodeState> {
 }
 
 export async function clearNodeTasks(): Promise<NodeState> {
-  const state = normalizeState(await store.node.read())
-  const tasks = state.tasks.filter((task) =>
-    ['waiting', 'downloading', 'extracting'].includes(task.status)
-  )
-  const next = { ...state, tasks }
-  await store.node.write(next)
-  return next
+  return updateNodeState((state) => ({
+    ...state,
+    tasks: state.tasks.filter((task) =>
+      ['waiting', 'downloading', 'extracting'].includes(task.status)
+    )
+  }))
 }
 
 export async function switchNode(versionInput: string, setDefault: boolean): Promise<NodeState> {
@@ -602,17 +622,11 @@ export async function switchNode(versionInput: string, setDefault: boolean): Pro
     await runCommand('nvm', ['use', version]).catch(() => {
       throw new Error('nvm-windows 切换失败，请以管理员权限确认版本已安装')
     })
-    const state = await getNodeState()
-    const next = { ...state, defaultVersion: version }
-    await store.node.write(next)
-    return next
+    return updateNodeState((current) => ({ ...current, defaultVersion: version }))
   }
   if (!setDefault) throw new Error('桌面应用无法修改父终端环境，请使用“在终端中使用”或设为默认版本')
   await runNvm(`nvm alias default ${version}`)
-  const state = await getNodeState()
-  const next = { ...state, defaultVersion: version }
-  await store.node.write(next)
-  return next
+  return updateNodeState((current) => ({ ...current, defaultVersion: version }))
 }
 
 /** 在新的 macOS Terminal 会话中加载 nvm 并启用指定版本，避免伪造进程级切换结果。 */
@@ -646,12 +660,10 @@ export async function removeNode(versionInput: string): Promise<NodeState> {
   } else {
     await runNvm(`nvm uninstall ${version}`)
   }
-  const next = await getNodeState()
   if (state.defaultVersion === version) {
-    next.defaultVersion = ''
-    await store.node.write(next)
+    return updateNodeState((current) => ({ ...current, defaultVersion: '' }))
   }
-  return next
+  return getNodeState()
 }
 
 export async function listNodeRegistries(): Promise<NodeRegistry[]> {
@@ -689,8 +701,8 @@ export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRe
     await runCommand('nrm', ['add', name, url]).catch(() => {
       throw new Error('写入 nrm 镜像失败，本地镜像列表未保存，请检查 nrm 配置权限')
     })
-  await store.node.write({ ...state, registries })
-  return registries
+  const next = await updateNodeState((current) => ({ ...current, registries }))
+  return next.registries
 }
 
 export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
@@ -704,8 +716,8 @@ export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
       throw new Error('删除 nrm 镜像失败，本地镜像列表未变更，请检查 nrm 配置权限')
     })
   const registries = state.registries.filter((item) => item.id !== id)
-  await store.node.write({ ...state, registries })
-  return registries
+  const next = await updateNodeState((current) => ({ ...current, registries }))
+  return next.registries
 }
 
 export async function useNodeRegistry(id: string): Promise<NodeState> {
@@ -718,10 +730,11 @@ export async function useNodeRegistry(id: string): Promise<NodeState> {
   else await runCommand(state.packageManager, ['config', 'set', 'registry', target.url])
   const settings = await store.settings.read()
   await store.settings.write({ ...settings, node: { ...settings.node, registry: target.url } })
-  const next = await getNodeState()
-  next.registry = target.url
-  next.registries = next.registries.map((item) => ({ ...item, isCurrent: item.id === id }))
-  await store.node.write(next)
+  const next = await updateNodeState((current) => ({
+    ...current,
+    registry: target.url,
+    registries: current.registries.map((item) => ({ ...item, isCurrent: item.id === id }))
+  }))
   return next
 }
 
@@ -738,8 +751,8 @@ export async function testNodeRegistry(id: string): Promise<NodeRegistry[]> {
   const registries = state.registries.map((item) =>
     item.id === id ? { ...item, latencyMs: Date.now() - startedAt } : item
   )
-  await store.node.write({ ...state, registries })
-  return registries
+  const next = await updateNodeState((current) => ({ ...current, registries }))
+  return next.registries
 }
 
 function validatePackageName(value: string): string {
@@ -871,7 +884,7 @@ export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]>
     await readGlobalPackages(state.packageManager),
     state.registry
   )
-  await store.node.write({ ...state, globalPackages: packages })
+  await updateNodeState((current) => ({ ...current, globalPackages: packages }))
   const query = keyword.trim().toLowerCase()
   return query ? packages.filter((item) => item.name.toLowerCase().includes(query)) : packages
 }
@@ -884,7 +897,7 @@ export async function checkGlobalOutdated(): Promise<GlobalPackage[]> {
     await readGlobalPackages(state.packageManager),
     state.registry
   )
-  await store.node.write({ ...state, globalPackages: packages })
+  await updateNodeState((current) => ({ ...current, globalPackages: packages }))
   return packages
 }
 
@@ -1039,7 +1052,6 @@ async function resolveCachePaths(): Promise<
 }
 
 export async function scanNodeCaches(): Promise<NodeState> {
-  const state = await getNodeState()
   const caches: NodeCacheSnapshot[] = await Promise.all(
     (await resolveCachePaths()).map(async (item) => {
       const exists = await access(item.path)
@@ -1048,9 +1060,7 @@ export async function scanNodeCaches(): Promise<NodeState> {
       return { ...item, exists, sizeBytes: exists ? await directorySize(item.path) : 0 }
     })
   )
-  const next = { ...state, caches }
-  await store.node.write(next)
-  return next
+  return updateNodeState((current) => ({ ...current, caches }))
 }
 
 async function clearPackageManagerCache(id: CacheId): Promise<void> {

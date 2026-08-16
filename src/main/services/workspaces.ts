@@ -1,5 +1,5 @@
 import { access, lstat, readFile } from 'node:fs/promises'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { promisify } from 'node:util'
 import { BrowserWindow, shell } from 'electron'
@@ -17,6 +17,7 @@ import type {
   WorkspaceScanResult
 } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
+import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import { createId, requiredText } from './common'
 import { syncGitRules } from './git'
 import { isNodeRequirementSatisfied, parseProjectPackageManager } from './project-environment'
@@ -32,7 +33,6 @@ const scanConcurrency = 6
 const projectTasks = new Map<string, ProjectTask>()
 const projectProcesses = new Map<string, ChildProcessWithoutNullStreams>()
 const maxTaskLogs = 500
-let userShellEnvironmentPromise: Promise<NodeJS.ProcessEnv> | undefined
 
 const editorLaunchers: Record<
   ProjectEditorId,
@@ -76,38 +76,6 @@ async function fileExists(path: string): Promise<boolean> {
   return access(path)
     .then(() => true)
     .catch(() => false)
-}
-
-/**
- * macOS 从 Finder 启动应用时不会继承用户终端 PATH。
- * 读取一次登录 shell 环境并复用，确保 nvm、Homebrew 和 corepack 命令可用。
- */
-async function getUserShellEnvironment(): Promise<NodeJS.ProcessEnv> {
-  if (process.platform === 'win32') return { ...process.env }
-  userShellEnvironmentPromise ??= (async () => {
-    const pathMarker = '__ENV_TOOL_PATH__='
-    const nodeMarker = '__ENV_TOOL_NODE__='
-    try {
-      const { stdout } = await execFileAsync(
-        process.env.SHELL || '/bin/zsh',
-        [
-          '-ilc',
-          `printf '\n${pathMarker}%s\n${nodeMarker}' "$PATH"; node -p 'process.execPath' 2>/dev/null || true`
-        ],
-        { timeout: 5_000, maxBuffer: 1024 * 1024 }
-      )
-      const path = stdout.match(new RegExp(`${pathMarker}([^\\r\\n]+)`))?.[1]?.trim() ?? ''
-      const nodeExecutable =
-        stdout.match(new RegExp(`${nodeMarker}([^\\r\\n]+)`))?.[1]?.trim() ?? ''
-      const effectivePath = [nodeExecutable ? dirname(nodeExecutable) : '', path]
-        .filter(Boolean)
-        .join(':')
-      return effectivePath ? { ...process.env, PATH: effectivePath } : { ...process.env }
-    } catch {
-      return { ...process.env }
-    }
-  })()
-  return userShellEnvironmentPromise
 }
 
 async function commandVersion(command: string): Promise<string> {
@@ -236,9 +204,27 @@ async function readPackageSnapshot(path: string): Promise<{
 }
 
 async function readProjectRemote(path: string): Promise<string | undefined> {
-  return execFileAsync('git', ['-C', path, 'remote', 'get-url', 'origin'], { timeout: 5_000 })
+  return execFileAsync('git', ['-C', path, 'remote', 'get-url', 'origin'], {
+    timeout: 5_000,
+    env: await getUserShellEnvironment()
+  })
     .then(({ stdout }) => stdout.trim() || undefined)
     .catch(() => undefined)
+}
+
+function classifyGitError(error: unknown): Pick<Project, 'gitError' | 'gitStatus'> {
+  const value = error as NodeJS.ErrnoException & { stderr?: string }
+  const detail = `${value.stderr ?? ''} ${value.message ?? ''}`.toLowerCase()
+  if (value.code === 'ENOENT' || detail.includes('command not found')) {
+    return { gitStatus: 'git-missing', gitError: '未找到 Git，请先安装 Git' }
+  }
+  if (detail.includes('not a git repository')) {
+    return { gitStatus: 'not-repository' }
+  }
+  if (detail.includes('permission denied') || detail.includes('operation not permitted')) {
+    return { gitStatus: 'error', gitError: '没有权限读取 Git 状态' }
+  }
+  return { gitStatus: 'error', gitError: '无法读取 Git 状态' }
 }
 
 async function readGitStatus(
@@ -246,29 +232,59 @@ async function readGitStatus(
 ): Promise<
   Pick<
     Project,
-    'branch' | 'dirty' | 'gitError' | 'gitAhead' | 'gitBehind' | 'gitChangedFiles' | 'lastCommit'
+    | 'branch'
+    | 'dirty'
+    | 'gitError'
+    | 'gitStatus'
+    | 'gitAhead'
+    | 'gitBehind'
+    | 'gitChangedFiles'
+    | 'lastCommit'
   >
 > {
+  const env = await getUserShellEnvironment()
   try {
-    const [{ stdout: branch }, { stdout: status }, { stdout: divergence }, { stdout: lastCommit }] =
-      await Promise.all([
-        execFileAsync('git', ['-C', path, 'branch', '--show-current'], { timeout: 8_000 }),
-        execFileAsync('git', ['-C', path, 'status', '--porcelain'], { timeout: 8_000 }),
-        execFileAsync(
-          'git',
-          ['-C', path, 'rev-list', '--left-right', '--count', 'HEAD...@{upstream}'],
-          {
-            timeout: 8_000
-          }
-        ).catch(() => ({ stdout: '0\t0', stderr: '' })),
-        execFileAsync('git', ['-C', path, 'log', '-1', '--pretty=%h · %s'], {
-          timeout: 8_000
-        }).catch(() => ({ stdout: '', stderr: '' }))
-      ])
+    await execFileAsync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
+      timeout: 8_000,
+      env
+    })
+  } catch (error) {
+    return classifyGitError(error)
+  }
+  let gitStatus: Project['gitStatus'] = 'ready'
+  try {
+    await execFileAsync('git', ['-C', path, 'remote', 'get-url', 'origin'], {
+      timeout: 8_000,
+      env
+    })
+  } catch {
+    gitStatus = 'no-remote'
+  }
+  try {
+    const [{ stdout: branch }, { stdout: status }, { stdout: lastCommit }] = await Promise.all([
+      execFileAsync('git', ['-C', path, 'branch', '--show-current'], { timeout: 8_000, env }),
+      execFileAsync('git', ['-C', path, 'status', '--porcelain'], { timeout: 8_000, env }),
+      execFileAsync('git', ['-C', path, 'log', '-1', '--pretty=%h · %s'], {
+        timeout: 8_000,
+        env
+      }).catch(() => ({ stdout: '', stderr: '' }))
+    ])
+    let divergence = '0\t0'
+    try {
+      const result = await execFileAsync(
+        'git',
+        ['-C', path, 'rev-list', '--left-right', '--count', 'HEAD...@{upstream}'],
+        { timeout: 8_000, env }
+      )
+      divergence = result.stdout
+    } catch {
+      if (gitStatus === 'ready') gitStatus = 'no-upstream'
+    }
     const changedFiles = status.split('\n').filter(Boolean).length
     const [ahead = 0, behind = 0] = divergence.trim().split(/\s+/).map(Number)
     return {
       branch: branch.trim() || '分离头指针',
+      gitStatus,
       dirty: changedFiles > 0,
       gitChangedFiles: changedFiles,
       gitAhead: Number.isFinite(ahead) ? ahead : 0,
@@ -276,7 +292,7 @@ async function readGitStatus(
       lastCommit: lastCommit.trim() || undefined
     }
   } catch (error) {
-    return { gitError: error instanceof Error ? '无法读取 Git 状态' : 'Git 状态读取失败' }
+    return classifyGitError(error)
   }
 }
 
@@ -300,6 +316,7 @@ async function scanProject(
       lastScannedAt: new Date().toISOString()
     }
   }
+  const gitSnapshot = await readGitStatus(path)
   return {
     ...previous,
     id: previous?.id ?? createId('project'),
@@ -307,6 +324,7 @@ async function scanProject(
     name: previous?.name ?? basename(path),
     path,
     source: previous?.source ?? 'scanned',
+    ...gitSnapshot,
     directoryExists: true,
     lastScannedAt: new Date().toISOString()
   }
@@ -527,6 +545,7 @@ async function buildProjectDetail(project: Project, workspace: Workspace): Promi
   const git: ProjectDetail['git'] = {
     branch: nextProject.branch,
     remote: nextProject.remote,
+    status: nextProject.gitStatus,
     dirty: Boolean(nextProject.dirty),
     changedFiles: nextProject.gitChangedFiles ?? 0,
     ahead: nextProject.gitAhead ?? 0,
@@ -673,8 +692,7 @@ export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanRe
       .length,
     total: discovery.total,
     truncated: discovery.truncated,
-    // 保留字段以兼容旧版 IPC 消费方；目录扫描不再读取 Git 状态。
-    gitErrorCount: 0
+    gitErrorCount: projects.filter((project) => Boolean(project.gitError)).length
   }
 }
 

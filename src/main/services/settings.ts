@@ -1,14 +1,23 @@
 import { app, dialog, shell } from 'electron'
 import { cp, lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AppSettings, DataExport, ThemeName } from '@shared/domain'
 import type { DataStats, EnvironmentCheck, EnvironmentTool } from '@shared/domain'
 import { getAppPaths } from '@main/infrastructure/paths'
-import { getStoreDirectory, setStoreDirectory, store } from '@main/infrastructure/store'
+import {
+  getStoreDirectory,
+  setStoreDirectory,
+  store,
+  withDataMutation
+} from '@main/infrastructure/store'
 import { setMinimizeToTray } from '@main/tray'
 import { setLogLevel } from '@main/infrastructure/logger'
+import {
+  getUserShellEnvironment,
+  resetUserShellEnvironment
+} from '@main/infrastructure/shell-environment'
 import { removeGitRuleInclude, syncGitRules } from '@main/services/git'
 import { listSshKeys } from '@main/services/ssh'
 
@@ -160,13 +169,15 @@ export async function changeDataDirectory(): Promise<AppSettings> {
 }
 
 export async function clearBusinessData(): Promise<AppSettings> {
-  await store.hosts.write([])
-  await store.sshKeys.write([])
-  await store.gitIdentities.write([])
-  await store.workspaces.write([])
-  await store.templates.write([])
-  await syncGitRules()
-  return store.settings.read()
+  return withDataMutation(async () => {
+    await store.hosts.write([])
+    await store.sshKeys.write([])
+    await store.gitIdentities.write([])
+    await store.workspaces.write([])
+    await store.templates.write([])
+    await syncGitRules()
+    return store.settings.read()
+  })
 }
 
 async function directoryStats(
@@ -266,17 +277,22 @@ export async function installEnvironmentTool(id: string): Promise<EnvironmentChe
   if (!tool) throw new Error('未知的环境工具')
   if (!installer) throw new Error(`${tool.name} 不支持自动安装，请使用官方安装指引`)
   try {
+    const env = await getUserShellEnvironment()
     await execFileAsync(installer.command, installer.args, {
       timeout: 120_000,
       maxBuffer: 8 * 1024 * 1024,
-      env: { ...process.env, CI: '1', npm_config_yes: 'true' }
+      env: { ...env, CI: '1', npm_config_yes: 'true' }
     })
   } catch (error) {
     const detail = error instanceof Error ? error.message : '安装命令执行失败'
     throw new Error(`${tool.name} 安装失败，请检查网络、权限和运行时环境：${detail}`)
   }
   try {
-    const { stdout, stderr } = await execFileAsync(tool.command, tool.args, { timeout: 10_000 })
+    resetUserShellEnvironment()
+    const { stdout, stderr } = await execFileAsync(tool.command, tool.args, {
+      timeout: 10_000,
+      env: await getUserShellEnvironment()
+    })
     const detail = `${stdout}${stderr}`.trim()
     return {
       id: tool.id,
@@ -294,7 +310,8 @@ export async function installEnvironmentTool(id: string): Promise<EnvironmentChe
 /** 逐项执行常见开发工具检测，并保留原始输出用于排障。 */
 export async function runEnvironmentCheck(
   shouldStop: () => boolean = () => false,
-  onUpdated?: (results: EnvironmentCheck[]) => void
+  onUpdated?: (results: EnvironmentCheck[]) => void,
+  onProcess?: (process: ChildProcess | undefined) => void
 ): Promise<EnvironmentCheck[]> {
   const results: EnvironmentCheck[] = []
   for (const [index, item] of environmentCommands.entries()) {
@@ -311,11 +328,34 @@ export async function runEnvironmentCheck(
       break
     }
     try {
-      const { stdout, stderr } = await execFileAsync(item.command, item.args, {
-        timeout: 10_000,
-        maxBuffer: 1024 * 1024
-      })
+      const env = await getUserShellEnvironment()
+      const { stdout, stderr, cancelled } = await runEnvironmentCommand(
+        item.command,
+        item.args,
+        env,
+        shouldStop,
+        onProcess
+      )
       const detail = `${stdout}${stderr}`.trim()
+      if (cancelled) {
+        results.push({
+          id: item.id,
+          name: item.name,
+          command: `${item.command} ${item.args.join(' ')}`,
+          status: 'cancelled',
+          detail: '用户已停止当前检测'
+        })
+        const skipped = environmentCommands.slice(index + 1).map((remaining) => ({
+          id: remaining.id,
+          name: remaining.name,
+          command: `${remaining.command} ${remaining.args.join(' ')}`,
+          status: 'skipped' as const,
+          detail: '用户已停止后续检测'
+        }))
+        results.push(...skipped)
+        onUpdated?.([...results])
+        break
+      }
       results.push({
         id: item.id,
         name: item.name,
@@ -338,4 +378,50 @@ export async function runEnvironmentCheck(
     onUpdated?.([...results])
   }
   return results
+}
+
+/** 使用可终止的子进程执行检测，避免停止按钮只能阻止下一项而无法终止当前命令。 */
+async function runEnvironmentCommand(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  shouldStop: () => boolean,
+  onProcess?: (process: ChildProcess | undefined) => void
+): Promise<{ stdout: string; stderr: string; cancelled: boolean }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, 10_000)
+    onProcess?.(child)
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout = `${stdout}${chunk}`.slice(-1024 * 1024)
+    })
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderr = `${stderr}${chunk}`.slice(-1024 * 1024)
+    })
+    child.once('error', (error) => {
+      clearTimeout(timeout)
+      onProcess?.(undefined)
+      reject(error)
+    })
+    child.once('close', (code, signal) => {
+      clearTimeout(timeout)
+      onProcess?.(undefined)
+      if (shouldStop() && !timedOut) {
+        resolve({ stdout, stderr, cancelled: true })
+        return
+      }
+      if (code === 0 && !timedOut) {
+        resolve({ stdout, stderr, cancelled: false })
+        return
+      }
+      const suffix = timedOut ? '命令执行超时' : `进程退出（${signal ?? code ?? '未知'}）`
+      reject(new Error(stderr.trim() || suffix))
+    })
+  })
 }

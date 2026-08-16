@@ -60,6 +60,8 @@ export function WorkspacesPage(): React.JSX.Element {
   }>()
   const [savingRemark, setSavingRemark] = useState(false)
   const deepLinkHandled = useRef(false)
+  // 刷新可能由用户连续触发；只允许最后一次请求提交结果，避免旧响应覆盖新数据。
+  const loadRequestId = useRef(0)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
@@ -67,21 +69,56 @@ export function WorkspacesPage(): React.JSX.Element {
     rendererLogger.error('工作区操作失败', { error: message })
   }
   const load = (): void => {
-    void Promise.all([
-      window.api?.workspaces.list(),
-      window.api?.git.getState(),
-      window.api?.ssh.list(),
-      window.api?.templates.list()
+    const requestId = ++loadRequestId.current
+    void Promise.allSettled([
+      Promise.resolve(window.api?.workspaces.list()),
+      Promise.resolve(window.api?.git.getState()),
+      Promise.resolve(window.api?.ssh.list()),
+      Promise.resolve(window.api?.templates.list())
     ])
-      .then(([workspaceValue, gitState, sshValue, templateValue]) => {
-        if (workspaceValue) setWorkspaces(workspaceValue)
-        if (workspaceValue) setSelectedWorkspaceId((current) => current ?? workspaceValue[0]?.id)
-        if (gitState) setIdentities(gitState.identities)
-        if (sshValue) setSshKeys(sshValue)
-        if (templateValue) setTemplates(templateValue)
+      .then(([workspaceResult, gitResult, sshResult, templateResult]) => {
+        if (requestId !== loadRequestId.current) return
+        if (workspaceResult.status === 'rejected') {
+          report(workspaceResult.reason)
+        } else if (workspaceResult.value) {
+          const nextWorkspaces = workspaceResult.value
+          setWorkspaces(nextWorkspaces)
+          setSelectedWorkspaceId((current) =>
+            current && nextWorkspaces.some((item) => item.id === current)
+              ? current
+              : nextWorkspaces[0]?.id
+          )
+          setSelectedProjectId((current) => {
+            if (!current) return undefined
+            return nextWorkspaces.some((workspace) =>
+              workspace.projects.some((item) => item.id === current)
+            )
+              ? current
+              : undefined
+          })
+        }
+        const optionalResults = [
+          ['Git 身份', gitResult],
+          ['SSH 密钥', sshResult],
+          ['项目模板', templateResult]
+        ] as const
+        for (const [label, result] of optionalResults) {
+          if (result.status === 'rejected') {
+            const message =
+              result.reason instanceof Error ? result.reason.message : String(result.reason)
+            toast.warning(`${label}加载失败：${message}`)
+            rendererLogger.warn(`${label}加载失败`, { error: message })
+          }
+        }
+        if (gitResult.status === 'fulfilled' && gitResult.value)
+          setIdentities(gitResult.value.identities)
+        if (sshResult.status === 'fulfilled' && sshResult.value) setSshKeys(sshResult.value)
+        if (templateResult.status === 'fulfilled' && templateResult.value)
+          setTemplates(templateResult.value)
       })
-      .catch(report)
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (requestId === loadRequestId.current) setLoading(false)
+      })
   }
   useEffect(load, [])
   useEffect(() => {

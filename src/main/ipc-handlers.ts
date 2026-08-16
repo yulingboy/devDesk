@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog } from 'electron'
+import type { ChildProcess } from 'node:child_process'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { RendererErrorReport, RendererLogEntry, RuntimeInfo, WindowState } from '@shared/types'
 import type {
@@ -330,6 +331,7 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.settings.changeDataDirectory, () => changeDataDirectory())
   registerIpcHandler(IPC_CHANNELS.settings.clearBusinessData, () => clearBusinessData())
   const stoppedEnvironmentChecks = new Set<number>()
+  const activeEnvironmentChecks = new Map<number, ChildProcess>()
   registerIpcHandler(IPC_CHANNELS.settings.environmentCheck, (event) => {
     stoppedEnvironmentChecks.delete(event.sender.id)
     return runEnvironmentCheck(
@@ -337,11 +339,19 @@ export function registerApplicationIpc(): void {
       (checks) => {
         if (!event.sender.isDestroyed())
           event.sender.send(IPC_CHANNELS.settings.environmentCheckUpdated, checks)
+      },
+      (child) => {
+        if (child) activeEnvironmentChecks.set(event.sender.id, child)
+        else activeEnvironmentChecks.delete(event.sender.id)
       }
-    ).finally(() => stoppedEnvironmentChecks.delete(event.sender.id))
+    ).finally(() => {
+      stoppedEnvironmentChecks.delete(event.sender.id)
+      activeEnvironmentChecks.delete(event.sender.id)
+    })
   })
   registerIpcHandler<void>(IPC_CHANNELS.settings.stopEnvironmentCheck, (event) => {
     stoppedEnvironmentChecks.add(event.sender.id)
+    activeEnvironmentChecks.get(event.sender.id)?.kill()
   })
   registerIpcHandler(IPC_CHANNELS.settings.openEnvironmentGuide, (_, id) =>
     openEnvironmentGuide(String(id))

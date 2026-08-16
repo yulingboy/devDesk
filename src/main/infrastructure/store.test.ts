@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { NodeState } from '@shared/domain'
-import { initializeStore, store } from './store'
+import { initializeStore, store, withDataMutation } from './store'
 
 const temporaryDirectories: string[] = []
 
@@ -33,6 +33,22 @@ afterEach(async () => {
 })
 
 describe('数据存储', () => {
+  it('会串行执行跨文件数据变更操作', async () => {
+    const order: string[] = []
+    await Promise.all([
+      withDataMutation(async () => {
+        order.push('first-start')
+        await Promise.resolve()
+        order.push('first-end')
+      }),
+      withDataMutation(async () => {
+        order.push('second-start')
+        order.push('second-end')
+      })
+    ])
+    expect(order).toEqual(['first-start', 'first-end', 'second-start', 'second-end'])
+  })
+
   it('会串行写入同一状态文件并保留有效 JSON', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
     temporaryDirectories.push(directory)

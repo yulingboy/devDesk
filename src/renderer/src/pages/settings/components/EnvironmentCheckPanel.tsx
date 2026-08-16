@@ -22,6 +22,7 @@ export function EnvironmentCheckPanel({
   const [checks, setChecks] = useState<EnvironmentCheck[]>([])
   const [tools, setTools] = useState<EnvironmentTool[]>([])
   const [running, setRunning] = useState(false)
+  const [stopping, setStopping] = useState(false)
 
   useEffect(() => {
     void window.api?.settings.environmentTools().then(setTools).catch(report)
@@ -34,16 +35,21 @@ export function EnvironmentCheckPanel({
       .environmentCheck()
       .then(setChecks)
       .catch(report)
-      .finally(() => setRunning(false))
+      .finally(() => {
+        setRunning(false)
+        setStopping(false)
+      })
   }
   const stop = (): void => {
-    void window.api?.settings
-      .stopEnvironmentCheck()
-      .then(() => setRunning(false))
-      .catch(report)
+    setStopping(true)
+    void window.api?.settings.stopEnvironmentCheck().catch((error) => {
+      setStopping(false)
+      report(error)
+    })
   }
   const passed = checks.filter((item) => item.status === 'passed').length
   const failed = checks.filter((item) => item.status === 'failed').length
+  const cancelled = checks.filter((item) => item.status === 'cancelled').length
   const skipped = checks.filter((item) => item.status === 'skipped').length
 
   return (
@@ -54,9 +60,9 @@ export function EnvironmentCheckPanel({
           <CardDescription>逐项执行真实版本命令，并保留命令输出用于排障。</CardDescription>
         </div>
         {running ? (
-          <Button onClick={stop} variant="secondary">
+          <Button disabled={stopping} onClick={stop} variant="secondary">
             <Square size={14} />
-            停止后续检测
+            {stopping ? '正在停止当前检测' : '停止检测'}
           </Button>
         ) : (
           <Button onClick={run} variant="secondary">
@@ -68,7 +74,8 @@ export function EnvironmentCheckPanel({
       <CardContent className="space-y-2">
         {!!checks.length && (
           <p className="pb-2 text-xs text-slate-500">
-            通过 {passed} 项，失败 {failed} 项{skipped ? `，已跳过 ${skipped} 项` : ''}
+            通过 {passed} 项，失败 {failed} 项{cancelled ? `，已取消 ${cancelled} 项` : ''}
+            {skipped ? `，已跳过 ${skipped} 项` : ''}
           </p>
         )}
         <Accordion className="space-y-2" type="multiple">
@@ -77,6 +84,8 @@ export function EnvironmentCheckPanel({
               <AccordionTrigger className="gap-3">
                 {item.status === 'passed' ? (
                   <CheckCircle2 className="text-emerald-600" size={17} />
+                ) : item.status === 'cancelled' ? (
+                  <Square className="text-amber-500" size={16} />
                 ) : (
                   <XCircle className="text-red-500" size={17} />
                 )}
@@ -84,9 +93,11 @@ export function EnvironmentCheckPanel({
                 <Badge variant={item.status === 'passed' ? 'success' : 'secondary'}>
                   {item.status === 'passed'
                     ? '通过'
-                    : item.status === 'skipped'
-                      ? '已跳过'
-                      : '未通过'}
+                    : item.status === 'cancelled'
+                      ? '已取消'
+                      : item.status === 'skipped'
+                        ? '已跳过'
+                        : '未通过'}
                 </Badge>
                 <span className="ml-auto truncate text-xs text-slate-500">
                   {item.version || '未检测到'}

@@ -123,7 +123,22 @@ export function ProjectDetailDrawer({
               </dd>
               <dt className="text-slate-400">备注</dt>
               <dd className="truncate text-slate-700">{project.remark || '未填写备注'}</dd>
+              <dt className="text-slate-400">Git 状态</dt>
+              <dd className="flex min-w-0 items-center gap-1.5 text-slate-700">
+                <Badge className={project.gitError ? 'text-red-600' : undefined} variant="outline">
+                  {formatGitStatus(project.gitStatus)}
+                </Badge>
+                {project.branch && (
+                  <span className="truncate font-mono text-[11px]">{project.branch}</span>
+                )}
+                {project.dirty && <span className="text-[11px] text-amber-600">有未提交变更</span>}
+              </dd>
             </dl>
+            {project.gitError && (
+              <Alert className="mt-2" variant="warning">
+                <AlertDescription>{project.gitError}</AlertDescription>
+              </Alert>
+            )}
           </section>
 
           <Separator />
@@ -244,4 +259,23 @@ function formatRelativePath(projectPath: string, rootPath: string): string {
   const normalizedRoot = rootPath.replace(/\/$/, '')
   if (!projectPath.startsWith(`${normalizedRoot}/`)) return '外部目录'
   return `./${projectPath.slice(normalizedRoot.length + 1)}`
+}
+
+function formatGitStatus(status: Project['gitStatus']): string {
+  switch (status) {
+    case 'ready':
+      return '正常'
+    case 'not-repository':
+      return '非 Git 仓库'
+    case 'git-missing':
+      return '未安装 Git'
+    case 'no-remote':
+      return '无远程仓库'
+    case 'no-upstream':
+      return '未设置上游'
+    case 'error':
+      return '读取失败'
+    default:
+      return '未检测'
+  }
 }

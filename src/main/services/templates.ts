@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ProjectCreateOptions, ProjectTemplate, Workspace } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
+import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import { createId, requiredText } from './common'
 import { scanWorkspace } from './workspaces'
 
@@ -86,7 +87,7 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
     if (template.type === 'git')
       await execFileAsync('git', ['clone', '--depth', '1', '--no-tags', template.source, target], {
         timeout: 120_000,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+        env: { ...(await getUserShellEnvironment()), GIT_TERMINAL_PROMPT: '0' }
       })
     else {
       await cp(template.source, target, {

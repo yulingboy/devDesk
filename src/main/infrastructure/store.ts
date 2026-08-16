@@ -19,6 +19,8 @@ const schemaVersion = 1 as const
 let storeDirectory: string | undefined
 let settingsDirectory: string | undefined
 const pendingWrites = new Map<string, Promise<void>>()
+// 导入、清空等跨文件操作需要互斥，避免两个危险操作交叉覆盖部分文件。
+let dataMutationQueue: Promise<void> = Promise.resolve()
 
 const emptySettings = (dataDirectory: string): AppSettings => ({
   schemaVersion,
@@ -50,6 +52,20 @@ export function getStoreDirectory(): string {
 /** 数据目录迁移完成后切换后续读写目标。 */
 export function setStoreDirectory(directory: string): void {
   storeDirectory = directory
+}
+
+export async function withDataMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const previous = dataMutationQueue
+  let release!: () => void
+  dataMutationQueue = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await previous.catch(() => undefined)
+  try {
+    return await mutation()
+  } finally {
+    release()
+  }
 }
 
 function getSettingsDirectory(): string {
@@ -231,25 +247,42 @@ export const store = {
   },
   async importData(value: DataExport): Promise<void> {
     validateDataExport(value)
-    const previous = await store.exportData()
-    try {
-      await writeImportedData(value)
-    } catch (error) {
-      // 多文件存储无法由文件系统提供跨文件事务，失败时立即回滚到完整导入前快照。
-      await writeImportedData(previous).catch(() => undefined)
-      throw new Error(
-        `导入数据失败，已恢复导入前数据：${error instanceof Error ? error.message : '未知错误'}`
-      )
-    }
+    await withDataMutation(async () => {
+      const previous = await store.exportData()
+      try {
+        await writeImportedData(value)
+      } catch (error) {
+        // 多文件存储无法由文件系统提供跨文件事务，失败时立即回滚到完整导入前快照。
+        try {
+          await writeImportedData(previous)
+        } catch (rollbackError) {
+          console.error('导入数据回滚失败', rollbackError)
+          throw new Error(
+            `导入数据失败且回滚失败，请立即检查数据目录：${
+              error instanceof Error ? error.message : '未知错误'
+            }`
+          )
+        }
+        throw new Error(
+          `导入数据失败，已恢复导入前数据：${error instanceof Error ? error.message : '未知错误'}`
+        )
+      }
+    })
   }
 }
 
 function validateDataExport(value: unknown): asserts value is DataExport {
   if (!isRecord(value) || value.schemaVersion !== schemaVersion)
     throw new Error('备份文件版本不受支持')
-  const arrayFields = ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates']
+  const arrayFields = ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates'] as const
   if (!isRecord(value.settings) || arrayFields.some((field) => !Array.isArray(value[field]))) {
     throw new Error('备份文件结构无效，请选择由开发工坊导出的 JSON 文件')
+  }
+  for (const field of arrayFields) {
+    const items = value[field]
+    if (!Array.isArray(items) || items.some((item) => !isRecord(item))) {
+      throw new Error(`备份文件中的 ${field} 数据无效`)
+    }
   }
 }
 

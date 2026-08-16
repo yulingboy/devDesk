@@ -101,6 +101,8 @@ export interface Project {
   branch?: string
   dirty?: boolean
   gitError?: string
+  /** Git 状态读取结果，区分非仓库、无远程和实际读取失败。 */
+  gitStatus?: 'ready' | 'not-repository' | 'git-missing' | 'no-remote' | 'no-upstream' | 'error'
   /** 以下字段均从项目目录派生，旧项目记录缺失时会在下次扫描补齐。 */
   packageName?: string
   packageVersion?: string
@@ -197,6 +199,7 @@ export interface ProjectDetail {
   git: {
     branch?: string
     remote?: string
+    status?: Project['gitStatus']
     dirty: boolean
     changedFiles: number
     ahead: number
@@ -313,7 +316,7 @@ export interface EnvironmentCheck {
   id: string
   name: string
   command: string
-  status: 'passed' | 'failed' | 'skipped'
+  status: 'passed' | 'failed' | 'cancelled' | 'skipped'
   version?: string
   detail: string
 }

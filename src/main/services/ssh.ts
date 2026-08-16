@@ -180,5 +180,8 @@ export async function removeSshKey(id: string): Promise<SSHKey[]> {
     )
   )
   await store.sshKeys.write(existing.filter((item) => item.id !== id))
+  // 删除密钥会改变 Git profile 中的 sshCommand，必须立即重建受管规则。
+  const { syncGitRules } = await import('./git')
+  await syncGitRules()
   return listSshKeys()
 }

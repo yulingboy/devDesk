@@ -87,7 +87,7 @@ export function HomePage(): React.JSX.Element {
                 开发工作台
               </Badge>
               <h1 className="text-base font-semibold text-slate-800">
-                {greeting}，{snapshot?.username ?? '开发者'}
+                {greeting}，{snapshot?.username ?? '开发者'}，开始工作
               </h1>
               <p className="mt-1 text-xs text-slate-500">{encouragement}</p>
               <div className="mt-1.5 text-[11px] text-slate-400">{dateText}</div>

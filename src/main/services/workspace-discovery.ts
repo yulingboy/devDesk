@@ -55,14 +55,34 @@ function shouldInspectDirectory(name: string): boolean {
 }
 
 async function hasProjectMarker(path: string): Promise<boolean> {
-  const checks = await Promise.all(
-    projectMarkers.map((marker) =>
-      access(resolve(path, marker))
+  // 命中一个标记即可结束，避免每个目录同时发起全部 access 请求。
+  for (const marker of projectMarkers) {
+    if (
+      await access(resolve(path, marker))
         .then(() => true)
         .catch(() => false)
     )
-  )
-  return checks.some(Boolean)
+      return true
+  }
+  return false
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const result = new Array<R>(items.length)
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = cursor++
+      if (index >= items.length) return
+      result[index] = await mapper(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return result
 }
 
 /** 只检查项目目录的下一层，子项目不会继续递归形成无限层级。 */
@@ -76,12 +96,10 @@ export async function discoverProjectSubprojectPaths(
     .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
   const inspectedDirectories = directories.slice(0, limit)
   const paths = (
-    await Promise.all(
-      inspectedDirectories.map(async (entry) => {
-        const path = resolve(projectPath, entry.name)
-        return (await hasProjectMarker(path)) ? path : undefined
-      })
-    )
+    await mapWithConcurrency(inspectedDirectories, 16, async (entry) => {
+      const path = resolve(projectPath, entry.name)
+      return (await hasProjectMarker(path)) ? path : undefined
+    })
   ).filter((path): path is string => Boolean(path))
   return { paths, truncated: directories.length > inspectedDirectories.length }
 }
@@ -100,16 +118,14 @@ export async function discoverWorkspaceProjectPaths(
     .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name))
     .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
   const inspectedDirectories = directDirectories.slice(0, limit)
-  const projects = await Promise.all(
-    inspectedDirectories.map(async (entry) => {
-      const directPath = resolve(rootPath, entry.name)
-      const nested = await discoverProjectSubprojectPaths(directPath, subprojectLimit)
-      return {
-        project: { path: directPath, subprojectPaths: nested.paths },
-        truncated: nested.truncated
-      }
-    })
-  )
+  const projects = await mapWithConcurrency(inspectedDirectories, 16, async (entry) => {
+    const directPath = resolve(rootPath, entry.name)
+    const nested = await discoverProjectSubprojectPaths(directPath, subprojectLimit)
+    return {
+      project: { path: directPath, subprojectPaths: nested.paths },
+      truncated: nested.truncated
+    }
+  })
   return {
     projects: projects.map((item) => item.project),
     total: directDirectories.length,
