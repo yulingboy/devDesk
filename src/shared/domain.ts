@@ -247,6 +247,8 @@ export interface NodeTask {
 
 export interface NodeState {
   currentVersion: string
+  /** 工作台主动切换的版本；不修改 Electron 自身运行时或已经打开的终端。 */
+  activeVersion?: string
   defaultVersion: string
   nodePath: string
   nvmAvailable: boolean
@@ -269,6 +271,8 @@ export interface NodeRuntimeCapabilities {
   canSwitch: boolean
   canSetDefault: boolean
   canUseInTerminal: boolean
+  /** 只有 nvm 命令实际可执行时才返回版本号。 */
+  nvmVersion?: string
   message?: string
 }
 

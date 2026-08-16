@@ -20,6 +20,7 @@ import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
+import { Field } from '@/components/ui/form'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { SearchInput } from '@/components/SearchInput'
 import {
@@ -310,33 +311,30 @@ export function HostsPage(): React.JSX.Element {
         title={draft.id ? '编辑 Host 记录' : '新增 Host 记录'}
       >
         <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="host-ip">IP 地址</Label>
+          <Field htmlFor="host-ip" label="IP 地址">
             <Input
               id="host-ip"
               onChange={(event) => setDraft({ ...draft, ip: event.target.value })}
               placeholder="127.0.0.1"
               value={draft.ip}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="host-domain">域名</Label>
+          </Field>
+          <Field htmlFor="host-domain" label="域名">
             <Input
               id="host-domain"
               onChange={(event) => setDraft({ ...draft, domain: event.target.value })}
               placeholder="dev.example.com"
               value={draft.domain}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="host-remark">备注</Label>
+          </Field>
+          <Field htmlFor="host-remark" label="备注">
             <Input
               id="host-remark"
               onChange={(event) => setDraft({ ...draft, remark: event.target.value })}
               placeholder="可选"
               value={draft.remark}
             />
-          </div>
+          </Field>
           <div className="flex items-center gap-2 text-sm">
             <Checkbox
               checked={draft.enabled}

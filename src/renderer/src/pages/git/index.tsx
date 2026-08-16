@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Field } from '@/components/ui/form'
 import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
@@ -278,51 +278,45 @@ export function GitPage(): React.JSX.Element {
                 保存后会立即写入 {state?.global.sourceFile || '~/.gitconfig'}。
               </AlertDescription>
             </Alert>
-            <div className="space-y-2">
-              <Label htmlFor="global-name">用户名</Label>
+            <Field htmlFor="global-name" label="用户名">
               <Input
                 id="global-name"
                 onChange={(event) => setGlobal({ ...global, username: event.target.value })}
                 value={global.username}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="global-email">邮箱</Label>
+            </Field>
+            <Field htmlFor="global-email" label="邮箱">
               <Input
                 id="global-email"
                 onChange={(event) => setGlobal({ ...global, email: event.target.value })}
                 value={global.email}
               />
-            </div>
+            </Field>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="identity-name">身份名称</Label>
+            <Field htmlFor="identity-name" label="身份名称">
               <Input
                 id="identity-name"
                 onChange={(event) => setIdentity({ ...identity, name: event.target.value })}
                 value={identity.name}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="identity-user">用户名</Label>
+            </Field>
+            <Field htmlFor="identity-user" label="用户名">
               <Input
                 id="identity-user"
                 onChange={(event) => setIdentity({ ...identity, username: event.target.value })}
                 value={identity.username}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="identity-email">邮箱</Label>
+            </Field>
+            <Field htmlFor="identity-email" label="邮箱">
               <Input
                 id="identity-email"
                 onChange={(event) => setIdentity({ ...identity, email: event.target.value })}
                 value={identity.email}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="identity-key">SSH 密钥</Label>
+            </Field>
+            <Field htmlFor="identity-key" label="SSH 密钥">
               <Select
                 onValueChange={(value) =>
                   setIdentity({ ...identity, sshKeyId: value === 'none' ? undefined : value })
@@ -341,7 +335,7 @@ export function GitPage(): React.JSX.Element {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
           </div>
         )}
       </Drawer>

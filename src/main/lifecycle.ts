@@ -11,6 +11,7 @@ import { startOverviewSampler, stopOverviewSampler } from '@main/services/overvi
 import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } from '@main/tray'
 import { getSettings } from '@main/services/settings'
 import { stopAllProjectTasks } from '@main/services/workspaces'
+import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 
 const windowPool = new WindowPool()
 
@@ -28,6 +29,8 @@ export function registerAppLifecycle(): void {
 
     registerApplicationIpc()
     const mainWindow = windowPool.open('main', createMainWindow)
+    // Finder/Dock 启动时后台预热登录 Shell，避免首次打开开发工具页面才支付 PATH 探测耗时。
+    void getUserShellEnvironment()
     void getSettings()
       .then((settings) => {
         setMinimizeToTray(settings.general.minimizeToTray)

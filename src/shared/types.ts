@@ -172,7 +172,9 @@ export interface AppApi {
     removeRegistry: (id: string) => Promise<NodeRegistry[]>
     useRegistry: (id: string) => Promise<NodeState>
     testRegistry: (id: string) => Promise<NodeRegistry[]>
+    installNrm: () => Promise<NodeState>
     packages: (keyword?: string) => Promise<GlobalPackage[]>
+    syncGlobalPackages: (sourceVersion: string) => Promise<GlobalPackage[]>
     setPackageManager: (manager: string) => Promise<NodeState>
     setPackageRegistry: (manager: string, registry: string) => Promise<NodeState>
     installPackage: (name: string) => Promise<GlobalPackage[]>

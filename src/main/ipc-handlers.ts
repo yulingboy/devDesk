@@ -100,7 +100,9 @@ import {
   removeNodeRegistry,
   useNodeRegistry,
   testNodeRegistry,
+  installNrm,
   listGlobalPackages,
+  syncGlobalPackages,
   installGlobalPackage,
   removeGlobalPackage,
   updateGlobalPackage,
@@ -294,8 +296,12 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.node.removeRegistry, (_, id) => removeNodeRegistry(String(id)))
   registerIpcHandler(IPC_CHANNELS.node.useRegistry, (_, id) => useNodeRegistry(String(id)))
   registerIpcHandler(IPC_CHANNELS.node.testRegistry, (_, id) => testNodeRegistry(String(id)))
+  registerIpcHandler(IPC_CHANNELS.node.installNrm, () => installNrm())
   registerIpcHandler(IPC_CHANNELS.node.packages, (_, keyword) =>
     listGlobalPackages(String(keyword ?? ''))
+  )
+  registerIpcHandler(IPC_CHANNELS.node.syncGlobalPackages, (_, sourceVersion) =>
+    syncGlobalPackages(String(sourceVersion))
   )
   registerIpcHandler(IPC_CHANNELS.node.setPackageManager, (_, manager) =>
     setPackageManager(String(manager))

@@ -6,8 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Field } from '@/components/ui/form'
 import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
@@ -249,23 +249,21 @@ export function SshPage(): React.JSX.Element {
       >
         {drawerMode !== 'generate' ? (
           <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="key-name">名称</Label>
+            <Field htmlFor="key-name" label="名称">
               <Input
                 id="key-name"
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                 value={draft.name}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="key-value">公钥</Label>
+            </Field>
+            <Field htmlFor="key-value" label="公钥">
               <Textarea
                 id="key-value"
                 onChange={(event) => setDraft({ ...draft, publicKey: event.target.value })}
                 placeholder="ssh-ed25519 AAAA..."
                 value={draft.publicKey}
               />
-            </div>
+            </Field>
           </div>
         ) : (
           <div className="space-y-3">
@@ -274,8 +272,7 @@ export function SshPage(): React.JSX.Element {
                 不设置口令会降低私钥安全性，重要密钥建议配置口令。
               </AlertDescription>
             </Alert>
-            <div className="space-y-2">
-              <Label htmlFor="generate-name">文件名</Label>
+            <Field htmlFor="generate-name" label="文件名">
               <Input
                 id="generate-name"
                 onChange={(event) =>
@@ -283,9 +280,8 @@ export function SshPage(): React.JSX.Element {
                 }
                 value={generateOptions.name}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="generate-algorithm">算法</Label>
+            </Field>
+            <Field htmlFor="generate-algorithm" label="算法">
               <Select
                 value={generateOptions.algorithm}
                 onValueChange={(value) =>
@@ -303,9 +299,8 @@ export function SshPage(): React.JSX.Element {
                   <SelectItem value="rsa">RSA 4096</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="generate-comment">注释</Label>
+            </Field>
+            <Field htmlFor="generate-comment" label="注释">
               <Input
                 id="generate-comment"
                 onChange={(event) =>
@@ -314,9 +309,8 @@ export function SshPage(): React.JSX.Element {
                 placeholder="邮箱或用途"
                 value={generateOptions.comment}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="generate-passphrase">口令（可选）</Label>
+            </Field>
+            <Field htmlFor="generate-passphrase" label="口令（可选）">
               <Input
                 id="generate-passphrase"
                 onChange={(event) =>
@@ -325,7 +319,7 @@ export function SshPage(): React.JSX.Element {
                 type="password"
                 value={generateOptions.passphrase}
               />
-            </div>
+            </Field>
             {status && (
               <Alert variant="destructive">
                 <AlertDescription>{status}</AlertDescription>

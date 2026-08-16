@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
+  ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -9,6 +10,7 @@ import {
   RefreshCw,
   RotateCcw,
   Square,
+  Terminal,
   Trash2
 } from 'lucide-react'
 import type { NodeEnvironmentPath, NodeRelease, NodeState, NodeTask } from '@shared/domain'
@@ -34,11 +36,11 @@ import {
 } from '@/components/ui/accordion'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import { CachePanel } from './components/CachePanel'
 import { PackagePanel } from './components/PackagePanel'
@@ -50,23 +52,25 @@ export function NodePage(): React.JSX.Element {
   const [keyword, setKeyword] = useState('')
   const [channel, setChannel] = useState<'all' | 'lts' | 'current'>('all')
   const [releasePage, setReleasePage] = useState(1)
-  const [status, setStatus] = useState('')
   const [environmentPaths, setEnvironmentPaths] = useState<NodeEnvironmentPath[]>([])
   const [tasks, setTasks] = useState<NodeTask[]>([])
   const [releasesLoading, setReleasesLoading] = useState(true)
-  const [environmentLoading, setEnvironmentLoading] = useState(true)
+  const [environmentLoading, setEnvironmentLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('available')
   const [activeEnvironmentTab, setActiveEnvironmentTab] = useState('paths')
   const [cacheLoading, setCacheLoading] = useState(false)
+  const [versionAction, setVersionAction] = useState('')
   const cacheScanRequested = useRef(false)
+  const initialLoadRequested = useRef(false)
+  const environmentPathsRequested = useRef(false)
   const [loading, setLoading] = useState(true)
   const report = useCallback((error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
     toast.error(message)
     rendererLogger.error('Node 操作失败', { error: message })
   }, [])
   const load = useCallback((): void => {
+    setLoading(true)
     void window.api?.node
       .getState()
       .then((value) => {
@@ -76,24 +80,40 @@ export function NodePage(): React.JSX.Element {
       .catch(report)
       .finally(() => setLoading(false))
   }, [report])
+  const loadEnvironmentPaths = useCallback((): void => {
+    environmentPathsRequested.current = true
+    setEnvironmentLoading(true)
+    void window.api?.node
+      .environmentPaths()
+      .then(setEnvironmentPaths)
+      .catch(report)
+      .finally(() => setEnvironmentLoading(false))
+  }, [report])
   useEffect(() => {
+    if (initialLoadRequested.current) return
+    initialLoadRequested.current = true
     load()
     void window.api?.node
       .releases({ channel: 'all' })
       .then(setReleases)
       .catch(report)
       .finally(() => setReleasesLoading(false))
-    void window.api?.node
-      .environmentPaths()
-      .then(setEnvironmentPaths)
-      .catch(report)
-      .finally(() => setEnvironmentLoading(false))
-    void window.api?.node.tasks().then(setTasks).catch(report)
+  }, [load, report])
+  useEffect(() => {
     return window.api?.node.onTaskUpdated((value) => {
       setState(value)
       setTasks(value.tasks)
     })
-  }, [load, report])
+  }, [])
+  useEffect(() => {
+    if (
+      activeTab === 'environment' &&
+      activeEnvironmentTab === 'paths' &&
+      !environmentPathsRequested.current
+    ) {
+      void Promise.resolve().then(loadEnvironmentPaths)
+    }
+  }, [activeEnvironmentTab, activeTab, loadEnvironmentPaths])
   const refreshReleases = (): void => {
     setReleasesLoading(true)
     void window.api?.node
@@ -157,97 +177,135 @@ export function NodePage(): React.JSX.Element {
       .catch(report)
   }
 
+  /** 切换和设置默认都需要回写完整状态，避免按钮成功后徽标仍停留在旧快照。 */
+  const changeVersion = (version: string, setDefault: boolean): void => {
+    const actionId = `${setDefault ? 'default' : 'switch'}:${version}`
+    if (versionAction) return
+    setVersionAction(actionId)
+    void window.api?.node
+      .switch(version, setDefault)
+      .then((value) => {
+        setState(value)
+        setTasks(value.tasks)
+        toast.success(
+          setDefault ? `已将 Node ${version} 设为默认版本` : `工作台已切换到 Node ${version}`
+        )
+      })
+      .catch(report)
+      .finally(() => setVersionAction(''))
+  }
+
   const installedPanel = (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between">
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0 flex-row items-start justify-between">
         <div>
           <CardTitle>已安装版本</CardTitle>
           <CardDescription>
-            “使用”会打开已启用该版本的新终端；当前版本不能直接删除。
+            切换会更新工作台后续命令的 Node 环境；设置默认会影响新终端会话。
           </CardDescription>
         </div>
         <TooltipButton onClick={load} size="icon" tooltip="刷新状态" variant="ghost">
           <RefreshCw size={15} />
         </TooltipButton>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {state?.installed.map((item) => (
-          <Item key={item.version}>
-            <ItemContent className="flex min-w-0 flex-row items-center gap-2">
-              <ItemTitle className="font-mono">v{item.version}</ItemTitle>
-              {item.isCurrent && <Badge variant="success">当前</Badge>}
-              {item.isDefault && <Badge variant="secondary">默认</Badge>}
-              <ItemDescription className="flex-1">{item.path}</ItemDescription>
-            </ItemContent>
-            <ItemActions>
-              <Button
-                disabled={!state?.capabilities?.canUseInTerminal}
-                onClick={() =>
-                  void window.api?.node
-                    .useInTerminal(item.version)
-                    .then(() => toast.success(`已在新终端中启用 Node ${item.version}`))
-                    .catch(report)
-                }
-                size="sm"
-                variant="ghost"
-              >
-                在终端中使用
-              </Button>
-              <Button
-                disabled={item.isDefault || !state?.capabilities?.canSetDefault}
-                onClick={() =>
-                  void window.api?.node
-                    .switch(item.version, true)
-                    .then((value) => {
-                      setState(value)
-                      setTasks(value.tasks)
-                      toast.success(`已将 Node ${item.version} 设为默认版本`)
-                    })
-                    .catch(report)
-                }
-                size="sm"
-                variant="secondary"
-              >
-                设为默认
-              </Button>
-              <ConfirmAction
-                description={`将删除本机 nvm 管理的 Node ${item.version}。当前使用中的版本不能删除。`}
-                onConfirm={() =>
-                  void window.api?.node.remove(item.version).then(setState).catch(report)
-                }
-                title="删除 Node 版本？"
-                triggerTooltip="删除版本"
-              >
-                <Button
-                  aria-label="删除版本"
-                  disabled={item.isCurrent || !state?.capabilities?.canSwitch}
-                  size="icon"
-                  variant="ghost"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </ConfirmAction>
-            </ItemActions>
-          </Item>
-        ))}
-        {!state?.installed.length && (
-          <Empty>
-            <EmptyTitle>尚未发现 Node 版本</EmptyTitle>
-            <EmptyDescription>安装版本后会显示在这里。</EmptyDescription>
-          </Empty>
-        )}
+      <CardContent className="min-h-0 flex-1">
+        <ScrollArea className="h-full pr-2">
+          <div className="space-y-1.5">
+            {state?.installed.map((item) => (
+              <Item key={item.version}>
+                <ItemContent className="flex min-w-0 flex-row items-center gap-2">
+                  <ItemTitle className="font-mono">v{item.version}</ItemTitle>
+                  {item.isCurrent && <Badge variant="success">当前</Badge>}
+                  {item.isDefault && <Badge variant="secondary">默认</Badge>}
+                  <ItemDescription className="min-w-0 flex-1" title={item.path}>
+                    {item.path}
+                  </ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Button
+                    disabled={
+                      item.isCurrent || !state?.capabilities?.canSwitch || Boolean(versionAction)
+                    }
+                    onClick={() => changeVersion(item.version, false)}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {versionAction === `switch:${item.version}` ? (
+                      <Spinner />
+                    ) : (
+                      <ArrowRightLeft size={13} />
+                    )}
+                    切换
+                  </Button>
+                  <TooltipButton
+                    disabled={!state?.capabilities?.canUseInTerminal || Boolean(versionAction)}
+                    onClick={() =>
+                      void window.api?.node
+                        .useInTerminal(item.version)
+                        .then(() => toast.success(`已在新终端中启用 Node ${item.version}`))
+                        .catch(report)
+                    }
+                    size="icon"
+                    tooltip="在新终端中使用"
+                    variant="ghost"
+                  >
+                    <Terminal size={14} />
+                  </TooltipButton>
+                  <Button
+                    disabled={
+                      item.isDefault ||
+                      !state?.capabilities?.canSetDefault ||
+                      Boolean(versionAction)
+                    }
+                    onClick={() => changeVersion(item.version, true)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {versionAction === `default:${item.version}` && <Spinner />}
+                    设为默认
+                  </Button>
+                  <ConfirmAction
+                    description={`将删除本机 nvm 管理的 Node ${item.version}。当前使用中的版本不能删除。`}
+                    onConfirm={() =>
+                      void window.api?.node.remove(item.version).then(setState).catch(report)
+                    }
+                    title="删除 Node 版本？"
+                    triggerTooltip="删除版本"
+                  >
+                    <Button
+                      aria-label="删除版本"
+                      disabled={
+                        item.isCurrent || !state?.capabilities?.canSwitch || Boolean(versionAction)
+                      }
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </ConfirmAction>
+                </ItemActions>
+              </Item>
+            ))}
+            {!state?.installed.length && (
+              <Empty>
+                <EmptyTitle>尚未发现 Node 版本</EmptyTitle>
+                <EmptyDescription>安装版本后会显示在这里。</EmptyDescription>
+              </Empty>
+            )}
+          </div>
+        </ScrollArea>
       </CardContent>
     </Card>
   )
 
   const releasesPanel = (
-    <Card>
-      <CardHeader>
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <CardHeader className="shrink-0">
         <CardTitle>可安装版本</CardTitle>
         <CardDescription>版本索引来自 Node.js 官方源，支持 LTS 和 Current 筛选。</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex gap-2">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex shrink-0 gap-2">
           <SearchInput
             className="flex-1"
             onValueChange={(value) => {
@@ -282,58 +340,67 @@ export function NodePage(): React.JSX.Element {
             <RefreshCw size={14} />
           </TooltipButton>
         </div>
-        <div className="grid gap-2 md:grid-cols-2">
-          {releasesLoading &&
-            Array.from({ length: 8 }, (_, index) => (
-              <div
-                className="flex h-12 items-center justify-between border border-slate-100 px-3"
-                key={index}
-              >
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-6 w-12" />
-              </div>
-            ))}
-          {!releasesLoading &&
-            visibleReleases.map((release) => (
-              <Item key={release.version}>
-                <ItemContent className="flex flex-row items-center gap-2">
-                  <ItemTitle className="font-mono">{release.version}</ItemTitle>
-                  {release.lts && <Badge variant="success">{release.lts}</Badge>}
-                  {release.security && <Badge variant="outline">安全更新</Badge>}
-                  {state?.installed.some(
-                    (item) => item.version === release.version.replace(/^v/, '')
-                  ) && <Badge variant="outline">已安装</Badge>}
-                  {!release.platformSupported && <Badge variant="secondary">当前平台不可用</Badge>}
-                  <ItemDescription className="ml-auto">
-                    {release.date || '--'} · npm {release.npm || '--'}
-                  </ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  <Button
-                    disabled={
-                      !release.platformSupported ||
-                      !state?.capabilities?.canInstall ||
-                      state?.installed.some(
-                        (item) => item.version === release.version.replace(/^v/, '')
-                      )
-                    }
-                    onClick={() => install(release.version.replace(/^v/, ''))}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <Download size={13} />
-                    安装
-                  </Button>
-                </ItemActions>
-              </Item>
-            ))}
-        </div>
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <ScrollArea className="min-h-0 flex-1 pr-2">
+          <div className="space-y-1.5">
+            {releasesLoading &&
+              Array.from({ length: 8 }, (_, index) => (
+                <div
+                  className="flex h-12 items-center justify-between border border-slate-100 px-3"
+                  key={index}
+                >
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-6 w-12" />
+                </div>
+              ))}
+            {!releasesLoading &&
+              visibleReleases.map((release) => (
+                <Item key={release.version}>
+                  <ItemContent className="flex flex-row items-center gap-2">
+                    <ItemTitle className="font-mono">{release.version}</ItemTitle>
+                    {release.lts && <Badge variant="success">{release.lts}</Badge>}
+                    {release.security && <Badge variant="outline">安全更新</Badge>}
+                    {state?.installed.some(
+                      (item) => item.version === release.version.replace(/^v/, '')
+                    ) && <Badge variant="outline">已安装</Badge>}
+                    {!release.platformSupported && (
+                      <Badge variant="secondary">当前平台不可用</Badge>
+                    )}
+                    <ItemDescription className="ml-auto">
+                      {release.date || '--'} · npm {release.npm || '--'}
+                    </ItemDescription>
+                  </ItemContent>
+                  <ItemActions>
+                    <Button
+                      disabled={
+                        !release.platformSupported ||
+                        !state?.capabilities?.canInstall ||
+                        state?.installed.some(
+                          (item) => item.version === release.version.replace(/^v/, '')
+                        )
+                      }
+                      onClick={() => install(release.version.replace(/^v/, ''))}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      <Download size={13} />
+                      安装
+                    </Button>
+                  </ItemActions>
+                </Item>
+              ))}
+            {!releasesLoading && !visibleReleases.length && (
+              <Empty className="min-h-36">
+                <EmptyTitle>没有匹配的 Node 版本</EmptyTitle>
+                <EmptyDescription>请调整关键词或版本通道后重试。</EmptyDescription>
+              </Empty>
+            )}
+          </div>
+        </ScrollArea>
+        <div className="flex shrink-0 items-center justify-between text-xs text-slate-500">
           <span>
-            {status ||
-              (releasesLoading
-                ? '正在读取 Node 官方版本索引'
-                : `共 ${filteredReleases.length} 个版本`)}
+            {releasesLoading
+              ? '正在读取 Node 官方版本索引'
+              : `共 ${filteredReleases.length} 个版本`}
           </span>
           <div className="flex items-center gap-1">
             <TooltipButton
@@ -365,9 +432,20 @@ export function NodePage(): React.JSX.Element {
 
   const environmentPanel = (
     <Card>
-      <CardHeader>
-        <CardTitle>运行时路径</CardTitle>
-        <CardDescription>路径快照用于定位 Node、nvm 和各包管理器的实际数据位置。</CardDescription>
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle>运行时路径</CardTitle>
+          <CardDescription>路径快照用于定位 Node、nvm 和各包管理器的实际数据位置。</CardDescription>
+        </div>
+        <TooltipButton
+          disabled={environmentLoading}
+          onClick={loadEnvironmentPaths}
+          size="icon"
+          tooltip="刷新运行时路径"
+          variant="ghost"
+        >
+          {environmentLoading ? <Spinner /> : <RefreshCw size={14} />}
+        </TooltipButton>
       </CardHeader>
       <CardContent className="space-y-1">
         {environmentLoading &&
@@ -510,10 +588,9 @@ export function NodePage(): React.JSX.Element {
     </Card>
   )
 
-  if (loading) return <PageLoadingSkeleton />
   const warnings = [
-    !state?.capabilities?.canInstall ? (state?.capabilities?.message ?? '') : '',
-    !state?.packageManagerVersion
+    state && !state.capabilities?.canInstall ? (state.capabilities?.message ?? '') : '',
+    state && !state.packageManagerVersion
       ? `默认包管理器 ${state?.packageManager || ''} 不可用，全局包操作将被禁用。`
       : ''
   ].filter(Boolean)
@@ -527,8 +604,14 @@ export function NodePage(): React.JSX.Element {
               管理运行时版本、镜像、包管理器与全局包。
             </p>
           </div>
-          <TooltipButton onClick={load} size="icon" tooltip="刷新 Node 状态" variant="ghost">
-            <RefreshCw size={15} />
+          <TooltipButton
+            disabled={loading}
+            onClick={load}
+            size="icon"
+            tooltip="刷新 Node 状态"
+            variant="ghost"
+          >
+            {loading ? <Spinner /> : <RefreshCw size={15} />}
           </TooltipButton>
         </div>
         <div className="grid gap-2 sm:grid-cols-4">
@@ -541,7 +624,7 @@ export function NodePage(): React.JSX.Element {
             ],
             [
               '运行环境',
-              `nvm ${state?.nvmAvailable ? '可用' : '不可用'} · nrm ${state?.nrmAvailable ? '可用' : '不可用'}`
+              `nvm ${state?.capabilities?.nvmVersion || (state?.nvmAvailable ? '可用' : '不可用')} · nrm ${state?.nrmAvailable ? '可用' : '不可用'}`
             ]
           ].map(([label, value]) => (
             <div className="border border-slate-200 bg-white px-2.5 py-2" key={label}>
@@ -559,6 +642,7 @@ export function NodePage(): React.JSX.Element {
       </section>
       <Tabs
         className="min-h-0 flex-1"
+        contentClassName="overflow-hidden"
         fill
         items={[
           { value: 'available', label: '可安装版本', content: releasesPanel },
@@ -587,6 +671,8 @@ export function NodePage(): React.JSX.Element {
             label: '环境信息',
             content: (
               <Tabs
+                className="h-full"
+                fill
                 items={[
                   { value: 'paths', label: '运行时路径', content: environmentPanel },
                   {

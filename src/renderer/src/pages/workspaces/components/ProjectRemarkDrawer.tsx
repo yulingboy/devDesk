@@ -1,7 +1,7 @@
 import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
-import { Label } from '@/components/ui/label'
+import { Field } from '@/components/ui/form'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -43,11 +43,13 @@ export function ProjectRemarkDrawer({
       open={open}
       title="编辑项目备注"
     >
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="project-remark">备注</Label>
+      <Field
+        htmlFor="project-remark"
+        label="备注"
+        labelExtra={
           <span className="text-[10px] tabular-nums text-slate-400">{value.length}/200</span>
-        </div>
+        }
+      >
         <Textarea
           autoFocus
           id="project-remark"
@@ -57,7 +59,7 @@ export function ProjectRemarkDrawer({
           rows={5}
           value={value}
         />
-      </div>
+      </Field>
     </Drawer>
   )
 }

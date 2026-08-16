@@ -4,6 +4,15 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 let shellEnvironmentPromise: Promise<NodeJS.ProcessEnv> | undefined
+let nodeBinOverride: string | undefined
+
+/**
+ * Node 管理页切换版本后，为工作台启动的后续命令优先使用所选版本。
+ * 这里只调整子进程 PATH，不修改 Electron 自身运行时，也不会污染用户的终端会话。
+ */
+export function setUserNodeBinOverride(path?: string): void {
+  nodeBinOverride = path
+}
 
 /**
  * macOS 从 Finder/Dock 启动应用时不会继承交互式终端的 PATH。
@@ -34,7 +43,12 @@ export async function getUserShellEnvironment(): Promise<NodeJS.ProcessEnv> {
       return { ...process.env }
     }
   })()
-  return shellEnvironmentPromise
+  const environment = await shellEnvironmentPromise
+  if (!nodeBinOverride) return environment
+  return {
+    ...environment,
+    PATH: [nodeBinOverride, environment.PATH].filter(Boolean).join(':')
+  }
 }
 
 /** 数据目录、Shell 配置或用户环境变化后允许下一次调用重新读取 PATH。 */

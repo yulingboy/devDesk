@@ -18,7 +18,11 @@ import type {
   NodeTask
 } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
-import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
+import {
+  getUserShellEnvironment,
+  resetUserShellEnvironment,
+  setUserNodeBinOverride
+} from '@main/infrastructure/shell-environment'
 import { createId, requiredText } from './common'
 import createNodeInstallWorker from '@main/workers/node-install-worker?nodeWorker'
 
@@ -29,6 +33,7 @@ const activeInstallWorkers = new Map<string, Worker>()
 const activeInstallVersions = new Set<string>()
 const cancelledTaskIds = new Set<string>()
 let nodeStateMutation: Promise<void> = Promise.resolve()
+let nvmVersionRequest: Promise<string> | undefined
 
 const defaultRegistries = (): NodeRegistry[] => [
   { id: 'registry-npm', name: 'npm', url: 'https://registry.npmjs.org', isCurrent: true },
@@ -104,6 +109,16 @@ async function runCommand(command: string, args: string[]): Promise<string> {
   return stdout.trim()
 }
 
+/** 部分查询命令以非零状态表示“发现结果”，但 stdout 仍是可解析数据。 */
+async function runCommandResult(command: string, args: string[]): Promise<string> {
+  try {
+    return await runCommand(command, args)
+  } catch (error) {
+    const stdout = (error as { stdout?: unknown }).stdout
+    return typeof stdout === 'string' ? stdout.trim() : ''
+  }
+}
+
 async function commandVersion(command: string): Promise<string> {
   return runCommand(command, ['--version']).catch(() => '')
 }
@@ -111,15 +126,18 @@ async function commandVersion(command: string): Promise<string> {
 async function installedVersions(): Promise<NodeInstall[]> {
   const nvmDirectory = getNodeVersionsDirectory()
   const entries = await readdir(nvmDirectory).catch(() => [])
-  const current = (await commandVersion('node')).replace(/^v/, '')
   return entries
     .filter((entry) => /^v?\d+\.\d+\.\d+$/.test(entry))
     .map((version) => ({
       version: version.replace(/^v/, ''),
       path: join(nvmDirectory, version),
-      isCurrent: version.replace(/^v/, '') === current,
+      isCurrent: false,
       isDefault: false
     }))
+}
+
+function nodeBinDirectory(install: NodeInstall): string {
+  return process.platform === 'win32' ? install.path : join(install.path, 'bin')
 }
 
 function getNodeVersionsDirectory(): string {
@@ -155,15 +173,37 @@ async function findNvmScript(): Promise<string | undefined> {
   return undefined
 }
 
+/**
+ * 只根据 nvm.sh 文件存在不能判断 nvm 可用；必须加载脚本并真正运行 nvm --version。
+ * 版本号同时作为界面能力快照展示，避免用户以为只是扫到了一个文件。
+ */
+async function readNvmVersion(): Promise<string> {
+  nvmVersionRequest ??= (async () => {
+    if (process.platform === 'win32') return commandVersion('nvm')
+    const nvmScript = await findNvmScript()
+    if (!nvmScript) return ''
+    return runCommand('bash', ['-lc', `. ${JSON.stringify(nvmScript)}; nvm --version`]).catch(
+      () => ''
+    )
+  })()
+  try {
+    return await nvmVersionRequest
+  } finally {
+    nvmVersionRequest = undefined
+  }
+}
+
 async function getNodeCapabilities(): Promise<NodeRuntimeCapabilities> {
   if (process.platform === 'win32') {
-    const available = Boolean(await commandVersion('nvm'))
+    const nvmVersion = await readNvmVersion()
+    const available = Boolean(nvmVersion)
     return available
       ? {
           canInstall: true,
           canSwitch: true,
           canSetDefault: true,
           canUseInTerminal: false,
+          nvmVersion,
           message: '检测到 nvm-windows；切换版本会更新系统 Node 软链接。'
         }
       : {
@@ -174,13 +214,15 @@ async function getNodeCapabilities(): Promise<NodeRuntimeCapabilities> {
           message: '未检测到 nvm-windows，无法安全管理 Node 版本。'
         }
   }
-  const available = Boolean(await findNvmScript())
+  const nvmVersion = await readNvmVersion()
+  const available = Boolean(nvmVersion)
   return available
     ? {
         canInstall: true,
         canSwitch: true,
         canSetDefault: true,
         canUseInTerminal: process.platform === 'darwin',
+        nvmVersion,
         message:
           process.platform === 'darwin'
             ? '“在终端中使用”会在新 Terminal 会话中启用指定版本。'
@@ -191,7 +233,7 @@ async function getNodeCapabilities(): Promise<NodeRuntimeCapabilities> {
         canSwitch: false,
         canSetDefault: false,
         canUseInTerminal: false,
-        message: '未检测到 nvm，安装、切换和删除 Node 版本不可用。'
+        message: '未检测到可执行的 nvm，安装、切换和删除 Node 版本不可用。'
       }
 }
 
@@ -287,12 +329,15 @@ function validatePackageManager(value: string): PackageManagerName {
 async function packageManagerStatus(defaultName: string): Promise<NodeState['packageManagers']> {
   return Promise.all(
     packageManagerNames.map(async (name) => {
-      const version = await commandVersion(name)
+      const [version, registry] = await Promise.all([
+        commandVersion(name),
+        readPackageManagerRegistry(name)
+      ])
       return {
         name,
         available: Boolean(version),
         version,
-        registry: version ? await readPackageManagerRegistry(name) : '',
+        registry: version ? registry : '',
         isDefault: name === defaultName
       }
     })
@@ -306,32 +351,92 @@ async function readNvmDefaultVersion(): Promise<string> {
   return /^\d+\.\d+\.\d+$/.test(version) ? version : ''
 }
 
+const ansiColorPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+
+/** nrm 输出使用星号标记当前镜像，并用横线对齐名称与 URL。 */
+function parseNrmRegistries(
+  output: string,
+  currentName: string,
+  saved: NodeRegistry[]
+): NodeRegistry[] {
+  return output.split(/\r?\n/).flatMap((rawLine) => {
+    const line = rawLine.replace(ansiColorPattern, '').trim()
+    const match = line.match(/^(\*?)\s*([a-zA-Z0-9_-]+)\s+-+\s+(https?:\/\/\S+)/)
+    if (!match) return []
+    const [, marker, name, rawUrl] = match
+    const url = rawUrl.replace(/\/$/, '')
+    const previous = saved.find((item) => item.name === name)
+    return [
+      {
+        id: previous?.id ?? `registry-${name}`,
+        name,
+        url,
+        latencyMs: previous?.latencyMs,
+        isCurrent: marker === '*' || name === currentName
+      }
+    ]
+  })
+}
+
+async function readNrmRegistrySnapshot(saved: NodeRegistry[]): Promise<NodeRegistry[]> {
+  const [output, currentName] = await Promise.all([
+    runCommand('nrm', ['ls']),
+    runCommand('nrm', ['current']).catch(() => '')
+  ])
+  return parseNrmRegistries(output, currentName.trim(), saved)
+}
+
 /** 汇总真实命令状态，同时保留任务、镜像和缓存等持久化数据。 */
 export async function getNodeState(): Promise<NodeState> {
-  const saved = normalizeState(await store.node.read())
-  const settings = await store.settings.read()
+  const [savedValue, settings] = await Promise.all([store.node.read(), store.settings.read()])
+  const saved = normalizeState(savedValue)
   const packageManager = settings.node.packageManager || saved.packageManager || 'pnpm'
   const installed = await installedVersions()
-  const packageManagers = await packageManagerStatus(packageManager)
-  const registry = settings.node.registry || saved.registry
-  const defaultVersion = (await readNvmDefaultVersion()) || saved.defaultVersion
-  const capabilities = await getNodeCapabilities()
+  const activeInstall = installed.find((item) => item.version === saved.activeVersion)
+  setUserNodeBinOverride(activeInstall ? nodeBinDirectory(activeInstall) : undefined)
+
+  // 这些探测互不依赖，并行执行可避免多个 CLI 启动时间在首屏串行累加。
+  const [
+    currentVersionValue,
+    packageManagers,
+    defaultVersionValue,
+    capabilities,
+    nrmVersion,
+    nrmRegistries,
+    nodePath
+  ] = await Promise.all([
+    commandVersion('node'),
+    packageManagerStatus(packageManager),
+    readNvmDefaultVersion(),
+    getNodeCapabilities(),
+    commandVersion('nrm'),
+    readNrmRegistrySnapshot(saved.registries).catch(() => []),
+    runCommand('node', ['-p', 'process.execPath']).catch(() => saved.nodePath)
+  ])
+  const currentVersion = currentVersionValue.replace(/^v/, '')
+  const defaultVersion = defaultVersionValue || saved.defaultVersion
+  const nrmAvailable = Boolean(nrmVersion)
+  const registries = nrmAvailable && nrmRegistries.length ? nrmRegistries : saved.registries
+  const registry =
+    registries.find((item) => item.isCurrent)?.url || settings.node.registry || saved.registry
   const state: NodeState = {
     ...saved,
-    currentVersion: (await commandVersion('node')).replace(/^v/, ''),
+    currentVersion,
+    activeVersion: activeInstall?.version,
     defaultVersion,
     // nodePath 表示实际可执行文件，不是 PATH 环境变量；完整路径快照由环境页单独展示。
-    nodePath: await runCommand('node', ['-p', 'process.execPath']).catch(() => saved.nodePath),
+    nodePath,
     nvmAvailable: capabilities.canInstall,
-    nrmAvailable: Boolean(await commandVersion('nrm')),
+    nrmAvailable,
     registry,
     packageManager,
     packageManagerVersion:
       packageManagers.find((item) => item.name === packageManager)?.version ?? '',
     packageManagers,
-    registries: saved.registries.map((item) => ({ ...item, isCurrent: item.url === registry })),
+    registries: registries.map((item) => ({ ...item, isCurrent: item.url === registry })),
     installed: installed.map((item) => ({
       ...item,
+      isCurrent: item.version === currentVersion,
       isDefault: item.version === defaultVersion
     })),
     capabilities
@@ -434,6 +539,8 @@ async function runNvm(command: string): Promise<string> {
     throw new Error('当前版本暂不支持 Windows nvm 自动安装，请使用 nvm-windows 后重试')
   const nvmScript = await findNvmScript()
   if (!nvmScript) throw new Error('未找到 nvm 脚本，请安装 nvm 后重试')
+  const nvmVersion = await readNvmVersion()
+  if (!nvmVersion) throw new Error('未检测到可执行的 nvm，请检查 nvm 安装和 Shell 配置')
   const script = `. ${JSON.stringify(nvmScript)}; ${command}`
   return runCommand('bash', ['-lc', script]).catch(() => {
     throw new Error('nvm 命令执行失败，请确认已安装 nvm，并检查版本是否存在')
@@ -616,17 +723,36 @@ export async function clearNodeTasks(): Promise<NodeState> {
 
 export async function switchNode(versionInput: string, setDefault: boolean): Promise<NodeState> {
   const version = requiredText(versionInput, 'Node 版本', 40).replace(/^v/, '')
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Node 版本号无效')
+  const state = await getNodeState()
+  const install = state.installed.find((item) => item.version === version)
+  if (!install) throw new Error(`Node ${version} 尚未安装，无法切换`)
+  const capabilities = await getNodeCapabilities()
+  if (!capabilities.canSwitch) throw new Error(capabilities.message ?? '当前环境无法切换 Node 版本')
+
   if (process.platform === 'win32') {
-    if (!(await getNodeCapabilities()).canSwitch)
-      throw new Error('未检测到 nvm-windows，无法切换版本')
     await runCommand('nvm', ['use', version]).catch(() => {
       throw new Error('nvm-windows 切换失败，请以管理员权限确认版本已安装')
     })
-    return updateNodeState((current) => ({ ...current, defaultVersion: version }))
+    resetUserShellEnvironment()
+    await updateNodeState((current) => ({
+      ...current,
+      activeVersion: version,
+      ...(setDefault ? { defaultVersion: version } : {})
+    }))
+    return getNodeState()
   }
-  if (!setDefault) throw new Error('桌面应用无法修改父终端环境，请使用“在终端中使用”或设为默认版本')
-  await runNvm(`nvm alias default ${version}`)
-  return updateNodeState((current) => ({ ...current, defaultVersion: version }))
+
+  if (setDefault) {
+    await runNvm(`nvm alias default ${version}`)
+    await updateNodeState((current) => ({ ...current, defaultVersion: version }))
+  } else {
+    // nvm use 只影响其子 Shell；工作台另行固定 PATH，保证后续包管理命令真正使用所选版本。
+    await runNvm(`nvm use ${version}`)
+    setUserNodeBinOverride(nodeBinDirectory(install))
+    await updateNodeState((current) => ({ ...current, activeVersion: version }))
+  }
+  return getNodeState()
 }
 
 /** 在新的 macOS Terminal 会话中加载 nvm 并启用指定版本，避免伪造进程级切换结果。 */
@@ -637,6 +763,8 @@ export async function useNodeInTerminal(versionInput: string): Promise<void> {
     throw new Error('当前平台暂不支持从应用直接启动带 Node 环境的终端，请在终端执行 nvm use')
   const nvmScript = await findNvmScript()
   if (!nvmScript) throw new Error('未找到 nvm 脚本，请安装 nvm 后重试')
+  if (!(await readNvmVersion()))
+    throw new Error('未检测到可执行的 nvm，请检查 nvm 安装和 Shell 配置')
   const command = `bash -lc ${JSON.stringify(`. ${JSON.stringify(nvmScript)}; nvm use ${version}; exec $SHELL -l`)}`
   await execFileAsync('osascript', [
     '-e',
@@ -649,7 +777,7 @@ export async function useNodeInTerminal(versionInput: string): Promise<void> {
 export async function removeNode(versionInput: string): Promise<NodeState> {
   const version = requiredText(versionInput, 'Node 版本', 40).replace(/^v/, '')
   const state = await getNodeState()
-  if (state.currentVersion === version)
+  if (state.currentVersion === version || state.activeVersion === version)
     throw new Error('当前正在使用的 Node 版本不能删除，请先切换版本')
   if (process.platform === 'win32') {
     if (!(await getNodeCapabilities()).canSwitch)
@@ -660,9 +788,8 @@ export async function removeNode(versionInput: string): Promise<NodeState> {
   } else {
     await runNvm(`nvm uninstall ${version}`)
   }
-  if (state.defaultVersion === version) {
-    return updateNodeState((current) => ({ ...current, defaultVersion: '' }))
-  }
+  if (state.defaultVersion === version)
+    await updateNodeState((current) => ({ ...current, defaultVersion: '' }))
   return getNodeState()
 }
 
@@ -680,7 +807,9 @@ function validateRegistryUrl(value: string): string {
 
 export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRegistry[]> {
   const state = await getNodeState()
+  if (!state.nrmAvailable) throw new Error('未检测到 nrm，请先全局安装 nrm 后再管理镜像')
   const name = requiredText(draft.name, '镜像名称', 60)
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error('镜像名称只能包含字母、数字、下划线和中划线')
   const url = validateRegistryUrl(draft.url)
   if (
     state.registries.some(
@@ -688,6 +817,8 @@ export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRe
     )
   )
     throw new Error('镜像名称已存在')
+  const previous = draft.id ? state.registries.find((item) => item.id === draft.id) : undefined
+  if (draft.id && !previous) throw new Error('镜像不存在')
   const nextItem: NodeRegistry = {
     id: draft.id || createId('registry'),
     name,
@@ -697,49 +828,56 @@ export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRe
   const registries = draft.id
     ? state.registries.map((item) => (item.id === draft.id ? nextItem : item))
     : [...state.registries, nextItem]
-  if (state.nrmAvailable)
-    await runCommand('nrm', ['add', name, url]).catch(() => {
-      throw new Error('写入 nrm 镜像失败，本地镜像列表未保存，请检查 nrm 配置权限')
-    })
-  const next = await updateNodeState((current) => ({ ...current, registries }))
-  return next.registries
+  try {
+    if (previous) await runCommand('nrm', ['del', previous.name])
+    await runCommand('nrm', ['add', name, url])
+    if (previous?.isCurrent) await runCommand('nrm', ['use', name])
+  } catch {
+    // 编辑失败时尽量恢复原镜像，避免 nrm 真实配置与页面快照同时丢失。
+    if (previous) {
+      await runCommand('nrm', ['add', previous.name, previous.url]).catch(() => undefined)
+      if (previous.isCurrent) await runCommand('nrm', ['use', previous.name]).catch(() => undefined)
+    }
+    throw new Error('写入 nrm 镜像失败，请检查镜像名称、地址和配置权限')
+  }
+  await updateNodeState((current) => ({ ...current, registries }))
+  return (await getNodeState()).registries
 }
 
 export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
   const state = await getNodeState()
+  if (!state.nrmAvailable) throw new Error('未检测到 nrm，请先全局安装 nrm 后再管理镜像')
   const target = state.registries.find((item) => item.id === id)
   if (!target) throw new Error('镜像不存在')
   if (target.isCurrent) throw new Error('当前正在使用的镜像不能删除，请先切换镜像')
   if (state.registries.length <= 1) throw new Error('至少需要保留一个镜像')
-  if (state.nrmAvailable)
-    await runCommand('nrm', ['del', target.name]).catch(() => {
-      throw new Error('删除 nrm 镜像失败，本地镜像列表未变更，请检查 nrm 配置权限')
-    })
+  await runCommand('nrm', ['del', target.name]).catch(() => {
+    throw new Error('删除 nrm 镜像失败，本地镜像列表未变更，请检查 nrm 配置权限')
+  })
   const registries = state.registries.filter((item) => item.id !== id)
-  const next = await updateNodeState((current) => ({ ...current, registries }))
-  return next.registries
+  await updateNodeState((current) => ({ ...current, registries }))
+  return (await getNodeState()).registries
 }
 
 export async function useNodeRegistry(id: string): Promise<NodeState> {
   const state = await getNodeState()
+  if (!state.nrmAvailable) throw new Error('未检测到 nrm，请先全局安装 nrm 后再管理镜像')
   const target = state.registries.find((item) => item.id === id)
   if (!target) throw new Error('镜像不存在')
-  if (state.nrmAvailable) await runCommand('nrm', ['use', target.name])
-  else if (state.packageManager === 'bun')
-    throw new Error('当前默认包管理器不支持自动切换 registry')
-  else await runCommand(state.packageManager, ['config', 'set', 'registry', target.url])
+  await runCommand('nrm', ['use', target.name])
   const settings = await store.settings.read()
   await store.settings.write({ ...settings, node: { ...settings.node, registry: target.url } })
-  const next = await updateNodeState((current) => ({
+  await updateNodeState((current) => ({
     ...current,
     registry: target.url,
     registries: current.registries.map((item) => ({ ...item, isCurrent: item.id === id }))
   }))
-  return next
+  return getNodeState()
 }
 
 export async function testNodeRegistry(id: string): Promise<NodeRegistry[]> {
   const state = await getNodeState()
+  if (!state.nrmAvailable) throw new Error('未检测到 nrm，请先全局安装 nrm 后再管理镜像')
   const target = state.registries.find((item) => item.id === id)
   if (!target) throw new Error('镜像不存在')
   const startedAt = Date.now()
@@ -755,20 +893,66 @@ export async function testNodeRegistry(id: string): Promise<NodeRegistry[]> {
   return next.registries
 }
 
+/** nrm 安装在当前 Node 版本的 npm 全局目录中，不会写入其他 Node 版本。 */
+export async function installNrm(): Promise<NodeState> {
+  const state = await getNodeState()
+  if (state.nrmAvailable) return state
+  const npm = state.packageManagers.find((item) => item.name === 'npm')
+  if (!npm?.available) throw new Error('当前 Node 没有可用的 npm，无法安装 nrm')
+  try {
+    await runCommand('npm', ['install', '--global', 'nrm'])
+  } catch {
+    throw new Error('nrm 安装失败，请检查当前 Node 的 npm、Registry 和网络连接')
+  }
+  const next = await getNodeState()
+  if (!next.nrmAvailable) throw new Error('nrm 安装命令已完成，但未检测到 nrm，请刷新环境后重试')
+  return next
+}
+
 function validatePackageName(value: string): string {
   const name = requiredText(value, '包名', 214)
   if (!/^(?:@[-a-z0-9_.]+\/)?[-a-z0-9_.]+$/i.test(name)) throw new Error('包名格式无效')
   return name
 }
 
-async function readGlobalPackages(manager: string): Promise<GlobalPackage[]> {
+/**
+ * nvm 的全局包目录随 Node 版本隔离，不能通过共享目录保证原生模块安全。
+ * 使用 nvm 官方 reinstall-packages 机制，将来源版本的 npm 全局包重新安装到当前版本。
+ */
+export async function syncGlobalPackages(sourceVersionInput: string): Promise<GlobalPackage[]> {
+  const sourceVersion = requiredText(sourceVersionInput, '来源 Node 版本', 40).replace(/^v/, '')
+  if (!/^\d+\.\d+\.\d+$/.test(sourceVersion)) throw new Error('来源 Node 版本号无效')
+  const state = await getNodeState()
+  if (!state.capabilities?.canSwitch)
+    throw new Error(state.capabilities?.message ?? '未检测到可执行的 nvm，无法同步全局包')
+  if (process.platform === 'win32')
+    throw new Error('Windows nvm 不支持自动同步全局包，请在终端中手动迁移')
+  const targetVersion = state.currentVersion
+  if (!targetVersion) throw new Error('当前 Node 版本不可用，无法同步全局包')
+  if (sourceVersion === targetVersion) throw new Error('来源版本不能与当前 Node 版本相同')
+  if (!state.installed.some((item) => item.version === sourceVersion))
+    throw new Error(`来源 Node ${sourceVersion} 尚未安装`)
+  try {
+    await runNvm(`nvm use ${targetVersion} >/dev/null && nvm reinstall-packages ${sourceVersion}`)
+  } catch {
+    throw new Error(`从 Node ${sourceVersion} 同步全局包失败，请检查 nvm 和 npm 配置`)
+  }
+  return listGlobalPackages()
+}
+
+async function readGlobalPackages(
+  manager: string,
+  includeOutdated = false
+): Promise<GlobalPackage[]> {
   if (manager === 'npm') {
     const parsed = JSON.parse(
       await runCommand('npm', ['ls', '-g', '--depth=0', '--json']).catch(() => '{}')
     ) as { dependencies?: Record<string, { version?: string }> }
-    const outdated = JSON.parse(
-      await runCommand('npm', ['outdated', '-g', '--json']).catch(() => '{}')
-    ) as Record<string, { wanted?: string; latest?: string }>
+    const outdated = includeOutdated
+      ? (JSON.parse(
+          (await runCommandResult('npm', ['outdated', '-g', '--json'])) || '{}'
+        ) as Record<string, { wanted?: string; latest?: string }>)
+      : {}
     return Object.entries(parsed.dependencies ?? {}).map(([name, value]) => ({
       name,
       current: value.version ?? '',
@@ -787,9 +971,11 @@ async function readGlobalPackages(manager: string): Promise<GlobalPackage[]> {
       ...(parsed[0]?.dependencies ?? {}),
       ...(parsed[0]?.devDependencies ?? {})
     }
-    const outdated = parseOutdatedPackages(
-      await runCommand('pnpm', ['outdated', '-g', '--format', 'json']).catch(() => '')
-    )
+    const outdated = includeOutdated
+      ? parseOutdatedPackages(
+          await runCommandResult('pnpm', ['outdated', '-g', '--format', 'json'])
+        )
+      : new Map()
     return Object.entries(dependencies).map(([name, value]) => ({
       name,
       current: value.version ?? '',
@@ -877,13 +1063,30 @@ async function enrichPackageLatest(
   }))
 }
 
-export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]> {
-  const state = await getNodeState()
-  if (!state.packageManagerVersion) throw new Error(`默认包管理器 ${state.packageManager} 不可用`)
-  const packages = await enrichPackageLatest(
-    await readGlobalPackages(state.packageManager),
-    state.registry
+/**
+ * 全局包列表只需要默认包管理器、可用性和 Registry。
+ * 避免调用 getNodeState 重复执行 nvm、nrm 及全部包管理器的状态检测。
+ */
+async function getGlobalPackageContext(): Promise<{
+  manager: PackageManagerName
+  registry: string
+}> {
+  const [saved, settings] = await Promise.all([store.node.read(), store.settings.read()])
+  const state = normalizeState(saved)
+  const manager = validatePackageManager(
+    settings.node.packageManager || state.packageManager || 'pnpm'
   )
+  if (!(await commandVersion(manager))) throw new Error(`默认包管理器 ${manager} 不可用`)
+  return {
+    manager,
+    registry: settings.node.registry || state.registry
+  }
+}
+
+export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]> {
+  const { manager } = await getGlobalPackageContext()
+  // 普通列表完全读取本地状态；联网更新检查只由 checkGlobalOutdated 显式触发。
+  const packages = await readGlobalPackages(manager)
   await updateNodeState((current) => ({ ...current, globalPackages: packages }))
   const query = keyword.trim().toLowerCase()
   return query ? packages.filter((item) => item.name.toLowerCase().includes(query)) : packages
@@ -891,12 +1094,12 @@ export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]>
 
 /** 刷新默认包管理器的过期信息；不支持的命令仅返回当前已读取版本。 */
 export async function checkGlobalOutdated(): Promise<GlobalPackage[]> {
-  const state = await getNodeState()
-  if (!state.packageManagerVersion) throw new Error(`默认包管理器 ${state.packageManager} 不可用`)
-  const packages = await enrichPackageLatest(
-    await readGlobalPackages(state.packageManager),
-    state.registry
-  )
+  const { manager, registry } = await getGlobalPackageContext()
+  const localPackages = await readGlobalPackages(manager, true)
+  const packages =
+    manager === 'yarn' || manager === 'bun'
+      ? await enrichPackageLatest(localPackages, registry)
+      : localPackages
   await updateNodeState((current) => ({ ...current, globalPackages: packages }))
   return packages
 }

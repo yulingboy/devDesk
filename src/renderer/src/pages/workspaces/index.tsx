@@ -11,8 +11,8 @@ import type {
   WorkspaceScanResult
 } from '@shared/domain'
 import { Button } from '@/components/ui/button'
+import { Field } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
@@ -356,32 +356,29 @@ export function WorkspacesPage(): React.JSX.Element {
           title={draft.id ? '编辑工作区' : '新增工作区'}
         >
           <div className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="workspace-name">名称</Label>
+            <Field htmlFor="workspace-name" label="名称">
               <Input
                 id="workspace-name"
                 onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                 value={draft.name}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="workspace-root">根目录</Label>
+            </Field>
+            <Field htmlFor="workspace-root" label="根目录">
               <DirectoryPickerInput
+                id="workspace-root"
                 onChange={(rootPath) => setDraft({ ...draft, rootPath })}
                 placeholder="输入或选择项目根目录"
                 value={draft.rootPath}
               />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="workspace-description">描述</Label>
+            </Field>
+            <Field className="md:col-span-2" htmlFor="workspace-description" label="描述">
               <Textarea
                 id="workspace-description"
                 onChange={(event) => setDraft({ ...draft, description: event.target.value })}
                 value={draft.description}
               />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="workspace-identity">Git 身份</Label>
+            </Field>
+            <Field className="md:col-span-2" htmlFor="workspace-identity" label="Git 身份">
               <Select
                 value={draft.gitIdentityId ?? 'none'}
                 onValueChange={(value) =>
@@ -400,7 +397,7 @@ export function WorkspacesPage(): React.JSX.Element {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </Field>
             {status && (
               <Alert variant="destructive">
                 <AlertDescription>{status}</AlertDescription>

@@ -131,7 +131,10 @@ const api: AppApi = {
     removeRegistry: (id) => invoke(IPC_CHANNELS.node.removeRegistry, id),
     useRegistry: (id) => invoke(IPC_CHANNELS.node.useRegistry, id),
     testRegistry: (id) => invoke(IPC_CHANNELS.node.testRegistry, id),
+    installNrm: () => invoke(IPC_CHANNELS.node.installNrm),
     packages: (keyword) => invoke(IPC_CHANNELS.node.packages, keyword),
+    syncGlobalPackages: (sourceVersion) =>
+      invoke(IPC_CHANNELS.node.syncGlobalPackages, sourceVersion),
     setPackageManager: (manager) => invoke(IPC_CHANNELS.node.setPackageManager, manager),
     setPackageRegistry: (manager, registry) =>
       invoke(IPC_CHANNELS.node.setPackageRegistry, manager, registry),

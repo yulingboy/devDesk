@@ -4,7 +4,7 @@ import type { ProjectTemplate, Workspace } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
-import { FormDescription, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Field, FormMessage } from '@/components/ui/form'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
   Select,
@@ -104,8 +104,7 @@ export function ProjectCreateDrawer({
       title="从模板创建项目"
     >
       <div className="space-y-3">
-        <FormItem>
-          <FormLabel htmlFor="create-project-template">项目模板</FormLabel>
+        <Field htmlFor="create-project-template" label="项目模板">
           {fixedTemplate ? (
             <Item className="bg-slate-50">
               <ItemContent>
@@ -133,9 +132,12 @@ export function ProjectCreateDrawer({
               </SelectContent>
             </Select>
           )}
-        </FormItem>
-        <FormItem>
-          <FormLabel htmlFor="create-project-workspace">目标工作区</FormLabel>
+        </Field>
+        <Field
+          description="项目将作为工作区根目录下的一级目录。"
+          htmlFor="create-project-workspace"
+          label="目标工作区"
+        >
           {fixedWorkspace ? (
             <Item className="bg-slate-50">
               <ItemContent>
@@ -161,10 +163,8 @@ export function ProjectCreateDrawer({
               </SelectContent>
             </Select>
           )}
-          <FormDescription>项目将作为工作区根目录下的一级目录。</FormDescription>
-        </FormItem>
-        <FormItem>
-          <FormLabel htmlFor="create-project-name">项目名称</FormLabel>
+        </Field>
+        <Field htmlFor="create-project-name" label="项目名称">
           <Input
             autoFocus
             disabled={submitting}
@@ -176,7 +176,7 @@ export function ProjectCreateDrawer({
             placeholder="例如 my-app"
             value={projectName}
           />
-        </FormItem>
+        </Field>
         {errorMessage && <FormMessage>{errorMessage}</FormMessage>}
       </div>
     </Drawer>

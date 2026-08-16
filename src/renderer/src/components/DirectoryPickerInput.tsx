@@ -8,10 +8,12 @@ import {
 
 /** 支持手输和 Electron 原生目录选择，用户取消时保持原值。 */
 export function DirectoryPickerInput({
+  id,
   value,
   placeholder,
   onChange
 }: {
+  id?: string
   value: string
   placeholder?: string
   onChange: (value: string) => void
@@ -25,6 +27,7 @@ export function DirectoryPickerInput({
   return (
     <InputGroup>
       <InputGroupInput
+        id={id}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         value={value}

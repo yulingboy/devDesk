@@ -5,8 +5,8 @@ import type { ProjectTemplate, Workspace } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Field } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
@@ -221,16 +221,14 @@ export function TemplatesPage(): React.JSX.Element {
         title={draft.id ? '编辑模板' : '新增模板'}
       >
         <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="template-name">名称</Label>
+          <Field htmlFor="template-name" label="名称">
             <Input
               id="template-name"
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
               value={draft.name}
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-type">类型</Label>
+          </Field>
+          <Field htmlFor="template-type" label="类型">
             <Select
               value={draft.type}
               onValueChange={(value) =>
@@ -245,11 +243,11 @@ export function TemplatesPage(): React.JSX.Element {
                 <SelectItem value="git">Git 仓库</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-source">来源</Label>
+          </Field>
+          <Field htmlFor="template-source" label="来源">
             {draft.type === 'local' ? (
               <DirectoryPickerInput
+                id="template-source"
                 onChange={(source) => setDraft({ ...draft, source })}
                 placeholder="选择本地模板目录"
                 value={draft.source}
@@ -262,15 +260,14 @@ export function TemplatesPage(): React.JSX.Element {
                 value={draft.source}
               />
             )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="template-description">描述</Label>
+          </Field>
+          <Field htmlFor="template-description" label="描述">
             <Textarea
               id="template-description"
               onChange={(event) => setDraft({ ...draft, description: event.target.value })}
               value={draft.description}
             />
-          </div>
+          </Field>
         </div>
       </Drawer>
       <ProjectCreateDrawer

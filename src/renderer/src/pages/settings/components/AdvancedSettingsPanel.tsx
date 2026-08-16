@@ -2,6 +2,7 @@ import { Code2, FolderOpen, Trash2 } from 'lucide-react'
 import type { AppSettings, LogStats } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Field } from '@/components/ui/form'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -38,8 +39,7 @@ export function AdvancedSettingsPanel({
     <Card className="overflow-hidden">
       <SettingsSection description="调整写入本地诊断文件的日志阈值。" title="日志">
         <div className="grid max-w-xl gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="log-level">日志级别</Label>
+          <Field htmlFor="log-level" label="日志级别">
             <Select
               onValueChange={(logLevel) =>
                 onChange({
@@ -63,7 +63,7 @@ export function AdvancedSettingsPanel({
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </Field>
           <div className="self-end text-[11px] text-slate-500">
             {logStats
               ? `${logStats.fileCount} 个文件 · ${formatBytes(logStats.sizeBytes)}`
