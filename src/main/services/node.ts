@@ -1,17 +1,20 @@
 import { access, lstat, readFile, readdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { shell } from 'electron'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { Worker } from 'node:worker_threads'
 import type {
   GlobalPackage,
   NodeCacheSnapshot,
+  NodeEnvironmentPath,
   NodeInstall,
   NodeRegistry,
   NodeRegistryDraft,
   NodeRelease,
-  NodeState
+  NodeState,
+  NodeTask
 } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, requiredText } from './common'
@@ -236,22 +239,91 @@ export async function getNodeState(): Promise<NodeState> {
 export async function listNodeReleases(filter?: {
   keyword?: string
   channel?: 'all' | 'lts' | 'current'
+  refresh?: boolean
 }): Promise<NodeRelease[]> {
   const settings = await store.settings.read()
-  const response = await fetch(settings.node.indexUrl).catch(() => undefined)
-  if (!response?.ok) throw new Error('Node 版本索引读取失败，请检查网络或下载源设置')
-  const releases = (await response.json()) as NodeRelease[]
+  const cached = await store.nodeReleases.read()
+  const cacheValid =
+    cached && Date.now() - Date.parse(cached.fetchedAt) < 60 * 60 * 1_000 && cached.items.length > 0
+  let releases: NodeRelease[]
+  if (!filter?.refresh && cacheValid) {
+    releases = cached.items
+  } else {
+    try {
+      releases = await fetchNodeReleaseIndex(settings.node.indexUrl)
+      await store.nodeReleases.write({ fetchedAt: new Date().toISOString(), items: releases })
+    } catch (error) {
+      // 网络短暂不可用时保留上次完整解析结果，安装流程仍会重新校验目标版本。
+      if (cached?.items.length) releases = cached.items
+      else throw error
+    }
+  }
+  return releases.filter((release) => {
+    const keyword = filter?.keyword?.trim().toLowerCase()
+    const matchKeyword =
+      !keyword ||
+      release.version.toLowerCase().includes(keyword) ||
+      release.lts?.toString().toLowerCase().includes(keyword) ||
+      release.npm?.toLowerCase().includes(keyword)
+    const matchChannel =
+      !filter?.channel ||
+      filter.channel === 'all' ||
+      (filter.channel === 'lts' ? Boolean(release.lts) : release.lts === false)
+    return matchKeyword && matchChannel
+  })
+}
+
+/** 直接请求 Node 官方 index.json，并在主进程统一校验超时、HTTP 状态和数据结构。 */
+async function fetchNodeReleaseIndex(indexUrl: string): Promise<NodeRelease[]> {
+  let response: Response
+  try {
+    response = await fetch(indexUrl, { signal: AbortSignal.timeout(15_000) })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError')
+      throw new Error('请求 Node 版本索引超时，请检查网络或下载源设置')
+    throw new Error('无法请求 Node 版本索引，请检查网络或下载源设置')
+  }
+  if (!response.ok) throw new Error(`Node 版本索引请求失败（HTTP ${response.status}）`)
+  let value: unknown
+  try {
+    value = await response.json()
+  } catch {
+    throw new Error('Node 版本索引不是有效的 JSON 数据')
+  }
+  if (!Array.isArray(value)) throw new Error('Node 版本索引格式无效')
+
+  const archive = resolveArchive('0.0.0')
+  const releases = value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const raw = item as {
+      version?: unknown
+      date?: unknown
+      lts?: unknown
+      npm?: unknown
+      security?: unknown
+      files?: unknown
+    }
+    const version = typeof raw.version === 'string' ? raw.version.replace(/^v/, '') : ''
+    if (!/^\d+\.\d+\.\d+$/.test(version)) return []
+    const files = Array.isArray(raw.files)
+      ? raw.files.filter((file): file is string => typeof file === 'string')
+      : []
+    const lts: string | false = typeof raw.lts === 'string' ? raw.lts : false
+    return [
+      {
+        version: `v${version}`,
+        date: typeof raw.date === 'string' ? raw.date : undefined,
+        lts,
+        npm: typeof raw.npm === 'string' ? raw.npm : undefined,
+        security: raw.security === true,
+        files,
+        platformSupported:
+          !files.length || archive.fileTokens.some((token) => files.includes(token))
+      }
+    ]
+  })
+  if (!releases.length) throw new Error('Node 版本索引中没有可识别的版本数据')
   return releases
-    .filter((release) => {
-      const keyword = filter?.keyword?.trim().toLowerCase()
-      const matchKeyword = !keyword || release.version.toLowerCase().includes(keyword)
-      const matchChannel =
-        !filter?.channel ||
-        filter.channel === 'all' ||
-        (filter.channel === 'lts' ? Boolean(release.lts) : release.lts === false)
-      return matchKeyword && matchChannel
-    })
-    .slice(0, 100)
 }
 
 async function runNvm(command: string): Promise<string> {
@@ -299,9 +371,7 @@ export async function installNode(
     }
     if (!existing) {
       const settings = await store.settings.read()
-      const releases = (await fetch(settings.node.indexUrl).then((response) =>
-        response.json()
-      )) as NodeRelease[]
+      const releases = await listNodeReleases({ refresh: true })
       const release = releases.find((item) => item.version.replace(/^v/, '') === version)
       if (!release) throw new Error(`未找到 Node ${version} 的发布信息`)
       const archive = resolveArchive(version)
@@ -527,12 +597,61 @@ async function readGlobalPackages(manager: string): Promise<GlobalPackage[]> {
       ...(parsed[0]?.dependencies ?? {}),
       ...(parsed[0]?.devDependencies ?? {})
     }
+    const outdated = parseOutdatedPackages(
+      await runCommand('pnpm', ['outdated', '-g', '--format', 'json']).catch(() => '')
+    )
     return Object.entries(dependencies).map(([name, value]) => ({
       name,
-      current: value.version ?? ''
+      current: value.version ?? '',
+      wanted: outdated.get(name)?.wanted,
+      latest: outdated.get(name)?.latest
     }))
   }
+  if (manager === 'yarn') {
+    const output = await runCommand('yarn', ['global', 'list', '--json']).catch(() => '')
+    return output.split(/\r?\n/).flatMap((line) => {
+      const match = line.match(/info\s+"([^@]+)@([^" ]+)"/)
+      return match ? [{ name: match[1], current: match[2] }] : []
+    })
+  }
+  if (manager === 'bun') {
+    const output = await runCommand('bun', ['pm', 'ls', '-g', '--json']).catch(() => '')
+    try {
+      const parsed = JSON.parse(output) as { packages?: Array<{ name?: string; version?: string }> }
+      return (parsed.packages ?? []).flatMap((item) =>
+        item.name ? [{ name: item.name, current: item.version ?? '' }] : []
+      )
+    } catch {
+      return []
+    }
+  }
   return []
+}
+
+function parseOutdatedPackages(raw: string): Map<string, Pick<GlobalPackage, 'wanted' | 'latest'>> {
+  if (!raw.trim()) return new Map()
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    const rows = Array.isArray(parsed)
+      ? parsed
+      : typeof parsed === 'object' && parsed !== null
+        ? Object.entries(parsed).map(([name, value]) => ({
+            name,
+            ...(typeof value === 'object' && value !== null ? value : {})
+          }))
+        : []
+    return new Map(
+      rows.flatMap((item) => {
+        if (!item || typeof item !== 'object') return []
+        const row = item as { name?: unknown; wanted?: unknown; latest?: unknown }
+        return typeof row.name === 'string'
+          ? [[row.name, { wanted: String(row.wanted ?? ''), latest: String(row.latest ?? '') }]]
+          : []
+      })
+    )
+  } catch {
+    return new Map()
+  }
 }
 
 export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]> {
@@ -542,6 +661,61 @@ export async function listGlobalPackages(keyword = ''): Promise<GlobalPackage[]>
   await store.node.write({ ...state, globalPackages: packages })
   const query = keyword.trim().toLowerCase()
   return query ? packages.filter((item) => item.name.toLowerCase().includes(query)) : packages
+}
+
+/** 刷新默认包管理器的过期信息；不支持的命令仅返回当前已读取版本。 */
+export async function checkGlobalOutdated(): Promise<GlobalPackage[]> {
+  const state = await getNodeState()
+  if (!state.packageManagerVersion) throw new Error(`默认包管理器 ${state.packageManager} 不可用`)
+  const packages = await readGlobalPackages(state.packageManager)
+  await store.node.write({ ...state, globalPackages: packages })
+  return packages
+}
+
+/** 路径快照同时保留不存在的候选目录，帮助用户诊断运行时配置。 */
+export async function getNodeEnvironmentPaths(): Promise<NodeEnvironmentPath[]> {
+  // Electron 的 process.execPath 指向应用本体，必须通过 Node 子进程读取真实运行时路径。
+  const nodeExecutable = await runCommand('node', ['-p', 'process.execPath']).catch(() => '')
+  const npmCache = await runCommand('npm', ['config', 'get', 'cache']).catch(() =>
+    join(homedir(), '.npm')
+  )
+  const pnpmStore = await runCommand('pnpm', ['store', 'path']).catch(() =>
+    join(homedir(), '.pnpm-store')
+  )
+  const paths = [
+    { name: 'Node 可执行文件', path: nodeExecutable || '未找到 Node 可执行文件' },
+    { name: 'nvm 根目录', path: process.env.NVM_DIR || join(homedir(), '.nvm') },
+    { name: 'Node 版本目录', path: getNodeVersionsDirectory() },
+    { name: 'npm 缓存', path: npmCache },
+    { name: 'pnpm Store', path: pnpmStore },
+    { name: 'Yarn 缓存', path: join(homedir(), 'Library', 'Caches', 'Yarn') },
+    { name: 'Bun 缓存', path: join(homedir(), '.bun', 'install', 'cache') }
+  ]
+  return Promise.all(
+    paths.map(async (item) => ({
+      ...item,
+      exists:
+        nodeExecutable || item.name !== 'Node 可执行文件'
+          ? await access(item.path)
+              .then(() => true)
+              .catch(() => false)
+          : false
+    }))
+  )
+}
+
+/** 任务信息持久化在 Node 状态文件中，读取时按最近开始时间排序。 */
+export async function listNodeTasks(): Promise<NodeTask[]> {
+  return normalizeState(await store.node.read()).tasks.sort(
+    (left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt)
+  )
+}
+
+/** 环境页只允许打开已展示的本地路径，失败时返回平台相关中文错误。 */
+export async function openNodePath(pathInput: string): Promise<void> {
+  const path = resolve(requiredText(pathInput, '环境路径', 1_000))
+  const error = await shell.openPath(path)
+  if (error) throw new Error(`无法打开环境路径：${error}`)
 }
 
 /** 更改默认包管理器时同步设置文件，Node 概览和全局包操作随即使用新值。 */

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, ExternalLink, Play, Square, XCircle } from 'lucide-react'
-import type { EnvironmentCheck } from '@shared/domain'
+import type { EnvironmentCheck, EnvironmentTool } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/accordion'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ConfirmAction } from '@/components/ConfirmAction'
 
 export function EnvironmentCheckPanel({
   report
@@ -19,9 +20,13 @@ export function EnvironmentCheckPanel({
   report: (error: unknown) => void
 }): React.JSX.Element {
   const [checks, setChecks] = useState<EnvironmentCheck[]>([])
+  const [tools, setTools] = useState<EnvironmentTool[]>([])
   const [running, setRunning] = useState(false)
 
-  useEffect(() => window.api?.settings.onEnvironmentCheckUpdated(setChecks), [])
+  useEffect(() => {
+    void window.api?.settings.environmentTools().then(setTools).catch(report)
+    return window.api?.settings.onEnvironmentCheckUpdated(setChecks)
+  }, [report])
 
   const run = (): void => {
     setRunning(true)
@@ -95,17 +100,39 @@ export function EnvironmentCheckPanel({
                   </div>
                 </ScrollArea>
                 {item.status === 'failed' && (
-                  <Button
-                    className="mt-2"
-                    onClick={() =>
-                      void window.api?.settings.openEnvironmentGuide(item.id).catch(report)
-                    }
-                    size="sm"
-                    variant="ghost"
-                  >
-                    <ExternalLink size={13} />
-                    安装指引
-                  </Button>
+                  <div className="mt-2 flex gap-1">
+                    {tools.find((tool) => tool.id === item.id)?.installable ? (
+                      <ConfirmAction
+                        description={`将执行受信任的本机安装命令以安装 ${item.name}，请确认网络与权限。`}
+                        onConfirm={() =>
+                          void window.api?.settings
+                            .installEnvironmentTool(item.id)
+                            .then((result) => {
+                              setChecks((current) => [
+                                ...current.filter((check) => check.id !== result.id),
+                                result
+                              ])
+                            })
+                            .catch(report)
+                        }
+                        title={`安装 ${item.name}？`}
+                      >
+                        <Button size="sm" variant="secondary">
+                          安装
+                        </Button>
+                      </ConfirmAction>
+                    ) : null}
+                    <Button
+                      onClick={() =>
+                        void window.api?.settings.openEnvironmentGuide(item.id).catch(report)
+                      }
+                      size="sm"
+                      variant="ghost"
+                    >
+                      <ExternalLink size={13} />
+                      安装指引
+                    </Button>
+                  </div>
                 )}
               </AccordionContent>
             </AccordionItem>

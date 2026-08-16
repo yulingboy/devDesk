@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { shell } from 'electron'
-import type { Project, Workspace } from '@shared/domain'
+import type { Project, Workspace, WorkspaceScanResult } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
 import { createId, requiredText } from './common'
 import { syncGitRules } from './git'
@@ -65,15 +65,21 @@ export async function removeWorkspace(id: string): Promise<Workspace[]> {
 }
 
 export async function scanWorkspace(id: string): Promise<Workspace[]> {
+  return (await scanWorkspaceDetailed(id)).workspaces
+}
+
+/** 扫描仅检查工作区一级目录，避免大型目录树造成 UI 长时间阻塞。 */
+export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanResult> {
   const existing = await store.workspaces.read()
   const workspace = existing.find((item) => item.id === id)
   if (!workspace) throw new Error('工作区不存在')
   const entries = await readdir(workspace.rootPath, { withFileTypes: true }).catch(() => {
     throw new Error('无法读取工作区目录，请检查路径和权限')
   })
-  const candidates = entries
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-    .slice(0, 500)
+  const allCandidates = entries.filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith('.')
+  )
+  const candidates = allCandidates.slice(0, 500)
   const projects: Project[] = []
   for (const entry of candidates) {
     const path = resolve(workspace.rootPath, entry.name)
@@ -88,7 +94,16 @@ export async function scanWorkspace(id: string): Promise<Workspace[]> {
   }
   const updated = { ...workspace, projects }
   await store.workspaces.write(existing.map((item) => (item.id === id ? updated : item)))
-  return listWorkspaces()
+  const knownPaths = new Set(workspace.projects.map((item) => item.path))
+  const scannedPaths = new Set(projects.map((item) => item.path))
+  return {
+    workspaces: await listWorkspaces(),
+    added: projects.filter((item) => !knownPaths.has(item.path)).length,
+    removed: workspace.projects.filter((item) => !scannedPaths.has(item.path)).length,
+    total: allCandidates.length,
+    truncated: allCandidates.length > candidates.length,
+    gitErrorCount: projects.filter((item) => Boolean(item.gitError)).length
+  }
 }
 
 export async function openWorkspace(id: string): Promise<void> {

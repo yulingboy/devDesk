@@ -14,7 +14,6 @@ import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 export function HomePage(): React.JSX.Element {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
   const [snapshot, setSnapshot] = useState<SystemOverviewSnapshot | null>(null)
-  const [counts, setCounts] = useState<{ workspaces: number; identities: number; keys: number }>()
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
   const hasDesktopRuntime = Boolean(window.api)
@@ -25,20 +24,9 @@ export function HomePage(): React.JSX.Element {
       return
     }
     const unsubscribe = window.api.overview.onUpdated(setSnapshot)
-    void Promise.all([
-      window.api.app.getRuntimeInfo(),
-      window.api.workspaces.list(),
-      window.api.git.getState(),
-      window.api.ssh.list(),
-      window.api.overview.getSnapshot()
-    ])
-      .then(([runtime, workspaces, git, keys, overview]) => {
+    void Promise.all([window.api.app.getRuntimeInfo(), window.api.overview.getSnapshot()])
+      .then(([runtime, overview]) => {
         setRuntimeInfo(runtime)
-        setCounts({
-          workspaces: workspaces.length,
-          identities: git.identities.length,
-          keys: keys.length
-        })
         setSnapshot(overview)
       })
       .catch((error: unknown) => {
@@ -105,7 +93,7 @@ export function HomePage(): React.JSX.Element {
         </Card>
 
         <section aria-labelledby="overview-heading">
-          <OverviewCards counts={counts} snapshot={snapshot} />
+          <OverviewCards snapshot={snapshot} />
         </section>
 
         <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.75fr)]">

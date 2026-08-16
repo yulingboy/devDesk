@@ -30,7 +30,9 @@ import {
   clearBusinessData,
   getDataStats,
   runEnvironmentCheck,
-  openEnvironmentGuide
+  openEnvironmentGuide,
+  installEnvironmentTool,
+  listEnvironmentTools
 } from '@main/services/settings'
 import {
   listHosts,
@@ -40,13 +42,20 @@ import {
   flushDns,
   openHostDomain
 } from '@main/services/hosts'
-import { listSshKeys, saveSshKey, generateSshKey, removeSshKey } from '@main/services/ssh'
+import {
+  getSshDeleteImpact,
+  listSshKeys,
+  saveSshKey,
+  generateSshKey,
+  removeSshKey
+} from '@main/services/ssh'
 import {
   getGitState,
   saveGlobalGit,
   saveGitIdentity,
   removeGitIdentity,
-  getGitFiles
+  getGitFiles,
+  getGitIdentityDetail
 } from '@main/services/git'
 import {
   listWorkspaces,
@@ -55,7 +64,8 @@ import {
   scanWorkspace,
   openWorkspace,
   openProject,
-  openProjectEditor
+  openProjectEditor,
+  scanWorkspaceDetailed
 } from '@main/services/workspaces'
 import {
   listTemplates,
@@ -81,7 +91,11 @@ import {
   setPackageManager,
   setPackageManagerRegistry,
   scanNodeCaches,
-  clearNodeCaches
+  clearNodeCaches,
+  checkGlobalOutdated,
+  getNodeEnvironmentPaths,
+  listNodeTasks,
+  openNodePath
 } from '@main/services/node'
 import type { NodeRegistryDraft } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
@@ -163,6 +177,7 @@ export function registerApplicationIpc(): void {
     generateSshKey(options as SSHKeyGenerateOptions)
   )
   registerIpcHandler(IPC_CHANNELS.ssh.remove, (_, id) => removeSshKey(String(id)))
+  registerIpcHandler(IPC_CHANNELS.ssh.deleteImpact, (_, id) => getSshDeleteImpact(String(id)))
 
   registerIpcHandler(IPC_CHANNELS.git.getState, () => getGitState())
   registerIpcHandler(IPC_CHANNELS.git.saveGlobal, (_, value) =>
@@ -173,6 +188,7 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.git.removeIdentity, (_, id) => removeGitIdentity(String(id)))
   registerIpcHandler(IPC_CHANNELS.git.files, () => getGitFiles())
+  registerIpcHandler(IPC_CHANNELS.git.identityDetail, (_, id) => getGitIdentityDetail(String(id)))
 
   registerIpcHandler(IPC_CHANNELS.workspaces.list, () => listWorkspaces())
   registerIpcHandler(IPC_CHANNELS.workspaces.save, (_, workspace) =>
@@ -180,6 +196,9 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.remove, (_, id) => removeWorkspace(String(id)))
   registerIpcHandler(IPC_CHANNELS.workspaces.scan, (_, id) => scanWorkspace(String(id)))
+  registerIpcHandler(IPC_CHANNELS.workspaces.scanDetailed, (_, id) =>
+    scanWorkspaceDetailed(String(id))
+  )
   registerIpcHandler(IPC_CHANNELS.workspaces.open, (_, id) => openWorkspace(String(id)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, path) => openProject(String(path)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path) =>
@@ -197,7 +216,9 @@ export function registerApplicationIpc(): void {
 
   registerIpcHandler(IPC_CHANNELS.node.getState, () => getNodeState())
   registerIpcHandler(IPC_CHANNELS.node.releases, (_, filter) =>
-    listNodeReleases(filter as { keyword?: string; channel?: 'all' | 'lts' | 'current' })
+    listNodeReleases(
+      filter as { keyword?: string; channel?: 'all' | 'lts' | 'current'; refresh?: boolean }
+    )
   )
   registerIpcHandler(IPC_CHANNELS.node.install, (event, options) =>
     installNode(options as NodeInstallOptions, (state) => {
@@ -235,6 +256,10 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.node.scanCaches, () => scanNodeCaches())
   registerIpcHandler(IPC_CHANNELS.node.clearCaches, () => clearNodeCaches())
+  registerIpcHandler(IPC_CHANNELS.node.checkOutdated, () => checkGlobalOutdated())
+  registerIpcHandler(IPC_CHANNELS.node.environmentPaths, () => getNodeEnvironmentPaths())
+  registerIpcHandler(IPC_CHANNELS.node.tasks, () => listNodeTasks())
+  registerIpcHandler(IPC_CHANNELS.node.openPath, (_, path) => openNodePath(String(path)))
 
   registerIpcHandler(IPC_CHANNELS.settings.get, () => getSettings())
   registerIpcHandler(IPC_CHANNELS.settings.save, (_, settings) =>
@@ -264,6 +289,10 @@ export function registerApplicationIpc(): void {
   })
   registerIpcHandler(IPC_CHANNELS.settings.openEnvironmentGuide, (_, id) =>
     openEnvironmentGuide(String(id))
+  )
+  registerIpcHandler(IPC_CHANNELS.settings.environmentTools, () => listEnvironmentTools())
+  registerIpcHandler(IPC_CHANNELS.settings.installEnvironmentTool, (_, id) =>
+    installEnvironmentTool(String(id))
   )
   registerIpcHandler(IPC_CHANNELS.settings.dataStats, () => getDataStats())
   registerIpcHandler<void>(IPC_CHANNELS.settings.openDeveloperTools, async (event) => {

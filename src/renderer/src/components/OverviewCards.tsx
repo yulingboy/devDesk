@@ -1,38 +1,43 @@
 import type { LucideIcon } from 'lucide-react'
-import { Braces, FolderKanban, GitBranch, KeyRound } from 'lucide-react'
+import { Braces, Cpu, HardDrive, MemoryStick } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { SystemOverviewSnapshot } from '@shared/domain'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const overviewItems: Array<{ label: string; value: string; detail: string; icon: LucideIcon }> = [
-  { label: '工作区', value: '0', detail: '尚未配置', icon: FolderKanban },
-  { label: 'Git 身份', value: '0', detail: '尚未配置', icon: GitBranch },
-  { label: 'SSH 密钥', value: '0', detail: '等待扫描', icon: KeyRound },
+  { label: 'CPU', value: '--', detail: '等待采样', icon: Cpu },
+  { label: '内存', value: '--', detail: '等待采样', icon: MemoryStick },
+  { label: '磁盘', value: '--', detail: '等待采样', icon: HardDrive },
   { label: 'Node 版本', value: '--', detail: '等待检测', icon: Braces }
 ]
 
 export function OverviewCards({
-  snapshot,
-  counts
+  snapshot
 }: {
   snapshot: SystemOverviewSnapshot | null
-  counts?: { workspaces: number; identities: number; keys: number }
 }): React.JSX.Element {
   const items = overviewItems.map((item) => {
-    if (item.label === '工作区' && counts)
+    if (item.label === 'CPU' && snapshot)
       return {
         ...item,
-        value: String(counts.workspaces),
-        detail: counts.workspaces ? '已配置' : '尚未配置'
+        value: `${snapshot.cpu.usagePercent}%`,
+        detail: `${snapshot.cpu.cores} 核 · ${snapshot.cpu.model}`
       }
-    if (item.label === 'Git 身份' && counts)
+    if (item.label === '内存' && snapshot)
+      return { ...item, value: `${snapshot.memory.usedPercent}%`, detail: '当前已使用' }
+    if (item.label === '磁盘' && snapshot) {
+      const used = snapshot.disks.length
+        ? Math.round(
+            snapshot.disks.reduce((total, disk) => total + disk.usedPercent, 0) /
+              snapshot.disks.length
+          )
+        : 0
       return {
         ...item,
-        value: String(counts.identities),
-        detail: counts.identities ? '已配置' : '尚未配置'
+        value: `${used}%`,
+        detail: snapshot.disks.length ? '磁盘平均已使用' : '未发现磁盘'
       }
-    if (item.label === 'SSH 密钥' && counts)
-      return { ...item, value: String(counts.keys), detail: counts.keys ? '已发现' : '等待扫描' }
+    }
     if (item.label === 'Node 版本' && snapshot?.nodeVersion)
       return { ...item, value: snapshot.nodeVersion.replace(/^v/, ''), detail: '当前运行版本' }
     return item
@@ -47,7 +52,7 @@ export function OverviewCards({
               <Icon aria-hidden="true" />
             </div>
           </div>
-          {(label === 'Node 版本' && !snapshot) || (label !== 'Node 版本' && !counts) ? (
+          {!snapshot ? (
             <Skeleton className="h-7 w-16" />
           ) : (
             <p className="text-lg font-semibold text-slate-800">{value}</p>

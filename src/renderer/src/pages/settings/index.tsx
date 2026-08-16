@@ -416,6 +416,7 @@ export function SettingsPage(): React.JSX.Element {
   return (
     <div className="h-full overflow-auto p-3">
       <Tabs
+        className="h-full"
         items={[
           { value: 'general', label: '通用', content: general },
           { value: 'data', label: '数据', content: data },
@@ -429,6 +430,7 @@ export function SettingsPage(): React.JSX.Element {
         ]}
         value={activeTab}
         onValueChange={setActiveTab}
+        orientation="vertical"
       />
     </div>
   )

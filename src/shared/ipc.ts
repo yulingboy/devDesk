@@ -30,14 +30,16 @@ export const IPC_CHANNELS = {
     list: 'ssh:list',
     save: 'ssh:save',
     generate: 'ssh:generate',
-    remove: 'ssh:remove'
+    remove: 'ssh:remove',
+    deleteImpact: 'ssh:delete-impact'
   },
   git: {
     getState: 'git:get-state',
     saveGlobal: 'git:save-global',
     saveIdentity: 'git:save-identity',
     removeIdentity: 'git:remove-identity',
-    files: 'git:files'
+    files: 'git:files',
+    identityDetail: 'git:identity-detail'
   },
   workspaces: {
     list: 'workspaces:list',
@@ -46,7 +48,8 @@ export const IPC_CHANNELS = {
     scan: 'workspaces:scan',
     open: 'workspaces:open',
     openProject: 'workspaces:open-project',
-    openProjectEditor: 'workspaces:open-project-editor'
+    openProjectEditor: 'workspaces:open-project-editor',
+    scanDetailed: 'workspaces:scan-detailed'
   },
   templates: {
     list: 'templates:list',
@@ -73,6 +76,10 @@ export const IPC_CHANNELS = {
     updatePackage: 'node:update-package',
     scanCaches: 'node:scan-caches',
     clearCaches: 'node:clear-caches',
+    checkOutdated: 'node:check-outdated',
+    environmentPaths: 'node:environment-paths',
+    tasks: 'node:tasks',
+    openPath: 'node:open-path',
     taskUpdated: 'node:task-updated'
   },
   settings: {
@@ -90,6 +97,8 @@ export const IPC_CHANNELS = {
     environmentCheckUpdated: 'settings:environment-check-updated',
     stopEnvironmentCheck: 'settings:stop-environment-check',
     openEnvironmentGuide: 'settings:open-environment-guide',
+    environmentTools: 'settings:environment-tools',
+    installEnvironmentTool: 'settings:install-environment-tool',
     dataStats: 'settings:data-stats',
     openDeveloperTools: 'settings:open-developer-tools'
   }

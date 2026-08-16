@@ -1,8 +1,14 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
-import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
+import type {
+  GitFileSnapshot,
+  GitIdentity,
+  GitIdentityDetail,
+  GitState,
+  SSHKey
+} from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidEmail, requiredText } from './common'
 
@@ -112,6 +118,37 @@ export async function getGitFiles(): Promise<GitFileSnapshot[]> {
       return { ...item, content, exists: Boolean(content) }
     })
   )
+}
+
+/** 身份详情完全基于已有配置文件和工作区规则实时生成，不增加额外持久化状态。 */
+export async function getGitIdentityDetail(id: string): Promise<GitIdentityDetail> {
+  const identity = (await store.gitIdentities.read()).find((item) => item.id === id)
+  if (!identity) throw new Error('Git 身份不存在')
+  const key = identity.sshKeyId
+    ? (await store.sshKeys.read()).find((item) => item.id === identity.sshKeyId)
+    : undefined
+  const privateKeyExists = key?.privateKeyPath
+    ? await access(key.privateKeyPath)
+        .then(() => true)
+        .catch(() => false)
+    : undefined
+  const workspaces = (await store.workspaces.read())
+    .filter((item) => item.gitIdentityId === id)
+    .map(({ id: workspaceId, name, rootPath }) => ({ id: workspaceId, name, rootPath }))
+  return {
+    identity,
+    sshKey: key
+      ? {
+          id: key.id,
+          name: key.name,
+          fingerprint: key.fingerprint,
+          privateKeyExists
+        }
+      : undefined,
+    workspaces,
+    profilePath: join(getStoreDirectory(), 'git-rules', `${identity.id}.profile`),
+    files: await getGitFiles()
+  }
 }
 
 export async function saveGlobalGit(value: { username: string; email: string }): Promise<GitState> {

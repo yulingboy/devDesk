@@ -1,4 +1,4 @@
-import { HardDrive, RefreshCw, Trash2 } from 'lucide-react'
+import { FolderOpen, HardDrive, RefreshCw, Trash2 } from 'lucide-react'
 import type { NodeState } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +19,8 @@ interface CachePanelProps {
   state: NodeState | null
   onState: (state: NodeState) => void
   report: (error: unknown) => void
+  loading: boolean
+  onScan: () => void
 }
 
 function formatBytes(value: number): string {
@@ -28,21 +30,28 @@ function formatBytes(value: number): string {
   return `${(value / 1024 ** 3).toFixed(2)} GB`
 }
 
-export function CachePanel({ state, onState, report }: CachePanelProps): React.JSX.Element {
+export function CachePanel({
+  state,
+  onState,
+  report,
+  loading,
+  onScan
+}: CachePanelProps): React.JSX.Element {
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between">
         <div>
-          <CardTitle>环境路径与缓存</CardTitle>
-          <CardDescription>扫描常见缓存目录；清理只调用各包管理器的官方命令。</CardDescription>
+          <CardTitle>缓存占用</CardTitle>
+          <CardDescription>首次进入自动读取；清理只调用各包管理器的官方命令。</CardDescription>
         </div>
         <TooltipButton
-          onClick={() => void window.api?.node.scanCaches().then(onState).catch(report)}
+          disabled={loading}
+          onClick={onScan}
           size="icon"
           tooltip="扫描缓存"
           variant="ghost"
         >
-          <RefreshCw size={15} />
+          <RefreshCw className={loading ? 'animate-spin' : undefined} size={15} />
         </TooltipButton>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -64,13 +73,26 @@ export function CachePanel({ state, onState, report }: CachePanelProps): React.J
               <span className="text-[11px] text-slate-600">
                 {cache.exists ? formatBytes(cache.sizeBytes) : '不存在'}
               </span>
+              <TooltipButton
+                disabled={!cache.exists}
+                onClick={() => void window.api?.node.openPath(cache.path).catch(report)}
+                size="icon"
+                tooltip="打开缓存目录"
+                variant="ghost"
+              >
+                <FolderOpen size={14} />
+              </TooltipButton>
             </ItemActions>
           </Item>
         ))}
         {!state?.caches.length && (
           <Empty>
-            <EmptyTitle>尚未扫描缓存路径</EmptyTitle>
-            <EmptyDescription>点击右上角刷新按钮读取缓存目录和大小。</EmptyDescription>
+            <EmptyTitle>{loading ? '正在读取缓存大小' : '尚未读取缓存大小'}</EmptyTitle>
+            <EmptyDescription>
+              {loading
+                ? '首次扫描会统计各缓存目录的占用空间。'
+                : '点击右上角刷新按钮读取缓存目录和大小。'}
+            </EmptyDescription>
           </Empty>
         )}
         <ConfirmAction

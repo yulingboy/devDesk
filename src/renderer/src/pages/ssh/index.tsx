@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Copy, KeyRound, Pencil, Plus, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
-import type { SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
+import type { SSHDeleteImpact, SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -46,6 +46,7 @@ export function SshPage(): React.JSX.Element {
   })
   const [drawerMode, setDrawerMode] = useState<'generate' | 'manual' | 'edit' | null>(null)
   const [loading, setLoading] = useState(true)
+  const [deleteImpact, setDeleteImpact] = useState<SSHDeleteImpact | null>(null)
 
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
@@ -177,10 +178,28 @@ export function SshPage(): React.JSX.Element {
                     <Copy size={15} />
                   </TooltipButton>
                   <ConfirmAction
-                    description={`将删除密钥元数据“${key.name}”，关联的 Git 身份会解除绑定；磁盘上的密钥文件不会删除。`}
+                    description={
+                      deleteImpact?.key.id === key.id ? (
+                        <span>
+                          将删除密钥元数据“{key.name}”，磁盘上的密钥文件不会删除。{' '}
+                          {deleteImpact.identities.length
+                            ? `会解除 ${deleteImpact.identities.map((item) => item.name).join('、')} 的绑定。`
+                            : '当前没有 Git 身份绑定此密钥。'}
+                        </span>
+                      ) : (
+                        `正在读取密钥“${key.name}”的关联影响。`
+                      )
+                    }
                     onConfirm={() =>
                       void window.api?.ssh.remove(key.id).then(setKeys).catch(report)
                     }
+                    onOpenChange={(open) => {
+                      if (open)
+                        void window.api?.ssh
+                          .getDeleteImpact(key.id)
+                          .then(setDeleteImpact)
+                          .catch(report)
+                    }}
                     title="删除 SSH 密钥元数据？"
                     triggerTooltip="删除密钥"
                   >

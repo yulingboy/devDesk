@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Download, Pencil, Plus, RefreshCw, SearchCheck, Trash2 } from 'lucide-react'
 import type { GlobalPackage, NodePackageManagerStatus, NodeState } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -131,6 +131,21 @@ export function PackagePanel({
               />
               <TooltipButton onClick={load} size="icon" tooltip="刷新全局包" variant="secondary">
                 <RefreshCw size={15} />
+              </TooltipButton>
+              <TooltipButton
+                onClick={() =>
+                  void window.api?.node
+                    .checkOutdated()
+                    .then((value) => {
+                      setPackages(value)
+                    })
+                    .catch(report)
+                }
+                size="icon"
+                tooltip="检查过期包"
+                variant="secondary"
+              >
+                <SearchCheck size={15} />
               </TooltipButton>
             </div>
             <div className="space-y-2">

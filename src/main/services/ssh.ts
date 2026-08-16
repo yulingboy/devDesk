@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
+import type { SSHDeleteImpact, SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
 import { createId, requiredText } from './common'
 
@@ -107,6 +107,24 @@ export async function generateSshKey(options: SSHKeyGenerateOptions): Promise<SS
     source: 'generated',
     algorithm: options.algorithm
   })
+}
+
+/** 删除前从当前身份配置推导影响范围，防止 UI 展示过期的静态提示。 */
+export async function getSshDeleteImpact(id: string): Promise<SSHDeleteImpact> {
+  const key = (await store.sshKeys.read()).find((item) => item.id === id)
+  if (!key) throw new Error('SSH 密钥不存在')
+  const identities = (await store.gitIdentities.read())
+    .filter((item) => item.sshKeyId === id)
+    .map(({ id: identityId, name, username, email }) => ({
+      id: identityId,
+      name,
+      username,
+      email
+    }))
+  return {
+    key: { id: key.id, name: key.name, fingerprint: key.fingerprint },
+    identities
+  }
 }
 
 export async function removeSshKey(id: string): Promise<SSHKey[]> {

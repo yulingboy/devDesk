@@ -23,6 +23,12 @@ export interface SSHKey {
   privateKeyExists?: boolean
 }
 
+/** 删除密钥前展示真实关联，避免用户只看到静态风险提示。 */
+export interface SSHDeleteImpact {
+  key: Pick<SSHKey, 'id' | 'name' | 'fingerprint'>
+  identities: Array<Pick<GitIdentity, 'id' | 'name' | 'username' | 'email'>>
+}
+
 export interface GitIdentity {
   id: string
   name: string
@@ -44,6 +50,15 @@ export interface GitFileSnapshot {
   exists: boolean
 }
 
+/** Git 身份详情由已有持久化数据实时推导，不新增磁盘字段。 */
+export interface GitIdentityDetail {
+  identity: GitIdentity
+  sshKey?: Pick<SSHKey, 'id' | 'name' | 'fingerprint' | 'privateKeyExists'>
+  workspaces: Array<Pick<Workspace, 'id' | 'name' | 'rootPath'>>
+  profilePath: string
+  files: GitFileSnapshot[]
+}
+
 export interface Workspace {
   id: string
   name: string
@@ -61,6 +76,16 @@ export interface Project {
   branch?: string
   dirty?: boolean
   gitError?: string
+}
+
+/** 扫描结果额外描述目录变化，旧的 scan 接口仍继续返回 Workspace[]。 */
+export interface WorkspaceScanResult {
+  workspaces: Workspace[]
+  added: number
+  removed: number
+  total: number
+  truncated: boolean
+  gitErrorCount: number
 }
 
 export interface ProjectTemplate {
@@ -136,6 +161,12 @@ export interface NodeCacheSnapshot {
   exists: boolean
 }
 
+export interface NodeEnvironmentPath {
+  name: string
+  path: string
+  exists: boolean
+}
+
 export interface EnvironmentCheck {
   id: string
   name: string
@@ -143,6 +174,12 @@ export interface EnvironmentCheck {
   status: 'passed' | 'failed' | 'skipped'
   version?: string
   detail: string
+}
+
+/** 环境检测页使用的工具能力清单，安装能力必须由主进程白名单控制。 */
+export interface EnvironmentTool extends Pick<EnvironmentCheck, 'id' | 'name' | 'command'> {
+  installable: boolean
+  guideUrl?: string
 }
 
 export interface DataStats {
@@ -185,8 +222,17 @@ export interface NodeRelease {
   version: string
   date?: string
   lts?: string | false
+  npm?: string
   security?: boolean
   files?: string[]
+  /** 由主进程按当前操作系统和 CPU 架构计算，避免用户发起必定失败的安装。 */
+  platformSupported?: boolean
+}
+
+/** 官网索引的短期缓存，仅用于离线回退和避免筛选时重复网络请求。 */
+export interface NodeReleaseCache {
+  fetchedAt: string
+  items: NodeRelease[]
 }
 
 export interface DataExport {
@@ -199,6 +245,7 @@ export interface DataExport {
   workspaces: Workspace[]
   templates: ProjectTemplate[]
   nodeState?: NodeState | null
+  nodeReleases?: NodeReleaseCache | null
   overview?: SystemOverviewSnapshot | null
   hostsBackup?: string
 }

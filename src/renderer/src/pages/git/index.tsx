@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Copy, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
-import type { GitFileSnapshot, GitIdentity, GitState, SSHKey } from '@shared/domain'
+import { Copy, FileText, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
+import type {
+  GitFileSnapshot,
+  GitIdentity,
+  GitIdentityDetail,
+  GitState,
+  SSHKey
+} from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -45,7 +51,8 @@ export function GitPage(): React.JSX.Element {
   const [identity, setIdentity] = useState<GitIdentity>(emptyIdentity)
   const [status, setStatus] = useState('')
   const [files, setFiles] = useState<GitFileSnapshot[]>([])
-  const [drawerMode, setDrawerMode] = useState<'global' | 'identity' | null>(null)
+  const [drawerMode, setDrawerMode] = useState<'global' | 'identity' | 'detail' | null>(null)
+  const [detail, setDetail] = useState<GitIdentityDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
@@ -177,6 +184,22 @@ export function GitPage(): React.JSX.Element {
               </ItemContent>
               <ItemActions>
                 <TooltipButton
+                  onClick={() =>
+                    void window.api?.git
+                      .getIdentityDetail(item.id)
+                      .then((value) => {
+                        setDetail(value)
+                        setDrawerMode('detail')
+                      })
+                      .catch(report)
+                  }
+                  size="icon"
+                  tooltip="查看身份详情"
+                  variant="ghost"
+                >
+                  <FileText size={15} />
+                </TooltipButton>
+                <TooltipButton
                   onClick={() => {
                     setIdentity(item)
                     setDrawerMode('identity')
@@ -238,7 +261,7 @@ export function GitPage(): React.JSX.Element {
           </>
         }
         onClose={() => setDrawerMode(null)}
-        open={drawerMode !== null}
+        open={drawerMode === 'global' || drawerMode === 'identity'}
         title={
           drawerMode === 'global'
             ? '编辑全局 Git 配置'
@@ -318,6 +341,67 @@ export function GitPage(): React.JSX.Element {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        )}
+      </Drawer>
+      <Drawer
+        description="由当前 Git 身份、SSH 密钥和工作区规则实时汇总，只读展示。"
+        onClose={() => setDrawerMode(null)}
+        open={drawerMode === 'detail'}
+        title={`身份详情${detail ? `：${detail.identity.name}` : ''}`}
+      >
+        {detail && (
+          <div className="space-y-4 text-xs">
+            <div className="space-y-1">
+              <p className="font-medium text-slate-700">Git 身份</p>
+              <p>
+                {detail.identity.username} · {detail.identity.email}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-slate-700">SSH 密钥</p>
+              <p>
+                {detail.sshKey ? `${detail.sshKey.name} · ${detail.sshKey.fingerprint}` : '未绑定'}
+              </p>
+              {detail.sshKey && (
+                <p className="text-slate-500">
+                  私钥：{detail.sshKey.privateKeyExists ? '可用' : '未找到'}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-slate-700">Profile 路径</p>
+              <p className="break-all font-mono text-[11px] text-slate-500">{detail.profilePath}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium text-slate-700">关联工作区</p>
+              {detail.workspaces.length ? (
+                detail.workspaces.map((workspace) => (
+                  <p key={workspace.id}>
+                    {workspace.name} ·{' '}
+                    <span className="font-mono text-[11px] text-slate-500">
+                      {workspace.rootPath}
+                    </span>
+                  </p>
+                ))
+              ) : (
+                <p className="text-slate-500">尚无关联工作区</p>
+              )}
+            </div>
+            <Accordion className="space-y-2" type="multiple">
+              {detail.files.map((file) => (
+                <AccordionItem key={file.path} value={file.path}>
+                  <AccordionTrigger>{file.name}</AccordionTrigger>
+                  <AccordionContent>
+                    <ScrollArea className="max-h-52 rounded-md bg-slate-50">
+                      <pre className="whitespace-pre-wrap p-2.5 text-[11px] text-slate-600">
+                        {file.exists ? file.content : '文件不存在'}
+                      </pre>
+                    </ScrollArea>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
         )}
       </Drawer>

@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { AppSettings, DataExport, ThemeName } from '@shared/domain'
-import type { DataStats, EnvironmentCheck } from '@shared/domain'
+import type { DataStats, EnvironmentCheck, EnvironmentTool } from '@shared/domain'
 import { getAppPaths } from '@main/infrastructure/paths'
 import { getStoreDirectory, setStoreDirectory, store } from '@main/infrastructure/store'
 import { setMinimizeToTray } from '@main/tray'
@@ -121,6 +121,7 @@ export async function changeDataDirectory(): Promise<AppSettings> {
     'hosts.backup',
     'system-overview-snapshot.json',
     'node-manager.json',
+    'node-releases.json',
     'git-rules'
   ]
   try {
@@ -224,11 +225,59 @@ const environmentGuides: Record<string, string> = {
   docker: 'https://docs.docker.com/desktop/setup/install/mac-install/'
 }
 
+const autoInstallCommands: Record<string, { command: string; args: string[] }> = {
+  pnpm: { command: 'npm', args: ['install', '-g', 'pnpm'] },
+  yarn: { command: 'corepack', args: ['prepare', 'yarn@stable', '--activate'] }
+}
+
+/** 工具能力由主进程定义，渲染层不能自行拼接任意安装命令。 */
+export function listEnvironmentTools(): EnvironmentTool[] {
+  return environmentCommands.map((item) => ({
+    id: item.id,
+    name: item.name,
+    command: `${item.command} ${item.args.join(' ')}`,
+    installable: Boolean(autoInstallCommands[item.id]),
+    guideUrl: environmentGuides[item.id]
+  }))
+}
+
 /** 缺失工具只打开官方安装指引，避免未经确认执行远程 shell 脚本。 */
 export async function openEnvironmentGuide(id: string): Promise<void> {
   const url = environmentGuides[id]
   if (!url) throw new Error('暂无该工具的安装指引')
   await shell.openExternal(url)
+}
+
+/** 仅允许执行审查过的本地安装命令，其他工具必须走官方安装说明。 */
+export async function installEnvironmentTool(id: string): Promise<EnvironmentCheck> {
+  const tool = environmentCommands.find((item) => item.id === id)
+  const installer = autoInstallCommands[id]
+  if (!tool) throw new Error('未知的环境工具')
+  if (!installer) throw new Error(`${tool.name} 不支持自动安装，请使用官方安装指引`)
+  try {
+    await execFileAsync(installer.command, installer.args, {
+      timeout: 120_000,
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, CI: '1', npm_config_yes: 'true' }
+    })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : '安装命令执行失败'
+    throw new Error(`${tool.name} 安装失败，请检查网络、权限和运行时环境：${detail}`)
+  }
+  try {
+    const { stdout, stderr } = await execFileAsync(tool.command, tool.args, { timeout: 10_000 })
+    const detail = `${stdout}${stderr}`.trim()
+    return {
+      id: tool.id,
+      name: tool.name,
+      command: `${tool.command} ${tool.args.join(' ')}`,
+      status: 'passed',
+      version: detail.split('\n')[0],
+      detail
+    }
+  } catch {
+    throw new Error(`${tool.name} 安装完成，但当前进程仍未检测到该命令，请重启应用后重试`)
+  }
 }
 
 /** 逐项执行常见开发工具检测，并保留原始输出用于排障。 */

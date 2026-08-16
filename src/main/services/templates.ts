@@ -45,6 +45,19 @@ function validateProjectName(value: string): string {
   return name
 }
 
+function describeCloneFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  const text = message.toLowerCase()
+  if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT')
+    return 'Git 未安装，请先在环境检测中安装或配置 Git'
+  if (/authentication|credential|terminal prompts disabled|could not read username/.test(text))
+    return 'Git 凭据验证失败，请检查访问令牌、SSH 密钥或仓库权限'
+  if (/timed out|etimedout|timeout/.test(text)) return '克隆超时，请检查网络后重试'
+  if (/permission denied|eacces|operation not permitted/.test(text))
+    return '目标目录没有写入权限，请更换工作区或修正目录权限'
+  return '克隆失败，请检查网络连接、仓库地址和访问权限'
+}
+
 export async function createProject(options: ProjectCreateOptions): Promise<Workspace[]> {
   const templates = await store.templates.read()
   const template = templates.find((item) => item.id === options.templateId)
@@ -67,7 +80,10 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
     throw new Error('目标目录已经存在，无法覆盖')
   try {
     if (template.type === 'git')
-      await execFileAsync('git', ['clone', '--depth', '1', '--no-tags', template.source, target])
+      await execFileAsync('git', ['clone', '--depth', '1', '--no-tags', template.source, target], {
+        timeout: 120_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+      })
     else {
       await cp(template.source, target, {
         recursive: true,
@@ -75,9 +91,13 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
       })
     }
     await rm(join(target, '.git'), { recursive: true, force: true })
-  } catch {
+  } catch (error) {
     await rm(target, { recursive: true, force: true }).catch(() => undefined)
-    throw new Error('创建项目失败，请检查模板来源、Git 网络和目录权限')
+    throw new Error(
+      template.type === 'git'
+        ? describeCloneFailure(error)
+        : '复制本地模板失败，请检查模板路径和目录权限'
+    )
   }
   return scanWorkspace(workspace.id)
 }

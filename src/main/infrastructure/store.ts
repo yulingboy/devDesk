@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppPaths } from '@shared/types'
@@ -7,6 +8,7 @@ import type {
   GitIdentity,
   HostRecord,
   NodeState,
+  NodeReleaseCache,
   ProjectTemplate,
   SSHKey,
   SystemOverviewSnapshot,
@@ -16,6 +18,7 @@ import type {
 const schemaVersion = 1 as const
 let storeDirectory: string | undefined
 let settingsDirectory: string | undefined
+const pendingWrites = new Map<string, Promise<void>>()
 
 const emptySettings = (dataDirectory: string): AppSettings => ({
   schemaVersion,
@@ -69,11 +72,24 @@ async function readJson<T>(fileName: string, fallback: T): Promise<T> {
 }
 
 async function writeJsonTo<T>(directory: string, fileName: string, value: T): Promise<void> {
-  await mkdir(directory, { recursive: true })
   const target = join(directory, fileName)
-  const temporary = `${target}.${process.pid}.tmp`
-  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-  await rename(temporary, target)
+  const previous = pendingWrites.get(target) ?? Promise.resolve()
+  const write = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await mkdir(directory, { recursive: true })
+      // 同一文件的状态更新可能同时抵达；临时名必须唯一并按目标文件串行提交。
+      const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`
+      await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+      await rename(temporary, target)
+    })
+  pendingWrites.set(target, write)
+  try {
+    await write
+  } finally {
+    // 失败写入不能堵住后续更新，且不能清除已经排队的新任务。
+    if (pendingWrites.get(target) === write) pendingWrites.delete(target)
+  }
 }
 
 async function writeJson<T>(fileName: string, value: T): Promise<void> {
@@ -117,6 +133,10 @@ export const store = {
     read: (): Promise<NodeState | null> => readJson('node-manager.json', null),
     write: (value: NodeState): Promise<void> => writeJson('node-manager.json', value)
   },
+  nodeReleases: {
+    read: (): Promise<NodeReleaseCache | null> => readJson('node-releases.json', null),
+    write: (value: NodeReleaseCache): Promise<void> => writeJson('node-releases.json', value)
+  },
   async exportData(): Promise<DataExport> {
     return {
       schemaVersion,
@@ -128,6 +148,7 @@ export const store = {
       workspaces: await store.workspaces.read(),
       templates: await store.templates.read(),
       nodeState: await store.node.read(),
+      nodeReleases: await store.nodeReleases.read(),
       overview: await store.overview.read(),
       hostsBackup: await readFile(join(getStoreDirectory(), 'hosts.backup'), 'utf8').catch(
         () => undefined
@@ -147,6 +168,7 @@ export const store = {
     await store.workspaces.write(value.workspaces)
     await store.templates.write(value.templates)
     if (value.nodeState) await store.node.write(value.nodeState)
+    if (value.nodeReleases) await store.nodeReleases.write(value.nodeReleases)
     if (value.overview) await store.overview.write(value.overview)
     if (value.hostsBackup) {
       await mkdir(getStoreDirectory(), { recursive: true })

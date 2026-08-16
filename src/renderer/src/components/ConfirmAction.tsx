@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,10 +15,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 interface ConfirmActionProps {
   children: ReactElement
   title: string
-  description: string
+  description: ReactNode
   confirmLabel?: string
   onConfirm: () => void
   triggerTooltip?: string
+  onOpenChange?: (open: boolean) => void
 }
 
 /** 统一危险操作确认，替代阻塞式 window.confirm。 */
@@ -28,11 +29,12 @@ export function ConfirmAction({
   description,
   confirmLabel = '确认',
   onConfirm,
-  triggerTooltip
+  triggerTooltip,
+  onOpenChange
 }: ConfirmActionProps): React.JSX.Element {
   const trigger = <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
   return (
-    <AlertDialog>
+    <AlertDialog onOpenChange={onOpenChange}>
       {triggerTooltip ? (
         <Tooltip>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>

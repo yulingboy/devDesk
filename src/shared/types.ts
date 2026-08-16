@@ -66,7 +66,13 @@ import type {
   EnvironmentCheck,
   GlobalPackage,
   NodeRegistry,
-  DataStats
+  DataStats,
+  EnvironmentTool,
+  GitIdentityDetail,
+  NodeEnvironmentPath,
+  NodeTask,
+  SSHDeleteImpact,
+  WorkspaceScanResult
 } from './domain'
 
 export interface AppApi {
@@ -103,6 +109,7 @@ export interface AppApi {
     save: (draft: SSHKeyDraft) => Promise<SSHKey[]>
     generate: (options: SSHKeyGenerateOptions) => Promise<SSHKey[]>
     remove: (id: string) => Promise<SSHKey[]>
+    getDeleteImpact: (id: string) => Promise<SSHDeleteImpact>
   }
   git: {
     getState: () => Promise<GitState>
@@ -110,6 +117,7 @@ export interface AppApi {
     saveIdentity: (identity: GitIdentity) => Promise<GitState>
     removeIdentity: (id: string) => Promise<GitState>
     files: () => Promise<GitFileSnapshot[]>
+    getIdentityDetail: (id: string) => Promise<GitIdentityDetail>
   }
   workspaces: {
     list: () => Promise<Workspace[]>
@@ -119,6 +127,7 @@ export interface AppApi {
     open: (id: string) => Promise<void>
     openProject: (path: string) => Promise<void>
     openProjectEditor: (path: string) => Promise<void>
+    scanDetailed: (id: string) => Promise<WorkspaceScanResult>
   }
   templates: {
     list: () => Promise<ProjectTemplate[]>
@@ -131,6 +140,7 @@ export interface AppApi {
     releases: (filter?: {
       keyword?: string
       channel?: 'all' | 'lts' | 'current'
+      refresh?: boolean
     }) => Promise<NodeRelease[]>
     install: (options: NodeInstallOptions) => Promise<NodeState>
     switch: (version: string, setDefault: boolean) => Promise<NodeState>
@@ -148,6 +158,10 @@ export interface AppApi {
     updatePackage: (name: string) => Promise<GlobalPackage[]>
     scanCaches: () => Promise<NodeState>
     clearCaches: () => Promise<NodeState>
+    checkOutdated: () => Promise<GlobalPackage[]>
+    environmentPaths: () => Promise<NodeEnvironmentPath[]>
+    tasks: () => Promise<NodeTask[]>
+    openPath: (path: string) => Promise<void>
     onTaskUpdated: (listener: (state: NodeState) => void) => () => void
   }
   settings: {
@@ -164,6 +178,8 @@ export interface AppApi {
     environmentCheck: () => Promise<EnvironmentCheck[]>
     stopEnvironmentCheck: () => Promise<void>
     openEnvironmentGuide: (id: string) => Promise<void>
+    environmentTools: () => Promise<EnvironmentTool[]>
+    installEnvironmentTool: (id: string) => Promise<EnvironmentCheck>
     onEnvironmentCheckUpdated: (listener: (checks: EnvironmentCheck[]) => void) => () => void
     dataStats: () => Promise<DataStats>
     openDeveloperTools: () => Promise<void>

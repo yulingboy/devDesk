@@ -67,14 +67,16 @@ const api: AppApi = {
     list: () => invoke(IPC_CHANNELS.ssh.list),
     save: (draft) => invoke(IPC_CHANNELS.ssh.save, draft),
     generate: (options) => invoke(IPC_CHANNELS.ssh.generate, options),
-    remove: (id) => invoke(IPC_CHANNELS.ssh.remove, id)
+    remove: (id) => invoke(IPC_CHANNELS.ssh.remove, id),
+    getDeleteImpact: (id) => invoke(IPC_CHANNELS.ssh.deleteImpact, id)
   },
   git: {
     getState: () => invoke(IPC_CHANNELS.git.getState),
     saveGlobal: (value) => invoke(IPC_CHANNELS.git.saveGlobal, value),
     saveIdentity: (identity) => invoke(IPC_CHANNELS.git.saveIdentity, identity),
     removeIdentity: (id) => invoke(IPC_CHANNELS.git.removeIdentity, id),
-    files: () => invoke(IPC_CHANNELS.git.files)
+    files: () => invoke(IPC_CHANNELS.git.files),
+    getIdentityDetail: (id) => invoke(IPC_CHANNELS.git.identityDetail, id)
   },
   workspaces: {
     list: () => invoke(IPC_CHANNELS.workspaces.list),
@@ -83,7 +85,8 @@ const api: AppApi = {
     scan: (id) => invoke(IPC_CHANNELS.workspaces.scan, id),
     open: (id) => invoke(IPC_CHANNELS.workspaces.open, id),
     openProject: (path) => invoke(IPC_CHANNELS.workspaces.openProject, path),
-    openProjectEditor: (path) => invoke(IPC_CHANNELS.workspaces.openProjectEditor, path)
+    openProjectEditor: (path) => invoke(IPC_CHANNELS.workspaces.openProjectEditor, path),
+    scanDetailed: (id) => invoke(IPC_CHANNELS.workspaces.scanDetailed, id)
   },
   templates: {
     list: () => invoke(IPC_CHANNELS.templates.list),
@@ -111,6 +114,10 @@ const api: AppApi = {
     updatePackage: (name) => invoke(IPC_CHANNELS.node.updatePackage, name),
     scanCaches: () => invoke(IPC_CHANNELS.node.scanCaches),
     clearCaches: () => invoke(IPC_CHANNELS.node.clearCaches),
+    checkOutdated: () => invoke(IPC_CHANNELS.node.checkOutdated),
+    environmentPaths: () => invoke(IPC_CHANNELS.node.environmentPaths),
+    tasks: () => invoke(IPC_CHANNELS.node.tasks),
+    openPath: (path) => invoke(IPC_CHANNELS.node.openPath, path),
     onTaskUpdated: (listener) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -134,6 +141,8 @@ const api: AppApi = {
     environmentCheck: () => invoke(IPC_CHANNELS.settings.environmentCheck),
     stopEnvironmentCheck: () => invoke(IPC_CHANNELS.settings.stopEnvironmentCheck),
     openEnvironmentGuide: (id) => invoke(IPC_CHANNELS.settings.openEnvironmentGuide, id),
+    environmentTools: () => invoke(IPC_CHANNELS.settings.environmentTools),
+    installEnvironmentTool: (id) => invoke(IPC_CHANNELS.settings.installEnvironmentTool, id),
     onEnvironmentCheckUpdated: (listener) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
