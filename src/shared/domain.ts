@@ -73,9 +73,51 @@ export interface Project {
   workspaceId: string
   name: string
   path: string
+  /** 扫描发现的项目与用户手动纳入的外部项目采用不同刷新策略。 */
+  source?: 'scanned' | 'manual'
   branch?: string
   dirty?: boolean
   gitError?: string
+  /** 以下字段均从项目目录派生，旧项目记录缺失时会在下次扫描补齐。 */
+  packageName?: string
+  packageVersion?: string
+  packageManager?: ProjectPackageManager
+  nodeRequirement?: string
+  hasPackageJson?: boolean
+  dependencyState?: 'ready' | 'missing' | 'not-applicable'
+  remote?: string
+  scriptCount?: number
+  lastScannedAt?: string
+  /** 手动纳入的项目目录被移动或删除后，仍保留记录供用户明确移除。 */
+  directoryExists?: boolean
+}
+
+export type ProjectPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
+
+export interface ProjectScript {
+  name: string
+  command: string
+}
+
+/** 项目详情只反映磁盘上实时状态，不额外保存敏感命令或依赖内容。 */
+export interface ProjectDetail {
+  project: Project
+  scripts: ProjectScript[]
+  workspace: {
+    id: string
+    name: string
+    rootPath: string
+    gitIdentity?: Pick<GitIdentity, 'id' | 'name' | 'username' | 'email'>
+  }
+  environment: {
+    directoryExists: boolean
+    currentNodeVersion: string
+    nodeRequirement?: string
+    nodeCompatible: boolean | null
+    packageManager?: ProjectPackageManager
+    packageManagerAvailable: boolean
+    dependencyState: NonNullable<Project['dependencyState']>
+  }
 }
 
 /** 扫描结果额外描述目录变化，旧的 scan 接口仍继续返回 Workspace[]。 */

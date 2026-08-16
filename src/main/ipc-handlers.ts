@@ -65,7 +65,13 @@ import {
   openWorkspace,
   openProject,
   openProjectEditor,
-  scanWorkspaceDetailed
+  scanWorkspaceDetailed,
+  getProjectDetail,
+  refreshProject,
+  addProjectToWorkspace,
+  removeProjectFromWorkspace,
+  installProjectDependencies,
+  runProjectScript
 } from '@main/services/workspaces'
 import {
   listTemplates,
@@ -208,6 +214,24 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, path) => openProject(String(path)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path) =>
     openProjectEditor(String(path))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.getProjectDetail, (_, workspaceId, projectId) =>
+    getProjectDetail(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.refreshProject, (_, workspaceId, projectId) =>
+    refreshProject(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.addProject, (_, workspaceId, path) =>
+    addProjectToWorkspace(String(workspaceId), String(path))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.removeProject, (_, workspaceId, projectId) =>
+    removeProjectFromWorkspace(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.installDependencies, (_, workspaceId, projectId) =>
+    installProjectDependencies(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.runScript, (_, workspaceId, projectId, script) =>
+    runProjectScript(String(workspaceId), String(projectId), String(script))
   )
 
   registerIpcHandler(IPC_CHANNELS.templates.list, () => listTemplates())

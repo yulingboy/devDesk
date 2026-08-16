@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { RuntimeInfo } from '@shared/types'
-import type { NodeState, SystemOverviewSnapshot } from '@shared/domain'
+import type { NodeState, SystemOverviewSnapshot, Workspace } from '@shared/domain'
+import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { EnvironmentPanel } from '@/components/EnvironmentPanel'
 import { OverviewCards } from '@/components/OverviewCards'
@@ -22,6 +23,7 @@ export function HomePage(): React.JSX.Element {
     workspaceReady: false,
     nodeReady: false
   })
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const hasDesktopRuntime = Boolean(window.api)
 
   useEffect(() => {
@@ -41,25 +43,40 @@ export function HomePage(): React.JSX.Element {
         })
       })
       .finally(() => setLoading(false))
-    void Promise.all([
-      window.api.ssh.list(),
-      window.api.git.getState(),
-      window.api.workspaces.list(),
-      window.api.node.getState()
-    ])
-      .then(([keys, git, workspaces, node]) => {
-        setSetupStatus({
-          sshReady: keys.length > 0,
-          gitReady: git.identities.length > 0,
-          workspaceReady: workspaces.length > 0,
-          nodeReady: isNodeReady(node)
-        })
+    // 工作区是首页的核心数据，不等待可能较慢的 SSH 扫描才展示项目状态。
+    void window.api.workspaces
+      .list()
+      .then((workspaceList) => {
+        setWorkspaces(workspaceList)
+        setSetupStatus((current) => ({ ...current, workspaceReady: workspaceList.length > 0 }))
       })
       .catch((error: unknown) => {
-        rendererLogger.warn('快速开始状态读取失败', {
+        rendererLogger.warn('首页工作区状态读取失败', {
           error: error instanceof Error ? error.message : String(error)
         })
       })
+    // 辅助环境检测单独完成，单项失败不会影响项目概览。
+    void Promise.allSettled([
+      window.api.ssh.list(),
+      window.api.git.getState(),
+      window.api.node.getState()
+    ]).then(([keysResult, gitResult, nodeResult]) => {
+      const keys = keysResult.status === 'fulfilled' ? keysResult.value : []
+      const git = gitResult.status === 'fulfilled' ? gitResult.value : null
+      const node = nodeResult.status === 'fulfilled' ? nodeResult.value : null
+      setSetupStatus((current) => ({
+        ...current,
+        sshReady: keys.length > 0,
+        gitReady: Boolean(git?.identities.length),
+        nodeReady: node ? isNodeReady(node) : false
+      }))
+      const failedChecks = [keysResult, gitResult, nodeResult].filter(
+        (result) => result.status === 'rejected'
+      )
+      if (failedChecks.length) {
+        rendererLogger.warn('部分快速开始状态读取失败', { failedCount: failedChecks.length })
+      }
+    })
     return unsubscribe
   }, [])
   useEffect(() => {
@@ -90,20 +107,23 @@ export function HomePage(): React.JSX.Element {
             <div>
               <Badge className="mb-1.5 gap-1.5" variant="success">
                 <span className="size-1.5 rounded-full bg-[var(--accent)]" />
-                电脑状态面板
+                开发工作台
               </Badge>
               <h2 className="text-base font-semibold text-slate-800" id="overview-heading">
-                {greeting}，开发者
+                {greeting}，开始处理项目
               </h2>
               <p className="mt-1 text-xs text-slate-500">
-                查看当前设备状态、开发环境、磁盘与网络信息。
+                从工作区进入项目，检查环境、安装依赖并运行开发脚本。
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                 <span>{dateText}</span>
                 <span>·</span>
-                <span>{snapshot?.hostname || '设备信息读取中'}</span>
+                <span>{workspaces.length} 个工作区</span>
                 <span>·</span>
-                <span>状态由主进程后台自动采样</span>
+                <span>
+                  {workspaces.reduce((total, workspace) => total + workspace.projects.length, 0)}{' '}
+                  个项目
+                </span>
               </div>
             </div>
             <div className="text-right">
@@ -120,6 +140,8 @@ export function HomePage(): React.JSX.Element {
         <section aria-labelledby="overview-heading">
           <OverviewCards snapshot={snapshot} />
         </section>
+
+        <ProjectOverview workspaces={workspaces} />
 
         <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.75fr)]">
           <EnvironmentPanel runtimeInfo={runtimeInfo} hasDesktopRuntime={hasDesktopRuntime} />
@@ -173,6 +195,57 @@ export function HomePage(): React.JSX.Element {
 
 function isNodeReady(state: NodeState): boolean {
   return Boolean(state.currentVersion || state.installed.length || state.packageManagerVersion)
+}
+
+function ProjectOverview({ workspaces }: { workspaces: Workspace[] }): React.JSX.Element {
+  const projects = workspaces
+    .flatMap((workspace) =>
+      workspace.projects.map((project) => ({ ...project, workspaceName: workspace.name }))
+    )
+    .sort((left, right) => (right.lastScannedAt ?? '').localeCompare(left.lastScannedAt ?? ''))
+    .slice(0, 6)
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between border-b border-slate-100">
+        <div>
+          <CardTitle>项目工作台</CardTitle>
+          <p className="mt-0.5 text-[11px] text-slate-500">最近扫描的项目及其运行准备状态</p>
+        </div>
+        <Badge variant="secondary">{projects.length} 个项目</Badge>
+      </CardHeader>
+      <CardContent className="p-2">
+        {projects.length ? (
+          <div className="grid gap-1 md:grid-cols-2 xl:grid-cols-3">
+            {projects.map((project) => (
+              <Link
+                className="block min-w-0 rounded-md px-2.5 py-2 hover:bg-slate-50"
+                key={project.id}
+                to="/workspaces"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-xs font-medium text-slate-700">
+                    {project.name}
+                  </span>
+                  {project.dependencyState === 'ready' ? (
+                    <Badge variant="success">就绪</Badge>
+                  ) : project.hasPackageJson ? (
+                    <Badge variant="outline">待安装依赖</Badge>
+                  ) : null}
+                </div>
+                <p className="mt-1 truncate text-[11px] text-slate-400">
+                  {project.workspaceName} · {project.packageManager || project.branch || '本地项目'}
+                </p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="px-2.5 py-4 text-xs text-slate-500">
+            尚未扫描项目。前往工作区添加目录后，即可在这里看到项目状态。
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function Info({ label, value }: { label: string; value: string }): React.JSX.Element {

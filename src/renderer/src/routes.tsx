@@ -19,18 +19,18 @@ export interface AppRoute {
 
 // 路由元数据同时驱动侧栏和页面标题，新增模块时只需维护这一处。
 export const appRoutes: AppRoute[] = [
-  { path: '/', label: '首页', description: '当前设备与开发环境状态', icon: House },
-  { path: '/hosts', label: 'Host 管理', description: '管理本机 Host 映射', icon: Network },
-  { path: '/git', label: 'Git 配置', description: '维护 Git 身份与仓库配置', icon: GitBranch },
-  { path: '/ssh', label: 'SSH 密钥', description: '查看和管理 SSH 密钥', icon: KeyRound },
+  { path: '/', label: '概览', description: '工作区与项目运行状态', icon: House },
   {
     path: '/workspaces',
     label: '工作区',
-    description: '统一管理本地项目工作区',
+    description: '扫描、创建并运行本地项目',
     icon: FolderKanban
   },
-  { path: '/templates', label: '项目模板', description: '复用常用项目初始化模板', icon: Boxes },
-  { path: '/node', label: 'Node 管理', description: '查看 Node.js 运行环境', icon: Braces },
+  { path: '/templates', label: '项目模板', description: '为工作区创建项目', icon: Boxes },
+  { path: '/node', label: 'Node 管理', description: '为项目准备 Node.js 运行环境', icon: Braces },
+  { path: '/git', label: 'Git 配置', description: '为工作区应用 Git 身份', icon: GitBranch },
+  { path: '/ssh', label: 'SSH 密钥', description: '为 Git 身份提供认证密钥', icon: KeyRound },
+  { path: '/hosts', label: 'Host 管理', description: '管理本机 Host 映射', icon: Network },
   { path: '/settings', label: '系统设置', description: '调整应用行为与数据目录', icon: Settings }
 ]
 

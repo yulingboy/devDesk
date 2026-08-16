@@ -1,24 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import {
-  Code2,
-  FolderKanban,
-  FolderOpen,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  RefreshCw,
-  PanelLeftClose,
-  PanelLeftOpen,
-  ScanSearch,
-  Save,
-  Rocket,
-  Trash2
-} from 'lucide-react'
-import type { GitIdentity, ProjectTemplate, Workspace, WorkspaceScanResult } from '@shared/domain'
-import { Badge } from '@/components/ui/badge'
+import { Save } from 'lucide-react'
+import type {
+  GitIdentity,
+  Project,
+  ProjectDetail,
+  ProjectTemplate,
+  Workspace,
+  WorkspaceScanResult
+} from '@shared/domain'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -26,20 +17,9 @@ import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
-import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-import { TooltipButton } from '@/components/TooltipButton'
-import { Spinner } from '@/components/ui/spinner'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
-import { Item, ItemActions, ItemContent } from '@/components/ui/item'
+import { Tabs } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -47,6 +27,10 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { ProjectGrid } from './components/ProjectGrid'
+import { ProjectDetailDrawer } from './components/ProjectDetailDrawer'
+import { WorkspaceSidebar } from './components/WorkspaceSidebar'
+import { WorkspaceToolbar } from './components/WorkspaceToolbar'
 
 const emptyWorkspace: Workspace = { id: '', name: '', rootPath: '', description: '', projects: [] }
 
@@ -64,6 +48,10 @@ export function WorkspacesPage(): React.JSX.Element {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
   const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
   const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
+  const [activeProjectTab, setActiveProjectTab] = useState('all')
+  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null)
+  const [projectDetailLoading, setProjectDetailLoading] = useState(false)
+  const [projectAction, setProjectAction] = useState<'refresh' | 'install' | 'script' | 'remove'>()
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
@@ -116,260 +104,275 @@ export function WorkspacesPage(): React.JSX.Element {
       setScanningWorkspaceId(undefined)
     }
   }
-  const filtered = useMemo(
+  const applyProjectDetail = (detail: ProjectDetail): void => {
+    setProjectDetail(detail)
+    setWorkspaces((current) =>
+      current.map((workspace) =>
+        workspace.id === detail.project.workspaceId
+          ? {
+              ...workspace,
+              projects: workspace.projects.map((project) =>
+                project.id === detail.project.id ? { ...project, ...detail.project } : project
+              )
+            }
+          : workspace
+      )
+    )
+  }
+  const openProjectDetail = async (project: Project): Promise<void> => {
+    setProjectDetailLoading(true)
+    setProjectDetail(null)
+    try {
+      const detail = await window.api?.workspaces.getProjectDetail(project.workspaceId, project.id)
+      if (!detail) throw new Error('当前页面未连接桌面服务，无法读取项目详情。')
+      applyProjectDetail(detail)
+    } catch (error) {
+      report(error)
+    } finally {
+      setProjectDetailLoading(false)
+    }
+  }
+  const refreshProjectDetail = async (): Promise<void> => {
+    if (!projectDetail || projectAction) return
+    setProjectAction('refresh')
+    try {
+      const detail = await window.api?.workspaces.refreshProject(
+        projectDetail.project.workspaceId,
+        projectDetail.project.id
+      )
+      if (!detail) throw new Error('当前页面未连接桌面服务，无法刷新项目。')
+      applyProjectDetail(detail)
+      toast.success('项目状态已刷新')
+    } catch (error) {
+      report(error)
+    } finally {
+      setProjectAction(undefined)
+    }
+  }
+  const installDependencies = async (): Promise<void> => {
+    if (!projectDetail || projectAction) return
+    setProjectAction('install')
+    try {
+      const detail = await window.api?.workspaces.installDependencies(
+        projectDetail.project.workspaceId,
+        projectDetail.project.id
+      )
+      if (!detail) throw new Error('当前页面未连接桌面服务，无法安装依赖。')
+      applyProjectDetail(detail)
+      toast.success('项目依赖已安装')
+    } catch (error) {
+      report(error)
+    } finally {
+      setProjectAction(undefined)
+    }
+  }
+  const runProjectScript = async (script: string): Promise<void> => {
+    if (!projectDetail || projectAction) return
+    setProjectAction('script')
+    try {
+      await window.api?.workspaces.runScript(
+        projectDetail.project.workspaceId,
+        projectDetail.project.id,
+        script
+      )
+      toast.success(`已在 Terminal 中启动 ${script} 脚本`)
+    } catch (error) {
+      report(error)
+    } finally {
+      setProjectAction(undefined)
+    }
+  }
+  const addProject = async (workspace: Workspace): Promise<void> => {
+    if (projectAction) return
+    try {
+      const path = await window.api?.dialog.selectDirectory(workspace.rootPath)
+      if (!path) return
+      const next = await window.api?.workspaces.addProject(workspace.id, path)
+      if (!next) throw new Error('当前页面未连接桌面服务，无法纳入项目。')
+      setWorkspaces(next)
+      toast.success('项目已纳入当前工作区')
+    } catch (error) {
+      report(error)
+    }
+  }
+  const removeProject = async (): Promise<void> => {
+    if (!projectDetail || projectAction) return
+    setProjectAction('remove')
+    try {
+      const next = await window.api?.workspaces.removeProject(
+        projectDetail.project.workspaceId,
+        projectDetail.project.id
+      )
+      if (!next) throw new Error('当前页面未连接桌面服务，无法移除项目。')
+      setWorkspaces(next)
+      setProjectDetail(null)
+      toast.success('项目已从工作区移除')
+    } catch (error) {
+      report(error)
+    } finally {
+      setProjectAction(undefined)
+    }
+  }
+  const selectedWorkspace =
+    workspaces.find((item) => item.id === selectedWorkspaceId) ?? workspaces[0]
+  const visibleWorkspace = useMemo(
     () =>
-      workspaces
-        .map((workspace) => ({
-          ...workspace,
-          projects: workspace.projects.filter((project) =>
-            `${project.name} ${project.path}`.toLowerCase().includes(query.toLowerCase())
-          )
-        }))
-        .filter((workspace) =>
-          query
-            ? `${workspace.name} ${workspace.rootPath}`
-                .toLowerCase()
-                .includes(query.toLowerCase()) || workspace.projects.length > 0
-            : true
-        ),
-    [query, workspaces]
+      selectedWorkspace
+        ? {
+            ...selectedWorkspace,
+            projects: selectedWorkspace.projects.filter((project) =>
+              `${project.name} ${project.path}`.toLowerCase().includes(query.toLowerCase())
+            )
+          }
+        : undefined,
+    [query, selectedWorkspace]
   )
-
-  const selectedWorkspace = filtered.find((item) => item.id === selectedWorkspaceId) ?? filtered[0]
   const scanResult = selectedWorkspace ? scanResults[selectedWorkspace.id] : undefined
+  const selectedIdentity = identities.find(
+    (identity) => identity.id === selectedWorkspace?.gitIdentityId
+  )
+  const attentionProjects = visibleWorkspace?.projects.filter(needsAttention) ?? []
+  const readyProjects =
+    visibleWorkspace?.projects.filter(
+      (project) =>
+        project.directoryExists !== false &&
+        project.dependencyState === 'ready' &&
+        !project.gitError
+    ) ?? []
+  const deleteWorkspace = async (workspace: Workspace): Promise<void> => {
+    if (scanningWorkspaceId) return
+    try {
+      const next = await window.api?.workspaces.remove(workspace.id)
+      if (!next) throw new Error('当前页面未连接桌面服务，无法删除工作区。')
+      setWorkspaces(next)
+      setSelectedWorkspaceId((current) => (current === workspace.id ? next[0]?.id : current))
+      setScanResults((current) => {
+        const nextResults = { ...current }
+        delete nextResults[workspace.id]
+        return nextResults
+      })
+      toast.success('工作区已删除')
+    } catch (error) {
+      report(error)
+    }
+  }
   if (loading) return <PageLoadingSkeleton />
   return (
-    <div className="flex h-full min-h-0 gap-2.5 p-3">
-      <aside
-        className={`shrink-0 border-r border-slate-200 pr-2 ${sidebarCollapsed ? 'w-10' : 'w-52'}`}
-      >
-        <div className="mb-2 flex items-center justify-between">
-          {!sidebarCollapsed && <span className="text-xs font-medium text-slate-600">工作区</span>}
-          <TooltipButton
-            onClick={() => setSidebarCollapsed((value) => !value)}
-            size="icon"
-            tooltip={sidebarCollapsed ? '展开工作区列表' : '收起工作区列表'}
-            variant="ghost"
-          >
-            {sidebarCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-          </TooltipButton>
-        </div>
-        {!sidebarCollapsed && (
-          <div className="space-y-1">
-            {workspaces.map((workspace) => (
-              <Button
-                className="w-full justify-start truncate"
-                key={workspace.id}
-                onClick={() => setSelectedWorkspaceId(workspace.id)}
-                size="sm"
-                variant={selectedWorkspaceId === workspace.id ? 'secondary' : 'ghost'}
-              >
-                <FolderKanban size={14} />
-                <span className="truncate">{workspace.name}</span>
-              </Button>
-            ))}
+    <div className="flex h-full min-h-0 bg-slate-50">
+      <WorkspaceSidebar
+        collapsed={sidebarCollapsed}
+        onCreate={() => {
+          setDraft(emptyWorkspace)
+          setDrawerMode('workspace')
+        }}
+        onSelect={setSelectedWorkspaceId}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+        selectedId={selectedWorkspace?.id}
+        workspaces={workspaces}
+      />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {visibleWorkspace ? (
+          <>
+            <WorkspaceToolbar
+              identityName={selectedIdentity?.name}
+              onAddProject={() => void addProject(visibleWorkspace)}
+              onCreateProject={() => {
+                setCreateWorkspaceId(visibleWorkspace.id)
+                setDrawerMode('project')
+              }}
+              onDelete={() => deleteWorkspace(visibleWorkspace)}
+              onEdit={() => {
+                setDraft(visibleWorkspace)
+                setDrawerMode('workspace')
+              }}
+              onOpen={() => void window.api?.workspaces.open(visibleWorkspace.id).catch(report)}
+              onQueryChange={setQuery}
+              onRefresh={load}
+              onScan={() => void scan(visibleWorkspace.id)}
+              query={query}
+              scanResult={scanResult}
+              scanning={scanningWorkspaceId === visibleWorkspace.id}
+              templatesAvailable={templates.length > 0}
+              workspace={visibleWorkspace}
+            />
+            <Tabs
+              className="min-h-0 flex-1 gap-0 bg-white [&_[role=tablist]]:shrink-0 [&_[role=tablist]]:px-5 [&_[role=tabpanel]]:overflow-auto"
+              fill
+              items={[
+                {
+                  value: 'all',
+                  label: `全部 ${visibleWorkspace.projects.length}`,
+                  content: (
+                    <ProjectGrid
+                      onOpen={(project) => void openProjectDetail(project)}
+                      onOpenEditor={(path) =>
+                        void window.api?.workspaces.openProjectEditor(path).catch(report)
+                      }
+                      onOpenFolder={(path) =>
+                        void window.api?.workspaces.openProject(path).catch(report)
+                      }
+                      projects={visibleWorkspace.projects}
+                      query={query}
+                      rootPath={visibleWorkspace.rootPath}
+                      scanning={scanningWorkspaceId === visibleWorkspace.id}
+                    />
+                  )
+                },
+                {
+                  value: 'attention',
+                  label: `需处理 ${attentionProjects.length}`,
+                  content: (
+                    <ProjectGrid
+                      onOpen={(project) => void openProjectDetail(project)}
+                      onOpenEditor={(path) =>
+                        void window.api?.workspaces.openProjectEditor(path).catch(report)
+                      }
+                      onOpenFolder={(path) =>
+                        void window.api?.workspaces.openProject(path).catch(report)
+                      }
+                      projects={attentionProjects}
+                      query={query}
+                      rootPath={visibleWorkspace.rootPath}
+                      scanning={scanningWorkspaceId === visibleWorkspace.id}
+                    />
+                  )
+                },
+                {
+                  value: 'ready',
+                  label: `已就绪 ${readyProjects.length}`,
+                  content: (
+                    <ProjectGrid
+                      onOpen={(project) => void openProjectDetail(project)}
+                      onOpenEditor={(path) =>
+                        void window.api?.workspaces.openProjectEditor(path).catch(report)
+                      }
+                      onOpenFolder={(path) =>
+                        void window.api?.workspaces.openProject(path).catch(report)
+                      }
+                      projects={readyProjects}
+                      query={query}
+                      rootPath={visibleWorkspace.rootPath}
+                      scanning={scanningWorkspaceId === visibleWorkspace.id}
+                    />
+                  )
+                }
+              ]}
+              onValueChange={setActiveProjectTab}
+              value={activeProjectTab}
+            />
+          </>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto bg-white">
+            <ProjectGrid
+              onOpen={() => undefined}
+              onOpenEditor={() => undefined}
+              onOpenFolder={() => undefined}
+              projects={[]}
+              query={query}
+              scanning={false}
+            />
           </div>
         )}
-      </aside>
-      <div className="min-w-0 flex-1 overflow-auto">
-        <Card className="flex min-h-full flex-col">
-          <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
-            <div>
-              <CardTitle>工作区</CardTitle>
-              <CardDescription>只扫描根目录第一层非隐藏目录，最多导入 500 个项目。</CardDescription>
-            </div>
-            <div className="flex gap-1">
-              <Button
-                onClick={() => {
-                  setDraft(emptyWorkspace)
-                  setDrawerMode('workspace')
-                }}
-                variant="success"
-              >
-                <Plus size={14} />
-                新增工作区
-              </Button>
-              <TooltipButton onClick={load} size="icon" tooltip="刷新工作区" variant="ghost">
-                <RefreshCw size={15} />
-              </TooltipButton>
-            </div>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col space-y-3 pt-3">
-            <Input
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索工作区、项目或路径"
-              value={query}
-            />
-            {(selectedWorkspace ? [selectedWorkspace] : []).map((workspace) => (
-              <div className="min-h-0 flex-1" key={workspace.id}>
-                <div className="flex items-start gap-3">
-                  <div className="grid size-9 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
-                    <FolderKanban size={17} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{workspace.name}</p>
-                    <p className="truncate text-xs text-slate-500">{workspace.rootPath}</p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {workspace.projects.length} 个项目
-                    </p>
-                  </div>
-                  <DropdownMenu>
-                    <Tooltip>
-                      <DropdownMenuTrigger asChild>
-                        <TooltipTrigger asChild>
-                          <Button aria-label="工作区操作" size="icon" variant="ghost">
-                            <MoreHorizontal size={15} />
-                          </Button>
-                        </TooltipTrigger>
-                      </DropdownMenuTrigger>
-                      <TooltipContent>工作区操作</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setDraft(workspace)
-                          setDrawerMode('workspace')
-                        }}
-                      >
-                        <Pencil size={14} />
-                        编辑工作区
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          if (!templates.length) {
-                            toast.warning('暂无可用模板，请先到“项目模板”页新增模板')
-                            return
-                          }
-                          setCreateWorkspaceId(workspace.id)
-                          setDrawerMode('project')
-                        }}
-                      >
-                        <Rocket size={14} />
-                        从模板创建项目
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          void window.api?.workspaces.open(workspace.id).catch(report)
-                        }
-                      >
-                        <FolderOpen size={14} />
-                        打开目录
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={Boolean(scanningWorkspaceId)}
-                        onSelect={() => void scan(workspace.id)}
-                      >
-                        {scanningWorkspaceId === workspace.id ? (
-                          <Spinner />
-                        ) : (
-                          <ScanSearch size={14} />
-                        )}
-                        {scanningWorkspaceId === workspace.id ? '正在扫描' : '扫描项目'}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <ConfirmAction
-                    description={`删除工作区“${workspace.name}”会同时移除应用内项目记录和 Git 路径规则，不会删除磁盘目录。`}
-                    onConfirm={async () => {
-                      if (scanningWorkspaceId) return
-                      try {
-                        const next = await window.api?.workspaces.remove(workspace.id)
-                        if (!next) throw new Error('当前页面未连接桌面服务，无法删除工作区。')
-                        setWorkspaces(next)
-                        setScanResults((current) => {
-                          const nextResults = { ...current }
-                          delete nextResults[workspace.id]
-                          return nextResults
-                        })
-                      } catch (error) {
-                        report(error)
-                      }
-                    }}
-                    title="删除工作区？"
-                    triggerTooltip="删除工作区"
-                  >
-                    <Button
-                      aria-label="删除工作区"
-                      disabled={Boolean(scanningWorkspaceId)}
-                      size="icon"
-                      variant="ghost"
-                    >
-                      <Trash2 size={15} />
-                    </Button>
-                  </ConfirmAction>
-                </div>
-                {scanResult && (
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-y border-slate-100 py-2 text-[11px] text-slate-500">
-                    <span>上次扫描：新增 {scanResult.added}</span>
-                    <span>移除 {scanResult.removed}</span>
-                    <span>共发现 {scanResult.total} 个项目</span>
-                    {scanResult.truncated && <span className="text-amber-600">已达到扫描上限</span>}
-                    {scanResult.gitErrorCount > 0 && (
-                      <span className="text-amber-600">
-                        {scanResult.gitErrorCount} 个 Git 状态异常
-                      </span>
-                    )}
-                  </div>
-                )}
-                {workspace.projects.length > 0 && (
-                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {workspace.projects.map((project) => (
-                      <Item className="gap-1.5 bg-white p-1" key={project.id}>
-                        <ItemContent>
-                          <Button
-                            className="h-auto w-full justify-start truncate px-2 py-1 text-left text-xs"
-                            onClick={() =>
-                              void window.api?.workspaces.openProject(project.path).catch(report)
-                            }
-                            variant="ghost"
-                          >
-                            <span className="truncate font-medium text-slate-800">
-                              {project.name}
-                              <span className="ml-2 font-normal text-slate-400">
-                                {project.branch ?? '非 Git 项目'}
-                              </span>
-                            </span>
-                          </Button>
-                        </ItemContent>
-                        <ItemActions>
-                          {project.gitError ? (
-                            <Badge variant="outline">状态未知</Badge>
-                          ) : (
-                            <Badge variant={project.dirty ? 'secondary' : 'success'}>
-                              {project.dirty ? '有改动' : '干净'}
-                            </Badge>
-                          )}
-                          <TooltipButton
-                            onClick={() =>
-                              void window.api?.workspaces
-                                .openProjectEditor(project.path)
-                                .catch(report)
-                            }
-                            size="icon"
-                            tooltip="在 VS Code 中打开"
-                            variant="ghost"
-                          >
-                            <Code2 size={14} />
-                          </TooltipButton>
-                        </ItemActions>
-                      </Item>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-            {!filtered.length && (
-              <Empty>
-                <EmptyTitle>{query ? '没有匹配的工作区或项目' : '尚未添加工作区'}</EmptyTitle>
-                <EmptyDescription>
-                  {query
-                    ? '尝试修改搜索条件，或清空搜索框查看全部工作区。'
-                    : '添加项目根目录后，可以扫描和管理其中的项目。'}
-                </EmptyDescription>
-              </Empty>
-            )}
-          </CardContent>
-        </Card>
         <Drawer
           description="名称和规范化根目录不能与现有工作区重复，保存后会同步 Git 规则。"
           footer={
@@ -452,7 +455,31 @@ export function WorkspacesPage(): React.JSX.Element {
           templates={templates}
           workspaces={workspaces}
         />
+        <ProjectDetailDrawer
+          detail={projectDetail}
+          loading={projectDetailLoading}
+          onClose={() => {
+            if (!projectAction) setProjectDetail(null)
+          }}
+          onInstallDependencies={() => void installDependencies()}
+          onRemove={removeProject}
+          onOpenEditor={(path) => void window.api?.workspaces.openProjectEditor(path).catch(report)}
+          onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
+          onRefresh={() => void refreshProjectDetail()}
+          onRunScript={(script) => void runProjectScript(script)}
+          open={projectDetailLoading || Boolean(projectDetail)}
+          pendingAction={projectAction}
+        />
       </div>
     </div>
+  )
+}
+
+/** 项目缺目录、依赖未安装或 Git 状态不可读取时，归入“需处理”页签。 */
+function needsAttention(project: Project): boolean {
+  return (
+    project.directoryExists === false ||
+    Boolean(project.gitError) ||
+    Boolean(project.hasPackageJson && project.dependencyState === 'missing')
   )
 }
