@@ -66,7 +66,13 @@ export function SidebarHeader({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>): React.JSX.Element {
-  return <div className={cn('flex h-11 shrink-0 items-center px-2', className)} {...props} />
+  return (
+    <div
+      className={cn('flex h-11 shrink-0 items-center justify-between gap-2 px-2.5', className)}
+      data-sidebar="header"
+      {...props}
+    />
+  )
 }
 
 /** shadcn Sidebar 的折叠开关，图标和提示随当前状态自动变化。 */

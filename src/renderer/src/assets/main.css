@@ -121,3 +121,13 @@ button:focus-visible {
 [data-sidebar='sidebar'][data-collapsible='icon'] [data-sidebar='label'] {
   display: none;
 }
+
+/* 折叠后保留一个居中的展开入口，品牌文字只在展开状态出现。 */
+[data-sidebar='sidebar'][data-state='collapsed'] [data-sidebar='header'] {
+  justify-content: center;
+  padding-inline: 0.375rem;
+}
+
+[data-sidebar='sidebar'][data-state='collapsed'] [data-sidebar='brand'] {
+  display: none;
+}

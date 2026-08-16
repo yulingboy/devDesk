@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { CircleHelp } from 'lucide-react'
+import { MonitorCog } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Sidebar,
@@ -19,7 +19,15 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="justify-end">
+      <SidebarHeader>
+        <div className="flex min-w-0 items-center gap-2" data-sidebar="brand">
+          <div className="grid size-6 shrink-0 place-items-center rounded-md bg-[var(--accent)] text-white shadow-sm">
+            <MonitorCog aria-hidden="true" size={15} />
+          </div>
+          <span className="truncate text-xs font-semibold text-slate-700" data-sidebar="label">
+            开发工坊
+          </span>
+        </div>
         <SidebarTrigger />
       </SidebarHeader>
 
@@ -46,12 +54,6 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
       </SidebarContent>
 
       <SidebarFooter>
-        <SidebarMenuButton tooltip="帮助与反馈">
-          <CircleHelp />
-          <span className="truncate" data-sidebar="label">
-            帮助与反馈
-          </span>
-        </SidebarMenuButton>
         <div className="mt-1 flex h-7 items-center justify-center gap-2 px-2.5 text-[10px] text-slate-400">
           <Tooltip>
             <TooltipTrigger asChild>

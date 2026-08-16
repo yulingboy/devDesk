@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Minus, MonitorCog, PanelTop, Square, Wifi, X } from 'lucide-react'
+import { Minus, PanelTop, Square, Wifi, X } from 'lucide-react'
 import type { SystemOverviewSnapshot } from '@shared/domain'
 import type { WindowState } from '@shared/types'
 import { TooltipButton } from '@/components/TooltipButton'
@@ -56,12 +56,7 @@ export function AppHeader(): React.JSX.Element {
       }`}
     >
       {isMac && <div aria-hidden="true" className="w-[78px] shrink-0" />}
-      <div className={`flex min-w-0 flex-1 items-center gap-2.5 ${isMac ? 'pr-4' : 'px-4'}`}>
-        <div className="grid size-5 shrink-0 place-items-center rounded bg-[var(--accent)] text-white shadow-sm">
-          <MonitorCog aria-hidden="true" />
-        </div>
-        <span className="truncate text-xs font-medium text-slate-700">开发工坊</span>
-      </div>
+      <div className="min-w-0 flex-1" />
 
       <div className="app-no-drag flex h-full items-center">
         <div className="mr-4 hidden items-center gap-2 text-[11px] text-slate-400 md:flex">
