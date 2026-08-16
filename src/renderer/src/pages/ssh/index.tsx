@@ -14,6 +14,15 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
 import {
   Select,
   SelectContent,
@@ -121,16 +130,13 @@ export function SshPage(): React.JSX.Element {
           />
           <div className="space-y-2">
             {filtered.map((key) => (
-              <div
-                className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
-                key={key.id}
-              >
-                <div className="grid size-9 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
-                  <KeyRound size={17} />
-                </div>
-                <div className="min-w-0 flex-1">
+              <Item key={key.id}>
+                <ItemMedia>
+                  <KeyRound />
+                </ItemMedia>
+                <ItemContent>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">{key.name}</p>
+                    <ItemTitle>{key.name}</ItemTitle>
                     <Badge variant="secondary">{key.algorithm}</Badge>
                     {key.privateKeyPath && (
                       <Badge variant={key.privateKeyExists ? 'success' : 'outline'}>
@@ -138,55 +144,62 @@ export function SshPage(): React.JSX.Element {
                       </Badge>
                     )}
                   </div>
-                  <p className="mt-1 truncate font-mono text-xs text-slate-500">
-                    {key.fingerprint}
-                  </p>
-                </div>
-                <TooltipButton
-                  onClick={() => {
-                    setDraft({
-                      id: key.id,
-                      name: key.name,
-                      publicKey: key.publicKey,
-                      privateKeyPath: key.privateKeyPath,
-                      source: key.source
-                    })
-                    setDrawerMode('edit')
-                  }}
-                  size="icon"
-                  tooltip="编辑公钥"
-                  variant="ghost"
-                >
-                  <Pencil size={15} />
-                </TooltipButton>
-                <TooltipButton
-                  onClick={() =>
-                    void navigator.clipboard
-                      .writeText(key.publicKey)
-                      .then(() => toast.success('公钥已复制'))
-                  }
-                  size="icon"
-                  tooltip="复制公钥"
-                  variant="ghost"
-                >
-                  <Copy size={15} />
-                </TooltipButton>
-                <ConfirmAction
-                  description={`将删除密钥元数据“${key.name}”，关联的 Git 身份会解除绑定；磁盘上的密钥文件不会删除。`}
-                  onConfirm={() => void window.api?.ssh.remove(key.id).then(setKeys).catch(report)}
-                  title="删除 SSH 密钥元数据？"
-                  triggerTooltip="删除密钥"
-                >
-                  <Button aria-label="删除密钥" size="icon" variant="ghost">
-                    <Trash2 size={15} />
-                  </Button>
-                </ConfirmAction>
-              </div>
+                  <ItemDescription className="font-mono">{key.fingerprint}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <TooltipButton
+                    onClick={() => {
+                      setDraft({
+                        id: key.id,
+                        name: key.name,
+                        publicKey: key.publicKey,
+                        privateKeyPath: key.privateKeyPath,
+                        source: key.source
+                      })
+                      setDrawerMode('edit')
+                    }}
+                    size="icon"
+                    tooltip="编辑公钥"
+                    variant="ghost"
+                  >
+                    <Pencil size={15} />
+                  </TooltipButton>
+                  <TooltipButton
+                    onClick={() =>
+                      void navigator.clipboard
+                        .writeText(key.publicKey)
+                        .then(() => toast.success('公钥已复制'))
+                    }
+                    size="icon"
+                    tooltip="复制公钥"
+                    variant="ghost"
+                  >
+                    <Copy size={15} />
+                  </TooltipButton>
+                  <ConfirmAction
+                    description={`将删除密钥元数据“${key.name}”，关联的 Git 身份会解除绑定；磁盘上的密钥文件不会删除。`}
+                    onConfirm={() =>
+                      void window.api?.ssh.remove(key.id).then(setKeys).catch(report)
+                    }
+                    title="删除 SSH 密钥元数据？"
+                    triggerTooltip="删除密钥"
+                  >
+                    <Button aria-label="删除密钥" size="icon" variant="ghost">
+                      <Trash2 size={15} />
+                    </Button>
+                  </ConfirmAction>
+                </ItemActions>
+              </Item>
             ))}
             {!filtered.length && (
-              <p className="py-8 text-center text-sm text-slate-400">
-                未发现 SSH 公钥，可手动录入或生成新密钥。
-              </p>
+              <Empty>
+                <EmptyTitle>{query ? '没有匹配的 SSH 密钥' : '尚未发现 SSH 公钥'}</EmptyTitle>
+                <EmptyDescription>
+                  {query
+                    ? '尝试修改搜索条件，或清空搜索框查看全部密钥。'
+                    : '可手动录入已有公钥，或直接生成新密钥。'}
+                </EmptyDescription>
+              </Empty>
             )}
           </div>
         </CardContent>

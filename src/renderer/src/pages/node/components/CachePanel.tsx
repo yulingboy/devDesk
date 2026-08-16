@@ -6,6 +6,14 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
 
 interface CachePanelProps {
   state: NodeState | null
@@ -39,24 +47,25 @@ export function CachePanel({ state, onState, report }: CachePanelProps): React.J
       </CardHeader>
       <CardContent className="space-y-2">
         {state?.caches.map((cache) => (
-          <div
-            className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
-            key={cache.name}
-          >
-            <HardDrive className="text-slate-600" size={17} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{cache.name}</p>
+          <Item key={cache.name}>
+            <ItemMedia className="bg-slate-100 text-slate-600">
+              <HardDrive />
+            </ItemMedia>
+            <ItemContent>
+              <ItemTitle>{cache.name}</ItemTitle>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <p className="truncate text-xs text-slate-500">{cache.path}</p>
+                  <ItemDescription>{cache.path}</ItemDescription>
                 </TooltipTrigger>
                 <TooltipContent>{cache.path}</TooltipContent>
               </Tooltip>
-            </div>
-            <span className="text-xs text-slate-600">
-              {cache.exists ? formatBytes(cache.sizeBytes) : '不存在'}
-            </span>
-          </div>
+            </ItemContent>
+            <ItemActions>
+              <span className="text-[11px] text-slate-600">
+                {cache.exists ? formatBytes(cache.sizeBytes) : '不存在'}
+              </span>
+            </ItemActions>
+          </Item>
         ))}
         {!state?.caches.length && (
           <Empty>

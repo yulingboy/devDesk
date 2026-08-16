@@ -114,7 +114,7 @@ export function SettingsPage(): React.JSX.Element {
       </CardHeader>
       <CardContent>
         <div className="divide-y divide-slate-100 border-y border-slate-100">
-          <label className="flex items-center justify-between gap-4 py-2.5">
+          <Label className="flex items-center justify-between gap-4 py-2.5">
             <span>
               <span className="block text-xs font-medium text-slate-700">开机自启</span>
               <span className="mt-0.5 block text-[11px] text-slate-400">
@@ -130,8 +130,8 @@ export function SettingsPage(): React.JSX.Element {
                 })
               }
             />
-          </label>
-          <label className="flex items-center justify-between gap-4 py-2.5">
+          </Label>
+          <Label className="flex items-center justify-between gap-4 py-2.5">
             <span>
               <span className="block text-xs font-medium text-slate-700">最小化到托盘</span>
               <span className="mt-0.5 block text-[11px] text-slate-400">
@@ -147,7 +147,7 @@ export function SettingsPage(): React.JSX.Element {
                 })
               }
             />
-          </label>
+          </Label>
         </div>
         <div className="mt-3 flex gap-1.5">
           <Button onClick={save} variant="success">
@@ -356,7 +356,7 @@ export function SettingsPage(): React.JSX.Element {
                 </SelectContent>
               </Select>
             </div>
-            <label className="flex items-center gap-2 self-end pb-1 text-xs">
+            <Label className="flex items-center gap-2 self-end pb-1 text-xs">
               <Switch
                 checked={settings.advanced.developerTools}
                 onCheckedChange={(checked) =>
@@ -367,7 +367,7 @@ export function SettingsPage(): React.JSX.Element {
                 }
               />
               允许打开开发者工具
-            </label>
+            </Label>
           </div>
           <Button
             disabled={!settings.advanced.developerTools}

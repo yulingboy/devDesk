@@ -16,6 +16,15 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
 import {
   Select,
   SelectContent,
@@ -125,62 +134,66 @@ export function TemplatesPage(): React.JSX.Element {
             value={query}
           />
           {filtered.map((template) => (
-            <div
-              className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
-              key={template.id}
-            >
-              <div className="grid size-9 place-items-center rounded-md bg-slate-100 text-slate-600">
-                {template.type === 'git' ? <GitBranch size={17} /> : <Boxes size={17} />}
-              </div>
-              <div className="min-w-0 flex-1">
+            <Item key={template.id}>
+              <ItemMedia className="bg-slate-100 text-slate-600">
+                {template.type === 'git' ? <GitBranch /> : <Boxes />}
+              </ItemMedia>
+              <ItemContent>
                 <div className="flex items-center gap-2">
-                  <p className="font-medium">{template.name}</p>
+                  <ItemTitle>{template.name}</ItemTitle>
                   <Badge variant="secondary">{template.type === 'git' ? 'Git' : '本地'}</Badge>
                 </div>
-                <p className="truncate text-xs text-slate-500">{template.source}</p>
-              </div>
-              <TooltipButton
-                disabled={!workspaces.length}
-                onClick={() => {
-                  setCreateTemplateId(template.id)
-                  setDrawerMode('project')
-                }}
-                size="sm"
-                tooltip={workspaces.length ? '使用此模板创建项目' : '请先创建工作区'}
-                variant="secondary"
-              >
-                <Play size={14} />
-                创建项目
-              </TooltipButton>
-              <TooltipButton
-                onClick={() => {
-                  setDraft(template)
-                  setDrawerMode('template')
-                }}
-                size="icon"
-                tooltip="编辑模板"
-                variant="ghost"
-              >
-                <Pencil size={15} />
-              </TooltipButton>
-              <ConfirmAction
-                description={`删除模板“${template.name}”不会删除已经创建的项目，但模板记录无法恢复。`}
-                onConfirm={() =>
-                  void window.api?.templates.remove(template.id).then(setTemplates).catch(report)
-                }
-                title="删除项目模板？"
-                triggerTooltip="删除模板"
-              >
-                <Button aria-label="删除模板" size="icon" variant="ghost">
-                  <Trash2 size={15} />
-                </Button>
-              </ConfirmAction>
-            </div>
+                <ItemDescription>{template.source}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <TooltipButton
+                  disabled={!workspaces.length}
+                  onClick={() => {
+                    setCreateTemplateId(template.id)
+                    setDrawerMode('project')
+                  }}
+                  size="sm"
+                  tooltip={workspaces.length ? '使用此模板创建项目' : '请先创建工作区'}
+                  variant="secondary"
+                >
+                  <Play size={14} />
+                  创建项目
+                </TooltipButton>
+                <TooltipButton
+                  onClick={() => {
+                    setDraft(template)
+                    setDrawerMode('template')
+                  }}
+                  size="icon"
+                  tooltip="编辑模板"
+                  variant="ghost"
+                >
+                  <Pencil size={15} />
+                </TooltipButton>
+                <ConfirmAction
+                  description={`删除模板“${template.name}”不会删除已经创建的项目，但模板记录无法恢复。`}
+                  onConfirm={() =>
+                    void window.api?.templates.remove(template.id).then(setTemplates).catch(report)
+                  }
+                  title="删除项目模板？"
+                  triggerTooltip="删除模板"
+                >
+                  <Button aria-label="删除模板" size="icon" variant="ghost">
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
+              </ItemActions>
+            </Item>
           ))}
           {!filtered.length && (
-            <p className="py-8 text-center text-sm text-slate-400">
-              {query ? '没有匹配模板' : '暂无模板，请先添加一个 Git 仓库或本地目录。'}
-            </p>
+            <Empty>
+              <EmptyTitle>{query ? '没有匹配模板' : '尚未添加项目模板'}</EmptyTitle>
+              <EmptyDescription>
+                {query
+                  ? '尝试修改搜索条件，或清空搜索框查看全部模板。'
+                  : '可添加 Git 仓库或本地目录作为项目模板。'}
+              </EmptyDescription>
+            </Empty>
           )}
         </CardContent>
       </Card>

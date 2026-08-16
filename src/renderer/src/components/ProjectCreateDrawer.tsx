@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
 import { FormDescription, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
   Select,
   SelectContent,
@@ -106,12 +107,14 @@ export function ProjectCreateDrawer({
         <FormItem>
           <FormLabel htmlFor="create-project-template">项目模板</FormLabel>
           {fixedTemplate ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-              {fixedTemplate.name}
-              <span className="ml-2 text-xs text-slate-400">
-                {fixedTemplate.type === 'git' ? 'Git' : '本地目录'}
-              </span>
-            </div>
+            <Item className="bg-slate-50">
+              <ItemContent>
+                <ItemTitle>{fixedTemplate.name}</ItemTitle>
+                <ItemDescription>
+                  {fixedTemplate.type === 'git' ? 'Git 模板' : '本地目录模板'}
+                </ItemDescription>
+              </ItemContent>
+            </Item>
           ) : (
             <Select
               disabled={submitting}
@@ -134,10 +137,12 @@ export function ProjectCreateDrawer({
         <FormItem>
           <FormLabel htmlFor="create-project-workspace">目标工作区</FormLabel>
           {fixedWorkspace ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-              <p>{fixedWorkspace.name}</p>
-              <p className="mt-1 truncate text-xs text-slate-400">{fixedWorkspace.rootPath}</p>
-            </div>
+            <Item className="bg-slate-50">
+              <ItemContent>
+                <ItemTitle>{fixedWorkspace.name}</ItemTitle>
+                <ItemDescription>{fixedWorkspace.rootPath}</ItemDescription>
+              </ItemContent>
+            </Item>
           ) : (
             <Select
               disabled={submitting}

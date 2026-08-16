@@ -75,10 +75,10 @@ export function HomePage(): React.JSX.Element {
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
             <div>
-              <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--theme-lighter)] px-2 py-0.5 text-[11px] text-[var(--accent)]">
+              <Badge className="mb-1.5 gap-1.5" variant="success">
                 <span className="size-1.5 rounded-full bg-[var(--accent)]" />
                 电脑状态面板
-              </div>
+              </Badge>
               <h2 className="text-base font-semibold text-slate-800" id="overview-heading">
                 {greeting}，开发者
               </h2>

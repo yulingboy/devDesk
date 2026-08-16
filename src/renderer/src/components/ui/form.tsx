@@ -1,6 +1,7 @@
 import { Slot } from '@radix-ui/react-slot'
 import type { HTMLAttributes, LabelHTMLAttributes } from 'react'
 import { cn } from '@/lib/utils'
+import { Label } from '@/components/ui/label'
 
 export function FormItem({
   className,
@@ -12,7 +13,7 @@ export function FormLabel({
   className,
   ...props
 }: LabelHTMLAttributes<HTMLLabelElement>): React.JSX.Element {
-  return <label className={cn('text-xs font-medium text-slate-600', className)} {...props} />
+  return <Label className={cn('text-xs font-medium text-slate-600', className)} {...props} />
 }
 export function FormControl(props: React.ComponentPropsWithoutRef<typeof Slot>): React.JSX.Element {
   return <Slot {...props} />

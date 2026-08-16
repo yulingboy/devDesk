@@ -21,6 +21,14 @@ import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -157,52 +165,53 @@ export function GitPage(): React.JSX.Element {
         </CardHeader>
         <CardContent className="space-y-3">
           {state?.identities.map((item) => (
-            <div
-              className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
-              key={item.id}
-            >
-              <GitBranch className="text-[var(--accent)]" size={18} />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{item.name}</p>
-                <p className="text-xs text-slate-500">
+            <Item key={item.id}>
+              <ItemMedia>
+                <GitBranch />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>{item.name}</ItemTitle>
+                <ItemDescription>
                   {item.username} · {item.email}
-                </p>
-              </div>
-              <TooltipButton
-                onClick={() => {
-                  setIdentity(item)
-                  setDrawerMode('identity')
-                }}
-                size="icon"
-                tooltip="编辑身份"
-                variant="ghost"
-              >
-                <Pencil size={15} />
-              </TooltipButton>
-              <TooltipButton
-                onClick={() => {
-                  setIdentity({ ...item, id: '', name: `${item.name}-copy` })
-                  setDrawerMode('identity')
-                }}
-                size="icon"
-                tooltip="复制身份"
-                variant="ghost"
-              >
-                <Copy size={15} />
-              </TooltipButton>
-              <ConfirmAction
-                description={`删除身份“${item.name}”后将无法恢复；被工作区引用时操作会被拒绝。`}
-                onConfirm={() =>
-                  void window.api?.git.removeIdentity(item.id).then(setState).catch(report)
-                }
-                title="删除 Git 身份？"
-                triggerTooltip="删除身份"
-              >
-                <Button aria-label="删除身份" size="icon" variant="ghost">
-                  <Trash2 size={15} />
-                </Button>
-              </ConfirmAction>
-            </div>
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <TooltipButton
+                  onClick={() => {
+                    setIdentity(item)
+                    setDrawerMode('identity')
+                  }}
+                  size="icon"
+                  tooltip="编辑身份"
+                  variant="ghost"
+                >
+                  <Pencil size={15} />
+                </TooltipButton>
+                <TooltipButton
+                  onClick={() => {
+                    setIdentity({ ...item, id: '', name: `${item.name}-copy` })
+                    setDrawerMode('identity')
+                  }}
+                  size="icon"
+                  tooltip="复制身份"
+                  variant="ghost"
+                >
+                  <Copy size={15} />
+                </TooltipButton>
+                <ConfirmAction
+                  description={`删除身份“${item.name}”后将无法恢复；被工作区引用时操作会被拒绝。`}
+                  onConfirm={() =>
+                    void window.api?.git.removeIdentity(item.id).then(setState).catch(report)
+                  }
+                  title="删除 Git 身份？"
+                  triggerTooltip="删除身份"
+                >
+                  <Button aria-label="删除身份" size="icon" variant="ghost">
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
+              </ItemActions>
+            </Item>
           ))}
           {status && (
             <Alert variant="destructive">

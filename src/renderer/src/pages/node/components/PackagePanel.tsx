@@ -11,6 +11,8 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Separator } from '@/components/ui/separator'
+import { Item, ItemActions, ItemContent, ItemTitle } from '@/components/ui/item'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 
 interface PackagePanelProps {
   state: NodeState | null
@@ -133,43 +135,51 @@ export function PackagePanel({
             </div>
             <div className="space-y-2">
               {packages.map((item) => (
-                <div
-                  className="flex items-center gap-3 rounded-md border border-slate-100 px-3 py-2"
-                  key={item.name}
-                >
-                  <p className="min-w-0 flex-1 truncate font-mono text-sm">{item.name}</p>
+                <Item key={item.name}>
+                  <ItemContent>
+                    <ItemTitle className="truncate font-mono">{item.name}</ItemTitle>
+                  </ItemContent>
                   <Badge variant="secondary">{item.current || '未知'}</Badge>
                   {item.latest && item.latest !== item.current && (
                     <Badge variant="outline">可更新 {item.latest}</Badge>
                   )}
-                  <TooltipButton
-                    onClick={() =>
-                      void window.api?.node.updatePackage(item.name).then(setPackages).catch(report)
-                    }
-                    size="icon"
-                    tooltip="更新包"
-                    variant="ghost"
-                  >
-                    <RefreshCw size={14} />
-                  </TooltipButton>
-                  <ConfirmAction
-                    description={`将从当前默认包管理器中卸载全局包“${item.name}”。`}
-                    onConfirm={() =>
-                      void window.api?.node.removePackage(item.name).then(setPackages).catch(report)
-                    }
-                    title="卸载全局包？"
-                    triggerTooltip="卸载包"
-                  >
-                    <Button aria-label="卸载包" size="icon" variant="ghost">
-                      <Trash2 size={14} />
-                    </Button>
-                  </ConfirmAction>
-                </div>
+                  <ItemActions>
+                    <TooltipButton
+                      onClick={() =>
+                        void window.api?.node
+                          .updatePackage(item.name)
+                          .then(setPackages)
+                          .catch(report)
+                      }
+                      size="icon"
+                      tooltip="更新包"
+                      variant="ghost"
+                    >
+                      <RefreshCw size={14} />
+                    </TooltipButton>
+                    <ConfirmAction
+                      description={`将从当前默认包管理器中卸载全局包“${item.name}”。`}
+                      onConfirm={() =>
+                        void window.api?.node
+                          .removePackage(item.name)
+                          .then(setPackages)
+                          .catch(report)
+                      }
+                      title="卸载全局包？"
+                      triggerTooltip="卸载包"
+                    >
+                      <Button aria-label="卸载包" size="icon" variant="ghost">
+                        <Trash2 size={14} />
+                      </Button>
+                    </ConfirmAction>
+                  </ItemActions>
+                </Item>
               ))}
               {!packages.length && (
-                <p className="py-5 text-center text-sm text-slate-400">
-                  未发现全局包，或当前包管理器不支持读取。
-                </p>
+                <Empty className="min-h-20 py-3">
+                  <EmptyTitle>尚未发现全局包</EmptyTitle>
+                  <EmptyDescription>当前包管理器可能没有全局包，或不支持读取。</EmptyDescription>
+                </Empty>
               )}
             </div>
           </>

@@ -35,6 +35,8 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { Item, ItemActions, ItemContent } from '@/components/ui/item'
 import {
   Select,
   SelectContent,
@@ -223,51 +225,59 @@ export function WorkspacesPage(): React.JSX.Element {
               {workspace.projects.length > 0 && (
                 <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-2">
                   {workspace.projects.map((project) => (
-                    <div
-                      className="flex items-center gap-1 rounded-md border border-slate-100 bg-white p-1"
-                      key={project.id}
-                    >
-                      <Button
-                        className="h-auto min-w-0 flex-1 justify-start truncate px-2 py-1 text-left text-xs"
-                        onClick={() =>
-                          void window.api?.workspaces.openProject(project.path).catch(report)
-                        }
-                        variant="ghost"
-                      >
-                        <span className="truncate">
-                          <span className="font-medium">{project.name}</span>
-                          <span className="ml-2 text-slate-400">
-                            {project.branch ?? '非 Git 项目'}
+                    <Item className="gap-1.5 bg-white p-1" key={project.id}>
+                      <ItemContent>
+                        <Button
+                          className="h-auto w-full justify-start truncate px-2 py-1 text-left text-xs"
+                          onClick={() =>
+                            void window.api?.workspaces.openProject(project.path).catch(report)
+                          }
+                          variant="ghost"
+                        >
+                          <span className="truncate font-medium text-slate-800">
+                            {project.name}
+                            <span className="ml-2 font-normal text-slate-400">
+                              {project.branch ?? '非 Git 项目'}
+                            </span>
                           </span>
-                        </span>
-                      </Button>
-                      {project.gitError ? (
-                        <Badge variant="outline">状态未知</Badge>
-                      ) : (
-                        <Badge variant={project.dirty ? 'secondary' : 'success'}>
-                          {project.dirty ? '有改动' : '干净'}
-                        </Badge>
-                      )}
-                      <TooltipButton
-                        onClick={() =>
-                          void window.api?.workspaces.openProjectEditor(project.path).catch(report)
-                        }
-                        size="icon"
-                        tooltip="在 VS Code 中打开"
-                        variant="ghost"
-                      >
-                        <Code2 size={14} />
-                      </TooltipButton>
-                    </div>
+                        </Button>
+                      </ItemContent>
+                      <ItemActions>
+                        {project.gitError ? (
+                          <Badge variant="outline">状态未知</Badge>
+                        ) : (
+                          <Badge variant={project.dirty ? 'secondary' : 'success'}>
+                            {project.dirty ? '有改动' : '干净'}
+                          </Badge>
+                        )}
+                        <TooltipButton
+                          onClick={() =>
+                            void window.api?.workspaces
+                              .openProjectEditor(project.path)
+                              .catch(report)
+                          }
+                          size="icon"
+                          tooltip="在 VS Code 中打开"
+                          variant="ghost"
+                        >
+                          <Code2 size={14} />
+                        </TooltipButton>
+                      </ItemActions>
+                    </Item>
                   ))}
                 </div>
               )}
             </div>
           ))}
           {!filtered.length && (
-            <p className="py-8 text-center text-sm text-slate-400">
-              暂无工作区，请先添加一个项目根目录。
-            </p>
+            <Empty>
+              <EmptyTitle>{query ? '没有匹配的工作区或项目' : '尚未添加工作区'}</EmptyTitle>
+              <EmptyDescription>
+                {query
+                  ? '尝试修改搜索条件，或清空搜索框查看全部工作区。'
+                  : '添加项目根目录后，可以扫描和管理其中的项目。'}
+              </EmptyDescription>
+            </Empty>
           )}
         </CardContent>
       </Card>

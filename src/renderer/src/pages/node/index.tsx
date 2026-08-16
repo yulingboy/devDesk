@@ -27,6 +27,7 @@ import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import { CachePanel } from './components/CachePanel'
 import { PackagePanel } from './components/PackagePanel'
 import { RegistryPanel } from './components/RegistryPanel'
@@ -83,42 +84,43 @@ export function NodePage(): React.JSX.Element {
       </CardHeader>
       <CardContent className="space-y-2">
         {state?.installed.map((item) => (
-          <div
-            className="flex items-center gap-2 rounded-md border border-slate-100 p-2.5"
-            key={item.version}
-          >
-            <p className="font-mono text-xs">v{item.version}</p>
-            {item.isCurrent && <Badge variant="success">当前</Badge>}
-            {item.isDefault && <Badge variant="secondary">默认</Badge>}
-            <span className="flex-1 truncate text-[11px] text-slate-400">{item.path}</span>
-            <Button
-              onClick={() =>
-                void window.api?.node
-                  .switch(item.version, true)
-                  .then((value) => {
-                    setState(value)
-                    toast.success(`已切换到 Node ${item.version}`)
-                  })
-                  .catch(report)
-              }
-              size="sm"
-              variant="ghost"
-            >
-              切换并设为默认
-            </Button>
-            <ConfirmAction
-              description={`将删除本机 nvm 管理的 Node ${item.version}。当前使用中的版本不能删除。`}
-              onConfirm={() =>
-                void window.api?.node.remove(item.version).then(setState).catch(report)
-              }
-              title="删除 Node 版本？"
-              triggerTooltip="删除版本"
-            >
-              <Button aria-label="删除版本" disabled={item.isCurrent} size="icon" variant="ghost">
-                <Trash2 size={14} />
+          <Item key={item.version}>
+            <ItemContent className="flex min-w-0 flex-row items-center gap-2">
+              <ItemTitle className="font-mono">v{item.version}</ItemTitle>
+              {item.isCurrent && <Badge variant="success">当前</Badge>}
+              {item.isDefault && <Badge variant="secondary">默认</Badge>}
+              <ItemDescription className="flex-1">{item.path}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <Button
+                onClick={() =>
+                  void window.api?.node
+                    .switch(item.version, true)
+                    .then((value) => {
+                      setState(value)
+                      toast.success(`已切换到 Node ${item.version}`)
+                    })
+                    .catch(report)
+                }
+                size="sm"
+                variant="ghost"
+              >
+                切换并设为默认
               </Button>
-            </ConfirmAction>
-          </div>
+              <ConfirmAction
+                description={`将删除本机 nvm 管理的 Node ${item.version}。当前使用中的版本不能删除。`}
+                onConfirm={() =>
+                  void window.api?.node.remove(item.version).then(setState).catch(report)
+                }
+                title="删除 Node 版本？"
+                triggerTooltip="删除版本"
+              >
+                <Button aria-label="删除版本" disabled={item.isCurrent} size="icon" variant="ghost">
+                  <Trash2 size={14} />
+                </Button>
+              </ConfirmAction>
+            </ItemActions>
+          </Item>
         ))}
         {!state?.installed.length && (
           <Empty>
@@ -164,22 +166,22 @@ export function NodePage(): React.JSX.Element {
         </div>
         <div className="grid gap-2 md:grid-cols-2">
           {releases.slice(0, 20).map((release) => (
-            <div
-              className="flex items-center gap-2 rounded-md border border-slate-100 px-2.5 py-2"
-              key={release.version}
-            >
-              <span className="font-mono text-xs">{release.version}</span>
-              {release.lts && <Badge variant="success">{release.lts}</Badge>}
-              <span className="flex-1" />
-              <Button
-                onClick={() => install(release.version.replace(/^v/, ''))}
-                size="sm"
-                variant="secondary"
-              >
-                <Download size={13} />
-                安装
-              </Button>
-            </div>
+            <Item key={release.version}>
+              <ItemContent className="flex flex-row items-center gap-2">
+                <ItemTitle className="font-mono">{release.version}</ItemTitle>
+                {release.lts && <Badge variant="success">{release.lts}</Badge>}
+              </ItemContent>
+              <ItemActions>
+                <Button
+                  onClick={() => install(release.version.replace(/^v/, ''))}
+                  size="sm"
+                  variant="secondary"
+                >
+                  <Download size={13} />
+                  安装
+                </Button>
+              </ItemActions>
+            </Item>
           ))}
         </div>
         <p className="text-xs text-slate-500">{status}</p>

@@ -9,6 +9,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
 
 interface RegistryPanelProps {
   state: NodeState | null
@@ -55,76 +63,77 @@ export function RegistryPanel({ state, onState, report }: RegistryPanelProps): R
         </CardHeader>
         <CardContent className="space-y-3">
           {state?.registries.map((registry) => (
-            <div
-              className="flex items-center gap-3 rounded-md border border-slate-100 p-3"
-              key={registry.id}
-            >
-              <Gauge className="text-slate-600" size={17} />
-              <div className="min-w-0 flex-1">
+            <Item key={registry.id}>
+              <ItemMedia className="bg-slate-100 text-slate-600">
+                <Gauge />
+              </ItemMedia>
+              <ItemContent>
                 <div className="flex items-center gap-2">
-                  <p className="font-medium">{registry.name}</p>
+                  <ItemTitle>{registry.name}</ItemTitle>
                   {registry.isCurrent && <Badge variant="success">当前</Badge>}
                   {registry.latencyMs !== undefined && (
                     <Badge variant="secondary">{registry.latencyMs} ms</Badge>
                   )}
                 </div>
-                <p className="truncate text-xs text-slate-500">{registry.url}</p>
-              </div>
-              {!registry.isCurrent && (
+                <ItemDescription>{registry.url}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                {!registry.isCurrent && (
+                  <Button
+                    onClick={() =>
+                      void window.api?.node.useRegistry(registry.id).then(onState).catch(report)
+                    }
+                    size="sm"
+                    variant="secondary"
+                  >
+                    切换
+                  </Button>
+                )}
                 <Button
                   onClick={() =>
-                    void window.api?.node.useRegistry(registry.id).then(onState).catch(report)
+                    void window.api?.node
+                      .testRegistry(registry.id)
+                      .then((registries) => state && onState({ ...state, registries }))
+                      .catch(report)
                   }
                   size="sm"
-                  variant="secondary"
-                >
-                  切换
-                </Button>
-              )}
-              <Button
-                onClick={() =>
-                  void window.api?.node
-                    .testRegistry(registry.id)
-                    .then((registries) => state && onState({ ...state, registries }))
-                    .catch(report)
-                }
-                size="sm"
-                variant="ghost"
-              >
-                测速
-              </Button>
-              <TooltipButton
-                onClick={() => {
-                  setDraft({ id: registry.id, name: registry.name, url: registry.url })
-                  setDrawerOpen(true)
-                }}
-                size="icon"
-                tooltip="编辑镜像"
-                variant="ghost"
-              >
-                <Pencil size={15} />
-              </TooltipButton>
-              <ConfirmAction
-                description={`删除镜像“${registry.name}”后需要重新新增才能恢复。当前镜像不能删除。`}
-                onConfirm={() =>
-                  void window.api?.node
-                    .removeRegistry(registry.id)
-                    .then((registries) => state && onState({ ...state, registries }))
-                    .catch(report)
-                }
-                title="删除 Registry 镜像？"
-                triggerTooltip="删除镜像"
-              >
-                <Button
-                  aria-label="删除镜像"
-                  disabled={registry.isCurrent}
-                  size="icon"
                   variant="ghost"
                 >
-                  <Trash2 size={15} />
+                  测速
                 </Button>
-              </ConfirmAction>
-            </div>
+                <TooltipButton
+                  onClick={() => {
+                    setDraft({ id: registry.id, name: registry.name, url: registry.url })
+                    setDrawerOpen(true)
+                  }}
+                  size="icon"
+                  tooltip="编辑镜像"
+                  variant="ghost"
+                >
+                  <Pencil size={15} />
+                </TooltipButton>
+                <ConfirmAction
+                  description={`删除镜像“${registry.name}”后需要重新新增才能恢复。当前镜像不能删除。`}
+                  onConfirm={() =>
+                    void window.api?.node
+                      .removeRegistry(registry.id)
+                      .then((registries) => state && onState({ ...state, registries }))
+                      .catch(report)
+                  }
+                  title="删除 Registry 镜像？"
+                  triggerTooltip="删除镜像"
+                >
+                  <Button
+                    aria-label="删除镜像"
+                    disabled={registry.isCurrent}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
+              </ItemActions>
+            </Item>
           ))}
         </CardContent>
       </Card>
