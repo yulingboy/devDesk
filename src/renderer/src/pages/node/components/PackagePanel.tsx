@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Separator } from '@/components/ui/separator'
 
 interface PackagePanelProps {
   state: NodeState | null
@@ -85,7 +86,8 @@ export function PackagePanel({
                   </TooltipTrigger>
                   <TooltipContent>{manager.registry || '无 Registry 信息'}</TooltipContent>
                 </Tooltip>
-                <div className="mt-3 flex gap-1 border-t border-slate-100 pt-2">
+                <Separator className="mt-3" />
+                <div className="mt-2 flex gap-1">
                   <Button
                     disabled={!manager.available || manager.isDefault}
                     onClick={() =>

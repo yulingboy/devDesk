@@ -10,6 +10,8 @@ import {
   AccordionItem,
   AccordionTrigger
 } from '@/components/ui/accordion'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 export function EnvironmentCheckPanel({
   report
@@ -86,10 +88,12 @@ export function EnvironmentCheckPanel({
                 </span>
               </AccordionTrigger>
               <AccordionContent>
-                <div className="rounded-md bg-slate-50 p-3 font-mono text-xs text-slate-600">
-                  <p>$ {item.command}</p>
-                  <pre className="mt-2 whitespace-pre-wrap">{item.detail}</pre>
-                </div>
+                <ScrollArea className="max-h-40 rounded-md bg-slate-50">
+                  <div className="p-3 font-mono text-xs text-slate-600">
+                    <p>$ {item.command}</p>
+                    <pre className="mt-2 whitespace-pre-wrap">{item.detail}</pre>
+                  </div>
+                </ScrollArea>
                 {item.status === 'failed' && (
                   <Button
                     className="mt-2"
@@ -108,7 +112,10 @@ export function EnvironmentCheckPanel({
           ))}
         </Accordion>
         {!checks.length && (
-          <p className="py-6 text-center text-sm text-slate-400">尚未执行环境检测。</p>
+          <Empty>
+            <EmptyTitle>尚未执行环境检测</EmptyTitle>
+            <EmptyDescription>开始检测后会展示每个运行时的命令输出。</EmptyDescription>
+          </Empty>
         )}
       </CardContent>
     </Card>

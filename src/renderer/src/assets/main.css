@@ -112,19 +112,3 @@ button:focus-visible {
 [data-sidebar='sidebar'][data-collapsible='icon'] [data-sidebar='label'] {
   display: none;
 }
-
-@keyframes route-loading-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  55% {
-    transform: translateX(25%);
-  }
-  100% {
-    transform: translateX(220%);
-  }
-}
-
-.route-loading-bar {
-  animation: route-loading-slide 0.7s ease-in-out infinite;
-}

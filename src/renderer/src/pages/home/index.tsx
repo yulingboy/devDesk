@@ -9,6 +9,7 @@ import { rendererLogger } from '@/lib/logger'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 
 export function HomePage(): React.JSX.Element {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
@@ -144,7 +145,10 @@ export function HomePage(): React.JSX.Element {
                 </div>
               ))}
               {!snapshot?.networks.length && (
-                <p className="text-sm text-slate-400">暂无有效网络接口</p>
+                <Empty className="min-h-20 py-3">
+                  <EmptyTitle>暂无有效网络接口</EmptyTitle>
+                  <EmptyDescription>网络信息会在后台采样完成后显示。</EmptyDescription>
+                </Empty>
               )}
             </CardContent>
           </Card>

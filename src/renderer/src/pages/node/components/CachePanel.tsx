@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 
 interface CachePanelProps {
   state: NodeState | null
@@ -58,9 +59,10 @@ export function CachePanel({ state, onState, report }: CachePanelProps): React.J
           </div>
         ))}
         {!state?.caches.length && (
-          <p className="py-5 text-center text-sm text-slate-400">
-            点击刷新按钮扫描缓存路径和大小。
-          </p>
+          <Empty>
+            <EmptyTitle>尚未扫描缓存路径</EmptyTitle>
+            <EmptyDescription>点击右上角刷新按钮读取缓存目录和大小。</EmptyDescription>
+          </Empty>
         )}
         <ConfirmAction
           description="将清理 npm、pnpm、yarn 和 bun 缓存，不会删除已安装的 Node 版本。"

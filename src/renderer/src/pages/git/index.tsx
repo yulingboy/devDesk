@@ -19,6 +19,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
   SelectContent,
@@ -134,9 +135,11 @@ export function GitPage(): React.JSX.Element {
                     </span>
                   </AccordionTrigger>
                   <AccordionContent>
-                    <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-2.5 text-[11px] text-slate-600">
-                      {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
-                    </pre>
+                    <ScrollArea className="max-h-52 rounded-md bg-slate-50">
+                      <pre className="whitespace-pre-wrap p-2.5 text-[11px] text-slate-600">
+                        {file.exists ? file.content : '文件不存在，请保存配置后重试。'}
+                      </pre>
+                    </ScrollArea>
                   </AccordionContent>
                 </AccordionItem>
               ))}

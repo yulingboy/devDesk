@@ -25,6 +25,8 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { CachePanel } from './components/CachePanel'
 import { PackagePanel } from './components/PackagePanel'
 import { RegistryPanel } from './components/RegistryPanel'
@@ -119,7 +121,10 @@ export function NodePage(): React.JSX.Element {
           </div>
         ))}
         {!state?.installed.length && (
-          <p className="py-6 text-center text-xs text-slate-400">尚未发现 nvm 管理的 Node 版本。</p>
+          <Empty>
+            <EmptyTitle>尚未发现 Node 版本</EmptyTitle>
+            <EmptyDescription>安装版本后会显示在这里。</EmptyDescription>
+          </Empty>
         )}
       </CardContent>
     </Card>
@@ -229,15 +234,20 @@ export function NodePage(): React.JSX.Element {
                 </AccordionTrigger>
                 <AccordionContent>
                   <Progress className="mb-2" value={task.progress} />
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-[11px] text-slate-600">
-                    {task.logs.join('\n') || '暂无日志'}
-                  </pre>
+                  <ScrollArea className="max-h-40 rounded-md bg-slate-50">
+                    <pre className="whitespace-pre-wrap p-2 text-[11px] text-slate-600">
+                      {task.logs.join('\n') || '暂无日志'}
+                    </pre>
+                  </ScrollArea>
                 </AccordionContent>
               </AccordionItem>
             ))}
         </Accordion>
         {!state?.tasks.length && (
-          <p className="py-5 text-center text-xs text-slate-400">暂无 Node 安装任务。</p>
+          <Empty>
+            <EmptyTitle>暂无 Node 安装任务</EmptyTitle>
+            <EmptyDescription>安装或切换版本后，任务记录会显示在这里。</EmptyDescription>
+          </Empty>
         )}
       </CardContent>
     </Card>
