@@ -108,6 +108,11 @@ button:focus-visible {
   -webkit-app-region: no-drag;
 }
 
+/* SidebarMenuButton 的文案在 icon 折叠模式下由 shadcn Sidebar 状态统一隐藏。 */
+[data-sidebar='sidebar'][data-collapsible='icon'] [data-sidebar='label'] {
+  display: none;
+}
+
 @keyframes route-loading-slide {
   0% {
     transform: translateX(-100%);
