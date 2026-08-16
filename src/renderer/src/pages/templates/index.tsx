@@ -13,6 +13,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
@@ -128,8 +129,8 @@ export function TemplatesPage(): React.JSX.Element {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input
-            onChange={(event) => setQuery(event.target.value)}
+          <SearchInput
+            onValueChange={setQuery}
             placeholder="搜索模板名称、描述或来源"
             value={query}
           />

@@ -1,7 +1,10 @@
 import { FolderOpen, Info, Pencil, TriangleAlert } from 'lucide-react'
 import type { Project, ProjectEditorId } from '@shared/domain'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table,
   TableBody,
@@ -76,30 +79,33 @@ export function ProjectGrid({
           </TableRow>
         </TableHeader>
       </Table>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <ScrollArea className="min-h-0 flex-1">
         <Table className="table-fixed" containerClassName="overflow-visible">
           <ProjectColumns />
           <TableBody>
             {projects.map((project) => (
               <TableRow className="group h-14" key={project.id}>
                 <TableCell className="py-2.5">
-                  <button
-                    className="block min-w-0 max-w-full text-left outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  <Button
+                    className="h-auto min-w-0 max-w-full justify-start p-0 text-left"
                     onClick={() => onOpen(project)}
                     type="button"
+                    variant="link"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="max-w-[34rem] truncate text-[13px] font-semibold text-slate-800">
                         {project.name}
                       </span>
                       {project.source === 'manual' && (
-                        <span className="text-[10px] text-slate-400">手动纳入</span>
+                        <Badge className="shrink-0" variant="outline">
+                          手动纳入
+                        </Badge>
                       )}
                       {project.directoryExists === false && (
                         <TriangleAlert className="shrink-0 text-amber-600" size={13} />
                       )}
                     </span>
-                  </button>
+                  </Button>
                 </TableCell>
                 <TableCell
                   className="max-w-56 truncate text-[11px] text-slate-500"
@@ -109,14 +115,15 @@ export function ProjectGrid({
                 </TableCell>
                 <TableCell className="text-[11px] text-slate-500">
                   {project.subprojects?.length ? (
-                    <button
-                      className="rounded text-left outline-none hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    <Button
+                      className="h-auto p-0 text-left text-[11px] font-normal text-slate-500"
                       onClick={() => onOpen(project)}
                       title={project.subprojects.map((item) => item.name).join('、')}
                       type="button"
+                      variant="link"
                     >
                       {project.subprojects.length} 个子项目
-                    </button>
+                    </Button>
                   ) : (
                     <span className="text-slate-300">--</span>
                   )}
@@ -159,7 +166,7 @@ export function ProjectGrid({
             ))}
           </TableBody>
         </Table>
-      </div>
+      </ScrollArea>
     </div>
   )
 }

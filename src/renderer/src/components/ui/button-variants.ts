@@ -9,6 +9,7 @@ export const buttonVariants = cva(
         default: 'bg-slate-800 text-white hover:bg-slate-700',
         secondary: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
         ghost: 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+        link: 'text-slate-700 underline-offset-4 hover:text-slate-900 hover:underline',
         outline: 'border border-slate-200 bg-transparent text-slate-700 hover:bg-slate-50',
         destructive: 'bg-red-600 text-white hover:bg-red-700',
         success: 'bg-[var(--accent)] text-white hover:brightness-90'

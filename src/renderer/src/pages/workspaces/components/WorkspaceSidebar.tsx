@@ -1,6 +1,8 @@
 import { FolderKanban, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react'
 import type { Workspace } from '@shared/domain'
 import { TooltipButton } from '@/components/TooltipButton'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 interface WorkspaceSidebarProps {
@@ -58,8 +60,8 @@ export function WorkspaceSidebar({
         </TooltipButton>
       </div>
 
-      <div className={cn('min-h-0 flex-1 overflow-auto', collapsed ? 'p-1.5' : 'p-2')}>
-        <div className="space-y-1">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className={cn('space-y-1', collapsed ? 'p-1.5' : 'p-2')}>
           {workspaces.map((workspace) => {
             const selected = workspace.id === selectedId
 
@@ -79,14 +81,15 @@ export function WorkspaceSidebar({
             }
 
             return (
-              <button
+              <Button
                 className={cn(
-                  'relative flex h-12 w-full min-w-0 items-center gap-2 rounded-md px-2.5 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-200',
+                  'relative h-12 w-full min-w-0 justify-start gap-2 px-2.5 text-left whitespace-normal',
                   selected && 'bg-blue-50/80 text-blue-700 hover:bg-blue-50'
                 )}
                 key={workspace.id}
                 onClick={() => onSelect(workspace.id)}
                 type="button"
+                variant="ghost"
               >
                 {selected && (
                   <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-blue-600" />
@@ -101,11 +104,11 @@ export function WorkspaceSidebar({
                     {workspace.gitIdentityId ? ' · 已绑定 Git 身份' : ' · 未绑定 Git 身份'}
                   </span>
                 </span>
-              </button>
+              </Button>
             )
           })}
         </div>
-      </div>
+      </ScrollArea>
     </aside>
   )
 }

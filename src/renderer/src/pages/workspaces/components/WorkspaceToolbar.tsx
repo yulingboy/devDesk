@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { Workspace, WorkspaceScanResult } from '@shared/domain'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,7 +21,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 
 interface WorkspaceToolbarProps {
@@ -132,9 +132,9 @@ export function WorkspaceToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 px-5 pb-3">
-        <Input
-          className="h-7 min-w-48 flex-1 bg-slate-50/70 sm:max-w-80"
-          onChange={(event) => onQueryChange(event.target.value)}
+        <SearchInput
+          className="min-w-48 flex-1 bg-slate-50/70 sm:max-w-80"
+          onValueChange={onQueryChange}
           placeholder="搜索项目名称、备注或子项目"
           value={query}
         />

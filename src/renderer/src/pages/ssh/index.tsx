@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
@@ -124,11 +125,7 @@ export function SshPage(): React.JSX.Element {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
-          <Input
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索名称、指纹或公钥"
-            value={query}
-          />
+          <SearchInput onValueChange={setQuery} placeholder="搜索名称、指纹或公钥" value={query} />
           <div className="space-y-2">
             {filtered.map((key) => (
               <Item key={key.id}>

@@ -1,6 +1,10 @@
 import { FolderOpen } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput
+} from '@/components/ui/input-group'
 
 /** 支持手输和 Electron 原生目录选择，用户取消时保持原值。 */
 export function DirectoryPickerInput({
@@ -19,16 +23,23 @@ export function DirectoryPickerInput({
   }
 
   return (
-    <div className="flex gap-2">
-      <Input
+    <InputGroup>
+      <InputGroupInput
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         value={value}
       />
-      <Button onClick={selectDirectory} variant="secondary">
-        <FolderOpen size={15} />
-        选择
-      </Button>
-    </div>
+      <InputGroupAddon className="border-l border-slate-100 px-0.5">
+        <InputGroupButton
+          aria-label="选择目录"
+          className="w-auto px-2 text-[11px]"
+          onClick={selectDirectory}
+          type="button"
+        >
+          <FolderOpen aria-hidden="true" />
+          选择
+        </InputGroupButton>
+      </InputGroupAddon>
+    </InputGroup>
   )
 }

@@ -15,7 +15,6 @@ import type { NodeEnvironmentPath, NodeRelease, NodeState, NodeTask } from '@sha
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -26,6 +25,7 @@ import {
 import { Tabs } from '@/components/ui/tabs'
 import { rendererLogger } from '@/lib/logger'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import {
   Accordion,
   AccordionContent,
@@ -248,9 +248,10 @@ export function NodePage(): React.JSX.Element {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
-          <Input
-            onChange={(event) => {
-              setKeyword(event.target.value)
+          <SearchInput
+            className="flex-1"
+            onValueChange={(value) => {
+              setKeyword(value)
               setReleasePage(1)
             }}
             placeholder="搜索版本、LTS 或 npm"

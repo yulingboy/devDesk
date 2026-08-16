@@ -21,6 +21,7 @@ import { Drawer } from '@/components/ui/drawer'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import {
   Table,
   TableBody,
@@ -185,9 +186,10 @@ export function HostsPage(): React.JSX.Element {
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-5">
-          <div className="flex items-center gap-3">
-            <Input
-              onChange={(event) => setQuery(event.target.value)}
+          <div className="flex items-center gap-1.5">
+            <SearchInput
+              className="flex-1"
+              onValueChange={setQuery}
               placeholder="搜索 IP、域名或备注"
               value={query}
             />

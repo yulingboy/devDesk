@@ -8,10 +8,17 @@ import { Input } from '@/components/ui/input'
 import { Drawer } from '@/components/ui/drawer'
 import { Label } from '@/components/ui/label'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { SearchInput } from '@/components/SearchInput'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Separator } from '@/components/ui/separator'
-import { Item, ItemActions, ItemContent, ItemTitle } from '@/components/ui/item'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle
+} from '@/components/ui/item'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 
 interface PackagePanelProps {
@@ -70,26 +77,29 @@ export function PackagePanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {section !== 'packages' && (
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             {state?.packageManagers.map((manager) => (
-              <div className="rounded-md border border-slate-100 p-3" key={manager.name}>
-                <div className="flex items-center justify-between">
-                  <p className="font-mono text-sm font-semibold">{manager.name}</p>
-                  {manager.isDefault && <Badge variant="success">默认</Badge>}
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  {manager.available ? `v${manager.version}` : '未安装'}
-                </p>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <p className="mt-1 truncate text-[11px] text-slate-400">
-                      {manager.registry || '无 Registry 信息'}
-                    </p>
-                  </TooltipTrigger>
-                  <TooltipContent>{manager.registry || '无 Registry 信息'}</TooltipContent>
-                </Tooltip>
-                <Separator className="mt-3" />
-                <div className="mt-2 flex gap-1">
+              <Item className="min-w-0" key={manager.name}>
+                <ItemMedia className="font-mono text-[10px] font-semibold">
+                  {manager.name.slice(0, 2)}
+                </ItemMedia>
+                <ItemContent>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <ItemTitle className="truncate font-mono">{manager.name}</ItemTitle>
+                    {manager.isDefault && <Badge variant="success">默认</Badge>}
+                    {!manager.available && <Badge variant="outline">未安装</Badge>}
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <ItemDescription>
+                        {manager.available ? `v${manager.version}` : '不可用'} ·{' '}
+                        {manager.registry || '无 Registry 信息'}
+                      </ItemDescription>
+                    </TooltipTrigger>
+                    <TooltipContent>{manager.registry || '无 Registry 信息'}</TooltipContent>
+                  </Tooltip>
+                </ItemContent>
+                <ItemActions>
                   <Button
                     disabled={!manager.available || manager.isDefault}
                     onClick={() =>
@@ -116,16 +126,17 @@ export function PackagePanel({
                   >
                     <Pencil size={13} />
                   </TooltipButton>
-                </div>
-              </div>
+                </ItemActions>
+              </Item>
             ))}
           </div>
         )}
         {section !== 'managers' && (
           <>
-            <div className="flex gap-2">
-              <Input
-                onChange={(event) => setKeyword(event.target.value)}
+            <div className="flex gap-1.5">
+              <SearchInput
+                className="flex-1"
+                onValueChange={setKeyword}
                 placeholder="搜索全局包"
                 value={keyword}
               />
