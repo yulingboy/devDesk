@@ -71,7 +71,9 @@ import {
   addProjectToWorkspace,
   removeProjectFromWorkspace,
   installProjectDependencies,
-  runProjectScript
+  runProjectScript,
+  listProjectTasks,
+  stopProjectTask
 } from '@main/services/workspaces'
 import {
   listTemplates,
@@ -232,6 +234,12 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.runScript, (_, workspaceId, projectId, script) =>
     runProjectScript(String(workspaceId), String(projectId), String(script))
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.tasks, (_, projectId) =>
+    listProjectTasks(projectId ? String(projectId) : undefined)
+  )
+  registerIpcHandler(IPC_CHANNELS.workspaces.stopTask, (_, taskId) =>
+    stopProjectTask(String(taskId))
   )
 
   registerIpcHandler(IPC_CHANNELS.templates.list, () => listTemplates())

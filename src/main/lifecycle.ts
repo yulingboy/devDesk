@@ -10,6 +10,7 @@ import { IPC_CHANNELS } from '@shared/ipc'
 import { startOverviewSampler, stopOverviewSampler } from '@main/services/overview'
 import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } from '@main/tray'
 import { getSettings } from '@main/services/settings'
+import { stopAllProjectTasks } from '@main/services/workspaces'
 
 const windowPool = new WindowPool()
 
@@ -57,6 +58,7 @@ export function registerAppLifecycle(): void {
   app.on('before-quit', () => {
     log.info('应用准备退出')
     markAppQuitting()
+    stopAllProjectTasks()
     stopOverviewSampler()
     destroyAppTray()
     windowPool.closeAll()

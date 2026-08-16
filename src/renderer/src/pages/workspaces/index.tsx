@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Save } from 'lucide-react'
 import type {
   GitIdentity,
-  Project,
-  ProjectDetail,
   ProjectTemplate,
+  SSHKey,
   Workspace,
   WorkspaceScanResult
 } from '@shared/domain'
@@ -19,7 +18,6 @@ import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-import { Tabs } from '@/components/ui/tabs'
 import {
   Select,
   SelectContent,
@@ -38,6 +36,7 @@ export function WorkspacesPage(): React.JSX.Element {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [draft, setDraft] = useState<Workspace>(emptyWorkspace)
   const [identities, setIdentities] = useState<GitIdentity[]>([])
+  const [sshKeys, setSshKeys] = useState<SSHKey[]>([])
   const [templates, setTemplates] = useState<ProjectTemplate[]>([])
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -46,12 +45,11 @@ export function WorkspacesPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
+  const [selectedProjectId, setSelectedProjectId] = useState<string>()
+  const [removingProject, setRemovingProject] = useState(false)
   const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
   const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
-  const [activeProjectTab, setActiveProjectTab] = useState('all')
-  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null)
-  const [projectDetailLoading, setProjectDetailLoading] = useState(false)
-  const [projectAction, setProjectAction] = useState<'refresh' | 'install' | 'script' | 'remove'>()
+  const deepLinkHandled = useRef(false)
   const report = (error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     setStatus(message)
@@ -62,18 +60,38 @@ export function WorkspacesPage(): React.JSX.Element {
     void Promise.all([
       window.api?.workspaces.list(),
       window.api?.git.getState(),
+      window.api?.ssh.list(),
       window.api?.templates.list()
     ])
-      .then(([workspaceValue, gitState, templateValue]) => {
+      .then(([workspaceValue, gitState, sshValue, templateValue]) => {
         if (workspaceValue) setWorkspaces(workspaceValue)
         if (workspaceValue) setSelectedWorkspaceId((current) => current ?? workspaceValue[0]?.id)
         if (gitState) setIdentities(gitState.identities)
+        if (sshValue) setSshKeys(sshValue)
         if (templateValue) setTemplates(templateValue)
       })
       .catch(report)
       .finally(() => setLoading(false))
   }
   useEffect(load, [])
+  useEffect(() => {
+    if (!workspaces.length || deepLinkHandled.current) return
+    deepLinkHandled.current = true
+    const queryIndex = window.location.hash.indexOf('?')
+    const params = new URLSearchParams(
+      queryIndex >= 0 ? window.location.hash.slice(queryIndex + 1) : ''
+    )
+    const linkedWorkspace = workspaces.find((item) => item.id === params.get('workspace'))
+    const linkedProject = linkedWorkspace?.projects.find(
+      (item) => item.id === params.get('project')
+    )
+    if (!linkedWorkspace) return
+    const timer = window.setTimeout(() => {
+      setSelectedWorkspaceId(linkedWorkspace.id)
+      if (linkedProject) setSelectedProjectId(linkedProject.id)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [workspaces])
   const save = (): void => {
     void window.api?.workspaces
       .save(draft)
@@ -94,9 +112,7 @@ export function WorkspacesPage(): React.JSX.Element {
       if (!result) throw new Error('当前页面未连接桌面服务，无法扫描工作区。')
       setWorkspaces(result.workspaces)
       setScanResults((current) => ({ ...current, [id]: result }))
-      toast.success(
-        `项目扫描完成：新增 ${result.added}，移除 ${result.removed}${result.gitErrorCount ? `，${result.gitErrorCount} 个 Git 状态异常` : ''}`
-      )
+      toast.success(`项目扫描完成：新增 ${result.added}，移除 ${result.removed}`)
       if (result.truncated) toast.warning('目录超过 500 个，已按扫描上限展示')
     } catch (error) {
       report(error)
@@ -104,86 +120,7 @@ export function WorkspacesPage(): React.JSX.Element {
       setScanningWorkspaceId(undefined)
     }
   }
-  const applyProjectDetail = (detail: ProjectDetail): void => {
-    setProjectDetail(detail)
-    setWorkspaces((current) =>
-      current.map((workspace) =>
-        workspace.id === detail.project.workspaceId
-          ? {
-              ...workspace,
-              projects: workspace.projects.map((project) =>
-                project.id === detail.project.id ? { ...project, ...detail.project } : project
-              )
-            }
-          : workspace
-      )
-    )
-  }
-  const openProjectDetail = async (project: Project): Promise<void> => {
-    setProjectDetailLoading(true)
-    setProjectDetail(null)
-    try {
-      const detail = await window.api?.workspaces.getProjectDetail(project.workspaceId, project.id)
-      if (!detail) throw new Error('当前页面未连接桌面服务，无法读取项目详情。')
-      applyProjectDetail(detail)
-    } catch (error) {
-      report(error)
-    } finally {
-      setProjectDetailLoading(false)
-    }
-  }
-  const refreshProjectDetail = async (): Promise<void> => {
-    if (!projectDetail || projectAction) return
-    setProjectAction('refresh')
-    try {
-      const detail = await window.api?.workspaces.refreshProject(
-        projectDetail.project.workspaceId,
-        projectDetail.project.id
-      )
-      if (!detail) throw new Error('当前页面未连接桌面服务，无法刷新项目。')
-      applyProjectDetail(detail)
-      toast.success('项目状态已刷新')
-    } catch (error) {
-      report(error)
-    } finally {
-      setProjectAction(undefined)
-    }
-  }
-  const installDependencies = async (): Promise<void> => {
-    if (!projectDetail || projectAction) return
-    setProjectAction('install')
-    try {
-      const detail = await window.api?.workspaces.installDependencies(
-        projectDetail.project.workspaceId,
-        projectDetail.project.id
-      )
-      if (!detail) throw new Error('当前页面未连接桌面服务，无法安装依赖。')
-      applyProjectDetail(detail)
-      toast.success('项目依赖已安装')
-    } catch (error) {
-      report(error)
-    } finally {
-      setProjectAction(undefined)
-    }
-  }
-  const runProjectScript = async (script: string): Promise<void> => {
-    if (!projectDetail || projectAction) return
-    setProjectAction('script')
-    try {
-      await window.api?.workspaces.runScript(
-        projectDetail.project.workspaceId,
-        projectDetail.project.id,
-        script
-      )
-      toast.success(`已在 Terminal 中启动 ${script} 脚本`)
-    } catch (error) {
-      report(error)
-    } finally {
-      setProjectAction(undefined)
-    }
-  }
   const addProject = async (workspace: Workspace): Promise<void> => {
-    if (projectAction) return
     try {
       const path = await window.api?.dialog.selectDirectory(workspace.rootPath)
       if (!path) return
@@ -193,24 +130,6 @@ export function WorkspacesPage(): React.JSX.Element {
       toast.success('项目已纳入当前工作区')
     } catch (error) {
       report(error)
-    }
-  }
-  const removeProject = async (): Promise<void> => {
-    if (!projectDetail || projectAction) return
-    setProjectAction('remove')
-    try {
-      const next = await window.api?.workspaces.removeProject(
-        projectDetail.project.workspaceId,
-        projectDetail.project.id
-      )
-      if (!next) throw new Error('当前页面未连接桌面服务，无法移除项目。')
-      setWorkspaces(next)
-      setProjectDetail(null)
-      toast.success('项目已从工作区移除')
-    } catch (error) {
-      report(error)
-    } finally {
-      setProjectAction(undefined)
     }
   }
   const selectedWorkspace =
@@ -231,14 +150,10 @@ export function WorkspacesPage(): React.JSX.Element {
   const selectedIdentity = identities.find(
     (identity) => identity.id === selectedWorkspace?.gitIdentityId
   )
-  const attentionProjects = visibleWorkspace?.projects.filter(needsAttention) ?? []
-  const readyProjects =
-    visibleWorkspace?.projects.filter(
-      (project) =>
-        project.directoryExists !== false &&
-        project.dependencyState === 'ready' &&
-        !project.gitError
-    ) ?? []
+  const selectedSshKey = sshKeys.find((key) => key.id === selectedIdentity?.sshKeyId)
+  const selectedProject = selectedWorkspace?.projects.find(
+    (project) => project.id === selectedProjectId
+  )
   const deleteWorkspace = async (workspace: Workspace): Promise<void> => {
     if (scanningWorkspaceId) return
     try {
@@ -256,6 +171,24 @@ export function WorkspacesPage(): React.JSX.Element {
       report(error)
     }
   }
+  const removeProject = async (): Promise<void> => {
+    if (!selectedWorkspace || !selectedProject || removingProject) return
+    setRemovingProject(true)
+    try {
+      const next = await window.api?.workspaces.removeProject(
+        selectedWorkspace.id,
+        selectedProject.id
+      )
+      if (!next) throw new Error('当前页面未连接桌面服务，无法移除项目。')
+      setWorkspaces(next)
+      setSelectedProjectId(undefined)
+      toast.success('项目已从工作区移除')
+    } catch (error) {
+      report(error)
+    } finally {
+      setRemovingProject(false)
+    }
+  }
   if (loading) return <PageLoadingSkeleton />
   return (
     <div className="flex h-full min-h-0 bg-slate-50">
@@ -265,7 +198,10 @@ export function WorkspacesPage(): React.JSX.Element {
           setDraft(emptyWorkspace)
           setDrawerMode('workspace')
         }}
-        onSelect={setSelectedWorkspaceId}
+        onSelect={(id) => {
+          setSelectedWorkspaceId(id)
+          setSelectedProjectId(undefined)
+        }}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         selectedId={selectedWorkspace?.id}
         workspaces={workspaces}
@@ -275,6 +211,7 @@ export function WorkspacesPage(): React.JSX.Element {
           <>
             <WorkspaceToolbar
               identityName={selectedIdentity?.name}
+              sshKeyName={selectedSshKey?.name}
               onAddProject={() => void addProject(visibleWorkspace)}
               onCreateProject={() => {
                 setCreateWorkspaceId(visibleWorkspace.id)
@@ -295,70 +232,16 @@ export function WorkspacesPage(): React.JSX.Element {
               templatesAvailable={templates.length > 0}
               workspace={visibleWorkspace}
             />
-            <Tabs
-              className="min-h-0 flex-1 gap-0 bg-white [&_[role=tablist]]:shrink-0 [&_[role=tablist]]:px-5 [&_[role=tabpanel]]:overflow-auto"
-              fill
-              items={[
-                {
-                  value: 'all',
-                  label: `全部 ${visibleWorkspace.projects.length}`,
-                  content: (
-                    <ProjectGrid
-                      onOpen={(project) => void openProjectDetail(project)}
-                      onOpenEditor={(path) =>
-                        void window.api?.workspaces.openProjectEditor(path).catch(report)
-                      }
-                      onOpenFolder={(path) =>
-                        void window.api?.workspaces.openProject(path).catch(report)
-                      }
-                      projects={visibleWorkspace.projects}
-                      query={query}
-                      rootPath={visibleWorkspace.rootPath}
-                      scanning={scanningWorkspaceId === visibleWorkspace.id}
-                    />
-                  )
-                },
-                {
-                  value: 'attention',
-                  label: `需处理 ${attentionProjects.length}`,
-                  content: (
-                    <ProjectGrid
-                      onOpen={(project) => void openProjectDetail(project)}
-                      onOpenEditor={(path) =>
-                        void window.api?.workspaces.openProjectEditor(path).catch(report)
-                      }
-                      onOpenFolder={(path) =>
-                        void window.api?.workspaces.openProject(path).catch(report)
-                      }
-                      projects={attentionProjects}
-                      query={query}
-                      rootPath={visibleWorkspace.rootPath}
-                      scanning={scanningWorkspaceId === visibleWorkspace.id}
-                    />
-                  )
-                },
-                {
-                  value: 'ready',
-                  label: `已就绪 ${readyProjects.length}`,
-                  content: (
-                    <ProjectGrid
-                      onOpen={(project) => void openProjectDetail(project)}
-                      onOpenEditor={(path) =>
-                        void window.api?.workspaces.openProjectEditor(path).catch(report)
-                      }
-                      onOpenFolder={(path) =>
-                        void window.api?.workspaces.openProject(path).catch(report)
-                      }
-                      projects={readyProjects}
-                      query={query}
-                      rootPath={visibleWorkspace.rootPath}
-                      scanning={scanningWorkspaceId === visibleWorkspace.id}
-                    />
-                  )
-                }
-              ]}
-              onValueChange={setActiveProjectTab}
-              value={activeProjectTab}
+            <ProjectGrid
+              onOpen={(project) => setSelectedProjectId(project.id)}
+              onOpenEditor={(path) =>
+                void window.api?.workspaces.openProjectEditor(path).catch(report)
+              }
+              onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
+              projects={visibleWorkspace.projects}
+              query={query}
+              rootPath={visibleWorkspace.rootPath}
+              scanning={scanningWorkspaceId === visibleWorkspace.id}
             />
           </>
         ) : (
@@ -456,30 +339,18 @@ export function WorkspacesPage(): React.JSX.Element {
           workspaces={workspaces}
         />
         <ProjectDetailDrawer
-          detail={projectDetail}
-          loading={projectDetailLoading}
-          onClose={() => {
-            if (!projectAction) setProjectDetail(null)
-          }}
-          onInstallDependencies={() => void installDependencies()}
+          identity={selectedIdentity}
+          onClose={() => !removingProject && setSelectedProjectId(undefined)}
           onRemove={removeProject}
           onOpenEditor={(path) => void window.api?.workspaces.openProjectEditor(path).catch(report)}
           onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
-          onRefresh={() => void refreshProjectDetail()}
-          onRunScript={(script) => void runProjectScript(script)}
-          open={projectDetailLoading || Boolean(projectDetail)}
-          pendingAction={projectAction}
+          open={Boolean(selectedProject)}
+          project={selectedProject}
+          removing={removingProject}
+          sshKey={selectedSshKey}
+          workspace={selectedWorkspace}
         />
       </div>
     </div>
-  )
-}
-
-/** 项目缺目录、依赖未安装或 Git 状态不可读取时，归入“需处理”页签。 */
-function needsAttention(project: Project): boolean {
-  return (
-    project.directoryExists === false ||
-    Boolean(project.gitError) ||
-    Boolean(project.hasPackageJson && project.dependencyState === 'missing')
   )
 }

@@ -1,90 +1,80 @@
-import {
-  Code2,
-  FolderOpen,
-  PackageCheck,
-  Play,
-  RefreshCw,
-  TerminalSquare,
-  Trash2
-} from 'lucide-react'
-import type { ProjectDetail } from '@shared/domain'
+import { Code2, FolderKanban, FolderOpen, GitBranch, KeyRound, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import type { GitIdentity, Project, SSHKey, Workspace } from '@shared/domain'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
+import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
+import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { ConfirmAction } from '@/components/ConfirmAction'
 
 interface ProjectDetailDrawerProps {
-  detail: ProjectDetail | null
-  loading: boolean
+  identity?: GitIdentity
+  project?: Project
+  sshKey?: SSHKey
+  workspace?: Workspace
   open: boolean
-  pendingAction?: 'refresh' | 'install' | 'script' | 'remove'
+  removing: boolean
   onClose: () => void
   onOpenEditor: (path: string) => void
   onOpenFolder: (path: string) => void
-  onInstallDependencies: () => void
   onRemove: () => Promise<void>
-  onRefresh: () => void
-  onRunScript: (script: string) => void
 }
 
-/** 项目详情抽屉将环境检查和可执行操作集中到项目上下文中。 */
+/**
+ * 项目详情只回答工作区的两个核心问题：项目在哪里，以及继承哪套 Git/SSH 身份。
+ * 语言运行时、依赖和脚本属于各自的环境管理页，不在这里判定项目是否“就绪”。
+ */
 export function ProjectDetailDrawer({
-  detail,
-  loading,
+  identity,
+  project,
+  sshKey,
+  workspace,
   open,
-  pendingAction,
+  removing,
   onClose,
   onOpenEditor,
   onOpenFolder,
-  onInstallDependencies,
-  onRemove,
-  onRefresh,
-  onRunScript
+  onRemove
 }: ProjectDetailDrawerProps): React.JSX.Element {
-  const project = detail?.project
-  const environment = detail?.environment
-  const workspace = detail?.workspace
-  const running = Boolean(pendingAction)
+  const directoryAvailable = project?.directoryExists !== false
   return (
     <Drawer
-      description="状态从项目目录实时读取；脚本会在新的 macOS Terminal 窗口中运行。"
+      className="sm:max-w-lg"
+      description="查看项目目录及当前工作区继承的 Git/SSH 身份。"
       footer={
         project ? (
           <>
             <ConfirmAction
-              description={`将从当前工作区移除“${project.name}”的应用内引用，不会删除磁盘目录、Git 仓库或任何源代码。`}
+              description={`将从当前工作区移除“${project.name}”的应用内引用，不会删除磁盘目录或源代码。`}
               onConfirm={onRemove}
               title="从工作区移除项目？"
+              triggerTooltip="从工作区移除"
             >
-              <Button disabled={running} size="icon" variant="ghost">
-                {pendingAction === 'remove' ? <Spinner /> : <Trash2 size={14} />}
+              <Button disabled={removing} size="icon" variant="ghost">
+                {removing ? <Spinner /> : <Trash2 />}
               </Button>
             </ConfirmAction>
             <Button onClick={onClose} variant="secondary">
               关闭
             </Button>
-            <Button disabled={running} onClick={onRefresh} variant="outline">
-              {pendingAction === 'refresh' ? <Spinner /> : <RefreshCw size={14} />}
-              刷新项目
+            <Button
+              disabled={!directoryAvailable}
+              onClick={() => onOpenFolder(project.path)}
+              variant="outline"
+            >
+              <FolderOpen />
+              打开目录
             </Button>
             <Button
-              disabled={
-                running ||
-                environment?.directoryExists === false ||
-                !project.hasPackageJson ||
-                project.dependencyState === 'ready' ||
-                !environment?.packageManagerAvailable
-              }
-              onClick={onInstallDependencies}
+              disabled={!directoryAvailable}
+              onClick={() => onOpenEditor(project.path)}
               variant="success"
             >
-              {pendingAction === 'install' ? <Spinner /> : <PackageCheck size={14} />}
-              {project.dependencyState === 'ready' ? '依赖已就绪' : '安装依赖'}
+              <Code2 />
+              VS Code
             </Button>
           </>
         ) : undefined
@@ -93,130 +83,78 @@ export function ProjectDetailDrawer({
       open={open}
       title={project?.name ?? '项目详情'}
     >
-      {loading && (
-        <div className="space-y-3">
-          <div className="h-12 animate-pulse bg-slate-100" />
-          <div className="h-28 animate-pulse bg-slate-100" />
-          <div className="h-32 animate-pulse bg-slate-100" />
-        </div>
-      )}
-      {!loading && project && environment && (
-        <div className="space-y-5">
-          {environment.directoryExists === false && (
+      {project && workspace && (
+        <div className="space-y-4">
+          {!directoryAvailable && (
             <Alert variant="warning">
               <AlertDescription>
-                项目目录已不存在或无法访问。此记录不会自动删除，以便你确认后从工作区移除。
+                项目目录已被移动或删除，可以从工作区移除这条记录后重新扫描。
               </AlertDescription>
             </Alert>
           )}
-          <section className="space-y-2">
-            <p className="text-[11px] font-medium text-slate-400">项目</p>
-            <Item className="px-0 py-0 border-x-0">
+
+          <section aria-labelledby="project-location-title">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-slate-700" id="project-location-title">
+                项目位置
+              </h3>
+              <Badge variant={project.source === 'manual' ? 'secondary' : 'outline'}>
+                {project.source === 'manual' ? '手动纳入' : '扫描发现'}
+              </Badge>
+            </div>
+            <Item>
+              <FolderKanban className="shrink-0 text-slate-400" />
               <ItemContent>
-                <ItemTitle>{project.packageName || project.name}</ItemTitle>
+                <ItemTitle>{project.name}</ItemTitle>
                 <ItemDescription title={project.path}>{project.path}</ItemDescription>
               </ItemContent>
-              <ItemActions>
-                <Button
-                  disabled={environment.directoryExists === false}
-                  onClick={() => onOpenEditor(project.path)}
-                  size="icon"
-                  variant="ghost"
-                >
-                  <Code2 size={14} />
-                </Button>
-                <Button
-                  disabled={environment.directoryExists === false}
-                  onClick={() => onOpenFolder(project.path)}
-                  size="icon"
-                  variant="ghost"
-                >
-                  <FolderOpen size={14} />
-                </Button>
-              </ItemActions>
             </Item>
-            {workspace && (
-              <div className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500">
-                <span className="shrink-0">工作区 · {workspace.name}</span>
-                {workspace.gitIdentity ? (
-                  <Badge variant="secondary">
-                    Git · {workspace.gitIdentity.name} ({workspace.gitIdentity.email})
-                  </Badge>
-                ) : (
-                  <span className="text-slate-400">未绑定 Git 身份</span>
-                )}
-              </div>
-            )}
+            <dl className="mt-2 grid grid-cols-[88px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2.5 text-xs">
+              <dt className="text-slate-400">所属工作区</dt>
+              <dd className="truncate text-slate-700">{workspace.name}</dd>
+              <dt className="text-slate-400">相对路径</dt>
+              <dd className="truncate font-mono text-[11px] text-slate-600">
+                {formatRelativePath(project.path, workspace.rootPath)}
+              </dd>
+            </dl>
           </section>
-          <section className="space-y-2">
-            <p className="text-[11px] font-medium text-slate-400">运行环境</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <Status label="当前 Node" value={environment.currentNodeVersion || '未检测到'} />
-              <Status label="项目要求" value={environment.nodeRequirement || '未声明'} />
-              <Status label="包管理器" value={environment.packageManager || '未识别'} />
-              <Status
-                label="依赖"
-                value={
-                  environment.dependencyState === 'ready'
-                    ? '已安装'
-                    : environment.dependencyState === 'missing'
-                      ? '未安装'
-                      : '不适用'
-                }
-              />
+
+          <Separator />
+
+          <section aria-labelledby="project-identity-title">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold text-slate-700" id="project-identity-title">
+                Git / SSH 身份
+              </h3>
+              <Button asChild size="sm" variant="ghost">
+                <Link to="/git">管理身份</Link>
+              </Button>
             </div>
-            {environment.nodeCompatible === false && (
-              <div className="flex flex-wrap items-center justify-between gap-2 border border-amber-200 bg-amber-50 px-2.5 py-2">
-                <p className="text-[11px] text-amber-800">
-                  当前 Node 版本可能不满足项目要求，请切换后刷新项目状态。
-                </p>
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/node">前往 Node 管理</Link>
-                </Button>
-              </div>
-            )}
-            {environment.packageManager && !environment.packageManagerAvailable && (
-              <p className="text-[11px] text-amber-700">
-                未检测到 {environment.packageManager}，无法安装依赖或运行脚本。
-              </p>
-            )}
-          </section>
-          <section className="space-y-2">
-            <p className="text-[11px] font-medium text-slate-400">可运行脚本</p>
-            {detail.scripts.length ? (
-              <div className="space-y-1">
-                {detail.scripts.map((script) => (
-                  <Item className="px-2 py-1.5" key={script.name}>
-                    <ItemContent>
-                      <ItemTitle className="font-mono">{script.name}</ItemTitle>
-                      <ItemDescription className="font-mono" title={script.command}>
-                        {script.command}
-                      </ItemDescription>
-                    </ItemContent>
-                    <ItemActions>
-                      <Button
-                        disabled={
-                          running ||
-                          environment.directoryExists === false ||
-                          !environment.packageManagerAvailable
-                        }
-                        onClick={() => onRunScript(script.name)}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        {pendingAction === 'script' ? <Spinner /> : <Play size={13} />}
-                        在终端运行
-                      </Button>
-                    </ItemActions>
-                  </Item>
-                ))}
+            {identity ? (
+              <div className="divide-y divide-slate-100 rounded-md border border-slate-200">
+                <IdentityRow
+                  description={`${identity.username} · ${identity.email}`}
+                  icon={GitBranch}
+                  title={identity.name}
+                />
+                <IdentityRow
+                  description={
+                    sshKey
+                      ? `${sshKey.algorithm} · ${sshKey.fingerprint}`
+                      : identity.sshKeyId
+                        ? '关联的密钥已不存在'
+                        : '当前 Git 身份未绑定 SSH 密钥'
+                  }
+                  icon={KeyRound}
+                  title={sshKey?.name ?? '未绑定 SSH 密钥'}
+                />
               </div>
             ) : (
-              <Empty className="min-h-20 py-3">
-                <TerminalSquare className="mb-1 size-4 text-slate-300" />
-                <EmptyTitle>未声明 npm scripts</EmptyTitle>
-                <EmptyDescription>项目 package.json 中的 scripts 会显示在这里。</EmptyDescription>
-              </Empty>
+              <Alert>
+                <AlertDescription>
+                  当前工作区未绑定 Git 身份，项目不会应用工作区级的 Git 用户和 SSH 密钥配置。
+                </AlertDescription>
+              </Alert>
             )}
           </section>
         </div>
@@ -225,13 +163,30 @@ export function ProjectDetailDrawer({
   )
 }
 
-function Status({ label, value }: { label: string; value: string }): React.JSX.Element {
+function IdentityRow({
+  description,
+  icon: Icon,
+  title
+}: {
+  description: string
+  icon: typeof GitBranch
+  title: string
+}): React.JSX.Element {
   return (
-    <div className="border border-slate-100 bg-slate-50 px-2.5 py-2">
-      <p className="text-[11px] text-slate-400">{label}</p>
-      <p className="mt-1 truncate font-mono text-[11px] text-slate-700" title={value}>
-        {value}
-      </p>
+    <div className="flex min-w-0 items-center gap-2.5 px-3 py-2.5">
+      <Icon className="shrink-0 text-slate-400" size={15} />
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-slate-700">{title}</p>
+        <p className="mt-0.5 truncate text-[11px] text-slate-400" title={description}>
+          {description}
+        </p>
+      </div>
     </div>
   )
+}
+
+function formatRelativePath(projectPath: string, rootPath: string): string {
+  const normalizedRoot = rootPath.replace(/\/$/, '')
+  if (!projectPath.startsWith(`${normalizedRoot}/`)) return '外部目录'
+  return `./${projectPath.slice(normalizedRoot.length + 1)}`
 }

@@ -62,7 +62,6 @@ export function WorkspaceSidebar({
         <div className="space-y-1">
           {workspaces.map((workspace) => {
             const selected = workspace.id === selectedId
-            const attentionCount = workspace.projects.filter(needsAttention).length
 
             if (collapsed) {
               return (
@@ -99,7 +98,7 @@ export function WorkspaceSidebar({
                   <span className="block truncate text-[11px] font-medium">{workspace.name}</span>
                   <span className="mt-0.5 block truncate text-[10px] text-slate-400">
                     {workspace.projects.length} 个项目
-                    {attentionCount > 0 ? ` · ${attentionCount} 个需处理` : ' · 状态正常'}
+                    {workspace.gitIdentityId ? ' · 已绑定 Git 身份' : ' · 未绑定 Git 身份'}
                   </span>
                 </span>
               </button>
@@ -108,13 +107,5 @@ export function WorkspaceSidebar({
         </div>
       </div>
     </aside>
-  )
-}
-
-function needsAttention(workspaceProject: Workspace['projects'][number]): boolean {
-  return (
-    workspaceProject.directoryExists === false ||
-    Boolean(workspaceProject.gitError) ||
-    Boolean(workspaceProject.hasPackageJson && workspaceProject.dependencyState === 'missing')
   )
 }

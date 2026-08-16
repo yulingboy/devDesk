@@ -55,7 +55,10 @@ export const IPC_CHANNELS = {
     addProject: 'workspaces:add-project',
     removeProject: 'workspaces:remove-project',
     installDependencies: 'workspaces:install-dependencies',
-    runScript: 'workspaces:run-script'
+    runScript: 'workspaces:run-script',
+    tasks: 'workspaces:tasks',
+    stopTask: 'workspaces:stop-task',
+    taskUpdated: 'workspaces:task-updated'
   },
   templates: {
     list: 'templates:list',

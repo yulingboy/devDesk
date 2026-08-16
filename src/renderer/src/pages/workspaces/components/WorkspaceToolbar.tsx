@@ -2,6 +2,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  KeyRound,
   MoreHorizontal,
   Pencil,
   RefreshCw,
@@ -24,6 +25,7 @@ import { Spinner } from '@/components/ui/spinner'
 
 interface WorkspaceToolbarProps {
   identityName?: string
+  sshKeyName?: string
   query: string
   scanResult?: WorkspaceScanResult
   scanning: boolean
@@ -42,6 +44,7 @@ interface WorkspaceToolbarProps {
 /** 当前工作区的身份、路径、检索和操作统一放在一个上下文工具栏中。 */
 export function WorkspaceToolbar({
   identityName,
+  sshKeyName,
   query,
   scanResult,
   scanning,
@@ -70,10 +73,14 @@ export function WorkspaceToolbar({
             <span className="truncate" title={workspace.rootPath}>
               {workspace.rootPath}
             </span>
+            <span className="inline-flex shrink-0 items-center gap-1 border-l border-slate-200 pl-2 text-slate-500">
+              <GitBranch />
+              {identityName ?? '未绑定 Git 身份'}
+            </span>
             {identityName && (
-              <span className="inline-flex shrink-0 items-center gap-1 border-l border-slate-200 pl-2 text-slate-500">
-                <GitBranch />
-                {identityName}
+              <span className="inline-flex shrink-0 items-center gap-1 text-slate-500">
+                <KeyRound />
+                {sshKeyName ?? '未绑定 SSH 密钥'}
               </span>
             )}
           </div>
@@ -152,9 +159,6 @@ export function WorkspaceToolbar({
           <span>移除 {scanResult.removed}</span>
           <span>共 {scanResult.total} 个项目</span>
           {scanResult.truncated && <span className="text-amber-700">已达到扫描上限</span>}
-          {scanResult.gitErrorCount > 0 && (
-            <span className="text-amber-700">{scanResult.gitErrorCount} 个 Git 状态异常</span>
-          )}
         </div>
       )}
     </section>

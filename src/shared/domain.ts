@@ -90,6 +90,17 @@ export interface Project {
   lastScannedAt?: string
   /** 手动纳入的项目目录被移动或删除后，仍保留记录供用户明确移除。 */
   directoryExists?: boolean
+  /** 用户行为字段独立于扫描结果，后续扫描不得覆盖。 */
+  favorite?: boolean
+  archived?: boolean
+  lastOpenedAt?: string
+  /** 以下字段用于项目列表快速判断，详情页会重新读取磁盘状态。 */
+  lockfileType?: ProjectPackageManager
+  lockfileState?: 'ready' | 'missing' | 'mismatch'
+  gitAhead?: number
+  gitBehind?: number
+  gitChangedFiles?: number
+  lastCommit?: string
 }
 
 export type ProjectPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
@@ -99,10 +110,44 @@ export interface ProjectScript {
   command: string
 }
 
+export type ProjectIssueType =
+  'directory' | 'node' | 'package-manager' | 'dependency' | 'lockfile' | 'git'
+
+/** 环境异常统一转换为可执行问题，页面不再重复拼装判断规则。 */
+export interface ProjectIssue {
+  id: string
+  type: ProjectIssueType
+  severity: 'error' | 'warning' | 'info'
+  title: string
+  description: string
+  action?: 'refresh' | 'install-dependencies' | 'open-node' | 'open-git'
+}
+
+export type ProjectTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
+/** 项目脚本由主进程持有，渲染层只能启动已在 package.json 中声明的脚本。 */
+export interface ProjectTask {
+  id: string
+  workspaceId: string
+  projectId: string
+  projectName: string
+  script: string
+  command: string
+  status: ProjectTaskStatus
+  pid?: number
+  startedAt: string
+  finishedAt?: string
+  exitCode?: number
+  logs: string[]
+  error?: string
+}
+
 /** 项目详情只反映磁盘上实时状态，不额外保存敏感命令或依赖内容。 */
 export interface ProjectDetail {
   project: Project
   scripts: ProjectScript[]
+  issues: ProjectIssue[]
+  tasks: ProjectTask[]
   workspace: {
     id: string
     name: string
@@ -112,11 +157,25 @@ export interface ProjectDetail {
   environment: {
     directoryExists: boolean
     currentNodeVersion: string
+    nodeSource: 'process' | 'nvmrc' | 'node-version' | 'volta' | 'engines' | 'unknown'
     nodeRequirement?: string
+    nodeRequirementSource?: '.nvmrc' | '.node-version' | 'volta' | 'engines.node'
     nodeCompatible: boolean | null
     packageManager?: ProjectPackageManager
     packageManagerAvailable: boolean
     dependencyState: NonNullable<Project['dependencyState']>
+    lockfileType?: ProjectPackageManager
+    lockfileState: 'ready' | 'missing' | 'mismatch'
+  }
+  git: {
+    branch?: string
+    remote?: string
+    dirty: boolean
+    changedFiles: number
+    ahead: number
+    behind: number
+    lastCommit?: string
+    error?: string
   }
 }
 

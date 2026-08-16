@@ -58,6 +58,7 @@ import type {
   NodeState,
   ProjectCreateOptions,
   ProjectDetail,
+  ProjectTask,
   ProjectTemplate,
   SSHKey,
   SSHKeyDraft,
@@ -134,7 +135,10 @@ export interface AppApi {
     addProject: (workspaceId: string, path: string) => Promise<Workspace[]>
     removeProject: (workspaceId: string, projectId: string) => Promise<Workspace[]>
     installDependencies: (workspaceId: string, projectId: string) => Promise<ProjectDetail>
-    runScript: (workspaceId: string, projectId: string, script: string) => Promise<void>
+    runScript: (workspaceId: string, projectId: string, script: string) => Promise<ProjectTask>
+    tasks: (projectId?: string) => Promise<ProjectTask[]>
+    stopTask: (taskId: string) => Promise<ProjectTask>
+    onTaskUpdated: (listener: (task: ProjectTask) => void) => () => void
   }
   templates: {
     list: () => Promise<ProjectTemplate[]>

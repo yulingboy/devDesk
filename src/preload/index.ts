@@ -98,7 +98,17 @@ const api: AppApi = {
     installDependencies: (workspaceId, projectId) =>
       invoke(IPC_CHANNELS.workspaces.installDependencies, workspaceId, projectId),
     runScript: (workspaceId, projectId, script) =>
-      invoke(IPC_CHANNELS.workspaces.runScript, workspaceId, projectId, script)
+      invoke(IPC_CHANNELS.workspaces.runScript, workspaceId, projectId, script),
+    tasks: (projectId) => invoke(IPC_CHANNELS.workspaces.tasks, projectId),
+    stopTask: (taskId) => invoke(IPC_CHANNELS.workspaces.stopTask, taskId),
+    onTaskUpdated: (listener) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        task: Parameters<typeof listener>[0]
+      ): void => listener(task)
+      ipcRenderer.on(IPC_CHANNELS.workspaces.taskUpdated, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.workspaces.taskUpdated, handler)
+    }
   },
   templates: {
     list: () => invoke(IPC_CHANNELS.templates.list),

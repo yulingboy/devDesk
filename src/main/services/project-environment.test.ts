@@ -14,4 +14,14 @@ describe('项目环境解析', () => {
     expect(isNodeRequirementSatisfied('22.1.0', '^22.0.0 || ^24.0.0')).toBe(true)
     expect(isNodeRequirementSatisfied('', '>=20')).toBeNull()
   })
+
+  it('判断完整 semver、通配符和短版本范围', () => {
+    expect(isNodeRequirementSatisfied('20.10.3', '^20.10.0')).toBe(true)
+    expect(isNodeRequirementSatisfied('21.0.0', '^20.10.0')).toBe(false)
+    expect(isNodeRequirementSatisfied('20.11.4', '~20.11.0')).toBe(true)
+    expect(isNodeRequirementSatisfied('20.12.0', '~20.11.0')).toBe(false)
+    expect(isNodeRequirementSatisfied('22.4.1', '22.x')).toBe(true)
+    expect(isNodeRequirementSatisfied('22.4.1', '20.0.0 - 22.5.0')).toBe(true)
+    expect(isNodeRequirementSatisfied('22.4.1', '*')).toBe(true)
+  })
 })
