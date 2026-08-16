@@ -82,6 +82,23 @@ export function CachePanel({
               >
                 <FolderOpen size={14} />
               </TooltipButton>
+              {cache.clearable && cache.id && cache.id !== 'nvm' && (
+                <ConfirmAction
+                  description={`将使用 ${cache.name} 的官方命令清理缓存，不会删除全局包或已安装的 Node 版本。`}
+                  onConfirm={() =>
+                    void window.api?.node
+                      .clearCache(cache.id as 'npm' | 'pnpm' | 'yarn' | 'bun')
+                      .then(onState)
+                      .catch(report)
+                  }
+                  title={`清理 ${cache.name}？`}
+                  triggerTooltip={`清理 ${cache.name}`}
+                >
+                  <Button aria-label={`清理 ${cache.name}`} size="icon" variant="ghost">
+                    <Trash2 size={14} />
+                  </Button>
+                </ConfirmAction>
+              )}
             </ItemActions>
           </Item>
         ))}
@@ -96,7 +113,7 @@ export function CachePanel({
           </Empty>
         )}
         <ConfirmAction
-          description="将清理 npm、pnpm、yarn 和 bun 缓存，不会删除已安装的 Node 版本。"
+          description="将依次清理当前可用的 npm、pnpm、yarn 和 bun 缓存；某一项失败时会明确提示，不会删除 Node 版本。"
           onConfirm={() => void window.api?.node.clearCaches().then(onState).catch(report)}
           title="清理包管理缓存？"
         >

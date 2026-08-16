@@ -1,4 +1,4 @@
-import { access, copyFile, readFile, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -19,6 +19,30 @@ function hostsPath(): string {
 
 function backupPath(): string {
   return join(getStoreDirectory(), 'hosts.backup')
+}
+
+function quoteShellArgument(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+/** macOS 使用系统授权窗口写入 /etc/hosts，避免要求用户以 root 身份启动整个应用。 */
+async function writeSystemHosts(path: string, content: string): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await writeFile(path, content, 'utf8')
+    return
+  }
+  const temporary = join(getStoreDirectory(), `hosts.pending-${process.pid}-${Date.now()}`)
+  await mkdir(getStoreDirectory(), { recursive: true })
+  await writeFile(temporary, content, 'utf8')
+  const command = `/bin/cp ${quoteShellArgument(temporary)} ${quoteShellArgument(path)} && /bin/chmod 644 ${quoteShellArgument(path)}`
+  try {
+    await execFileAsync('osascript', [
+      '-e',
+      `do shell script ${JSON.stringify(command)} with administrator privileges`
+    ])
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined)
+  }
 }
 
 function parseManaged(raw: string): HostRecord[] {
@@ -130,11 +154,11 @@ export async function saveHosts(input: HostRecord[]): Promise<HostRecord[]> {
       ? `${raw.slice(0, start)}${managed}${raw.slice(end + endMarker.length)}`
       : `${baseRaw.trimEnd()}\n\n${managed}\n`
   try {
-    await writeFile(path, next, 'utf8')
+    await writeSystemHosts(path, next)
     await store.hosts.write(records)
     return records
   } catch {
-    throw new Error(`写入 Hosts 文件失败，请检查权限：${path}`)
+    throw new Error(`写入 Hosts 文件失败，请确认系统授权或文件权限：${path}`)
   }
 }
 
@@ -142,7 +166,10 @@ export async function restoreHostsBackup(): Promise<HostRecord[]> {
   await access(backupPath()).catch(() => {
     throw new Error('尚未找到 Hosts 备份文件')
   })
-  await copyFile(backupPath(), hostsPath()).catch(() => {
+  const backup = await readFile(backupPath(), 'utf8').catch(() => {
+    throw new Error('读取 Hosts 备份失败')
+  })
+  await writeSystemHosts(hostsPath(), backup).catch(() => {
     throw new Error('恢复 Hosts 备份失败，请检查权限')
   })
   const records = parseManaged(await readFile(hostsPath(), 'utf8').catch(() => ''))

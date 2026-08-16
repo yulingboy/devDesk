@@ -118,15 +118,22 @@ async function install(source: string): Promise<void> {
 }
 
 async function run(): Promise<void> {
+  let installed = false
   try {
     emit({ type: 'progress', progress: 10, message: '准备下载安装包' })
     await download()
     await verifyChecksum()
     await install(await extract())
+    installed = true
     await rm(payload.extractPath, { recursive: true, force: true })
     await rm(payload.archivePath, { force: true })
     emit({ type: 'completed' })
   } catch (error) {
+    // 安装未完成时清除可能残留的半成品目录，后续重试不会误识别为已安装版本。
+    if (!installed)
+      await rm(payload.installPath, { recursive: true, force: true }).catch(() => undefined)
+    await rm(payload.extractPath, { recursive: true, force: true }).catch(() => undefined)
+    await rm(payload.archivePath, { force: true }).catch(() => undefined)
     emit({ type: 'failed', message: error instanceof Error ? error.message : '未知安装错误' })
     process.exitCode = 1
   }

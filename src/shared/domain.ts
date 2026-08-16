@@ -2,7 +2,7 @@
 export type ThemeName = 'blue' | 'purple' | 'green' | 'orange' | 'rose' | 'cyan' | 'indigo' | 'teal'
 export type TemplateType = 'git' | 'local'
 export type TaskStatus =
-  'waiting' | 'downloading' | 'extracting' | 'completed' | 'skipped' | 'failed'
+  'waiting' | 'downloading' | 'extracting' | 'completed' | 'skipped' | 'failed' | 'cancelled'
 
 export interface HostRecord {
   id: string
@@ -155,10 +155,14 @@ export interface GlobalPackage {
 }
 
 export interface NodeCacheSnapshot {
+  /** 稳定标识用于按缓存类型执行清理，旧数据没有该字段时由读取端派生。 */
+  id?: 'npm' | 'pnpm' | 'yarn' | 'bun' | 'nvm'
   name: string
   path: string
   sizeBytes: number
   exists: boolean
+  /** nvm 版本目录用于展示占用，绝不能作为包管理缓存自动删除。 */
+  clearable?: boolean
 }
 
 export interface NodeEnvironmentPath {

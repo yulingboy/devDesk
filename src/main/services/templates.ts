@@ -1,5 +1,5 @@
 import { access, cp, rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ProjectCreateOptions, ProjectTemplate, Workspace } from '@shared/domain'
@@ -66,10 +66,14 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
   const workspace = workspaces.find((item) => item.id === options.workspaceId)
   if (!workspace) throw new Error('工作区不存在')
   const projectName = validateProjectName(options.projectName)
-  const target = resolve(join(workspace.rootPath, projectName))
+  const rootPath = resolve(workspace.rootPath)
+  const target = resolve(rootPath, projectName)
+  const relativeTarget = relative(rootPath, target)
   if (
-    !target.startsWith(resolve(workspace.rootPath) + '/') &&
-    target !== resolve(workspace.rootPath)
+    !relativeTarget ||
+    relativeTarget === '..' ||
+    relativeTarget.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
+    isAbsolute(relativeTarget)
   )
     throw new Error('项目目标路径无效')
   if (

@@ -23,6 +23,9 @@ import createNodeInstallWorker from '@main/workers/node-install-worker?nodeWorke
 const execFileAsync = promisify(execFile)
 const packageManagerNames = ['npm', 'pnpm', 'yarn', 'bun'] as const
 type PackageManagerName = (typeof packageManagerNames)[number]
+const activeInstallWorkers = new Map<string, Worker>()
+const activeInstallVersions = new Set<string>()
+const cancelledTaskIds = new Set<string>()
 
 const defaultRegistries = (): NodeRegistry[] => [
   { id: 'registry-npm', name: 'npm', url: 'https://registry.npmjs.org', isCurrent: true },
@@ -97,6 +100,30 @@ function getNodeVersionsDirectory(): string {
   return process.env.NVM_DIR
     ? join(process.env.NVM_DIR, 'versions', 'node')
     : join(homedir(), '.nvm', 'versions', 'node')
+}
+
+function getNvmDirectory(): string {
+  return process.env.NVM_DIR || join(homedir(), '.nvm')
+}
+
+/** nvm 是 shell 函数而非独立命令，必须从实际脚本位置加载。 */
+async function findNvmScript(): Promise<string | undefined> {
+  if (process.platform === 'win32') return undefined
+  const candidates = [
+    join(getNvmDirectory(), 'nvm.sh'),
+    join(homedir(), '.nvm', 'nvm.sh'),
+    '/opt/homebrew/opt/nvm/nvm.sh',
+    '/usr/local/opt/nvm/nvm.sh'
+  ]
+  for (const candidate of [...new Set(candidates)]) {
+    if (
+      await access(candidate)
+        .then(() => true)
+        .catch(() => false)
+    )
+      return candidate
+  }
+  return undefined
 }
 
 function resolveArchive(version: string): { fileName: string; fileTokens: string[] } {
@@ -203,6 +230,13 @@ async function packageManagerStatus(defaultName: string): Promise<NodeState['pac
   )
 }
 
+async function readNvmDefaultVersion(): Promise<string> {
+  if (!(await findNvmScript())) return ''
+  const output = await runNvm('nvm version default').catch(() => '')
+  const version = output.trim().replace(/^v/, '')
+  return /^\d+\.\d+\.\d+$/.test(version) ? version : ''
+}
+
 /** 汇总真实命令状态，同时保留任务、镜像和缓存等持久化数据。 */
 export async function getNodeState(): Promise<NodeState> {
   const saved = normalizeState(await store.node.read())
@@ -211,15 +245,13 @@ export async function getNodeState(): Promise<NodeState> {
   const installed = await installedVersions()
   const packageManagers = await packageManagerStatus(packageManager)
   const registry = settings.node.registry || saved.registry
+  const defaultVersion = (await readNvmDefaultVersion()) || saved.defaultVersion
   const state: NodeState = {
     ...saved,
     currentVersion: (await commandVersion('node')).replace(/^v/, ''),
+    defaultVersion,
     nodePath: process.env.PATH ?? '',
-    nvmAvailable:
-      Boolean(await commandVersion('nvm')) ||
-      (await access(join(homedir(), '.nvm', 'nvm.sh'))
-        .then(() => true)
-        .catch(() => false)),
+    nvmAvailable: Boolean(await findNvmScript()),
     nrmAvailable: Boolean(await commandVersion('nrm')),
     registry,
     packageManager,
@@ -229,7 +261,7 @@ export async function getNodeState(): Promise<NodeState> {
     registries: saved.registries.map((item) => ({ ...item, isCurrent: item.url === registry })),
     installed: installed.map((item) => ({
       ...item,
-      isDefault: item.version === saved.defaultVersion
+      isDefault: item.version === defaultVersion
     }))
   }
   await store.node.write(state)
@@ -329,7 +361,9 @@ async function fetchNodeReleaseIndex(indexUrl: string): Promise<NodeRelease[]> {
 async function runNvm(command: string): Promise<string> {
   if (process.platform === 'win32')
     throw new Error('当前版本暂不支持 Windows nvm 自动安装，请使用 nvm-windows 后重试')
-  const script = `if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; else echo "未找到 nvm" >&2; exit 2; fi; ${command}`
+  const nvmScript = await findNvmScript()
+  if (!nvmScript) throw new Error('未找到 nvm 脚本，请安装 nvm 后重试')
+  const script = `. ${JSON.stringify(nvmScript)}; ${command}`
   return runCommand('bash', ['-lc', script]).catch(() => {
     throw new Error('nvm 命令执行失败，请确认已安装 nvm，并检查版本是否存在')
   })
@@ -341,7 +375,15 @@ export async function installNode(
 ): Promise<NodeState> {
   const version = requiredText(versionInput.version, 'Node 版本', 40).replace(/^v/, '')
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Node 版本号无效')
-  const before = normalizeState(await store.node.read())
+  if (activeInstallVersions.has(version)) throw new Error(`Node ${version} 已有安装任务正在执行`)
+  activeInstallVersions.add(version)
+  const before = await store.node
+    .read()
+    .then(normalizeState)
+    .catch((error: unknown) => {
+      activeInstallVersions.delete(version)
+      throw error
+    })
   const task = {
     id: createId('node-task'),
     version,
@@ -352,7 +394,10 @@ export async function installNode(
     logs: [`${new Date().toLocaleString()} 开始安装 Node ${version}`]
   }
   const started = { ...before, tasks: [...before.tasks, task] }
-  await store.node.write(started)
+  await store.node.write(started).catch((error: unknown) => {
+    activeInstallVersions.delete(version)
+    throw error
+  })
   onProgress?.(started)
   try {
     const existingInstall = (await getNodeState()).installed.find(
@@ -384,7 +429,8 @@ export async function installNode(
       const downloads = join(getStoreDirectory(), 'node-downloads')
       const worker = createNodeInstallWorker({
         workerData: {
-          archivePath: join(downloads, archive.fileName),
+          // 同版本的并发重试也必须使用独立归档，避免 worker 覆盖彼此的下载内容。
+          archivePath: join(downloads, `${task.id}-${archive.fileName}`),
           checksumUrl: `${source}/v${version}/SHASUMS256.txt`,
           downloadUrl: `${source}/v${version}/${archive.fileName}`,
           extractPath: join(downloads, `extract-${version}-${task.id}`),
@@ -393,29 +439,34 @@ export async function installNode(
           version
         }
       })
-      await waitForWorker(worker, async (event) => {
-        if (event.type === 'failed' || event.type === 'completed') return
-        const latest = normalizeState(await store.node.read())
-        const next = {
-          ...latest,
-          tasks: latest.tasks.map((item) =>
-            item.id === task.id
-              ? {
-                  ...item,
-                  status:
-                    event.type === 'progress' && event.progress >= 76
-                      ? ('extracting' as const)
-                      : ('downloading' as const),
-                  progress: event.type === 'progress' ? event.progress : item.progress,
-                  message: event.type === 'progress' ? event.message : item.message,
-                  logs: event.type === 'log' ? [...item.logs, event.message] : item.logs
-                }
-              : item
-          )
-        }
-        await store.node.write(next)
-        onProgress?.(next)
-      })
+      activeInstallWorkers.set(task.id, worker)
+      try {
+        await waitForWorker(worker, async (event) => {
+          if (event.type === 'failed' || event.type === 'completed') return
+          const latest = normalizeState(await store.node.read())
+          const next = {
+            ...latest,
+            tasks: latest.tasks.map((item) =>
+              item.id === task.id
+                ? {
+                    ...item,
+                    status:
+                      event.type === 'progress' && event.progress >= 76
+                        ? ('extracting' as const)
+                        : ('downloading' as const),
+                    progress: event.type === 'progress' ? event.progress : item.progress,
+                    message: event.type === 'progress' ? event.message : item.message,
+                    logs: event.type === 'log' ? [...item.logs, event.message] : item.logs
+                  }
+                : item
+            )
+          }
+          await store.node.write(next)
+          onProgress?.(next)
+        })
+      } finally {
+        activeInstallWorkers.delete(task.id)
+      }
     }
     const after = await getNodeState()
     const completed = {
@@ -435,9 +486,15 @@ export async function installNode(
     }
     await store.node.write(completed)
     onProgress?.(completed)
+    activeInstallVersions.delete(version)
     return completed
   } catch (error) {
-    const message = error instanceof Error ? error.message : '安装失败'
+    const cancelled = cancelledTaskIds.delete(task.id)
+    const message = cancelled
+      ? '用户已取消安装'
+      : error instanceof Error
+        ? error.message
+        : '安装失败'
     const latest = normalizeState(await store.node.read())
     const failed = {
       ...latest,
@@ -445,8 +502,8 @@ export async function installNode(
         item.id === task.id
           ? {
               ...item,
-              status: 'failed' as const,
-              progress: 100,
+              status: cancelled ? ('cancelled' as const) : ('failed' as const),
+              progress: cancelled ? item.progress : 100,
               message,
               finishedAt: new Date().toISOString(),
               logs: [...item.logs, message]
@@ -456,17 +513,66 @@ export async function installNode(
     }
     await store.node.write(failed)
     onProgress?.(failed)
+    activeInstallVersions.delete(version)
     throw error
+  } finally {
+    activeInstallVersions.delete(version)
   }
+}
+
+/** 仅终止当前应用创建的 worker，已完成任务不能被取消。 */
+export async function cancelNodeTask(id: string): Promise<NodeState> {
+  const taskId = requiredText(id, '任务 ID', 120)
+  const worker = activeInstallWorkers.get(taskId)
+  if (!worker) throw new Error('该安装任务未在运行，无法取消')
+  cancelledTaskIds.add(taskId)
+  await worker.terminate()
+  return getNodeState()
+}
+
+export async function retryNodeTask(id: string): Promise<NodeState> {
+  const task = (await listNodeTasks()).find((item) => item.id === requiredText(id, '任务 ID', 120))
+  if (!task) throw new Error('安装任务不存在')
+  if (!['failed', 'cancelled'].includes(task.status))
+    throw new Error('只有失败或已取消的任务可以重试')
+  return installNode({ version: task.version })
+}
+
+export async function clearNodeTasks(): Promise<NodeState> {
+  const state = normalizeState(await store.node.read())
+  const tasks = state.tasks.filter((task) =>
+    ['waiting', 'downloading', 'extracting'].includes(task.status)
+  )
+  const next = { ...state, tasks }
+  await store.node.write(next)
+  return next
 }
 
 export async function switchNode(versionInput: string, setDefault: boolean): Promise<NodeState> {
   const version = requiredText(versionInput, 'Node 版本', 40).replace(/^v/, '')
-  await runNvm(`nvm use ${version}${setDefault ? ` && nvm alias default ${version}` : ''}`)
+  if (!setDefault) throw new Error('桌面应用无法修改父终端环境，请使用“在终端中使用”或设为默认版本')
+  await runNvm(`nvm alias default ${version}`)
   const state = await getNodeState()
-  const next = { ...state, defaultVersion: setDefault ? version : state.defaultVersion }
+  const next = { ...state, defaultVersion: version }
   await store.node.write(next)
   return next
+}
+
+/** 在新的 macOS Terminal 会话中加载 nvm 并启用指定版本，避免伪造进程级切换结果。 */
+export async function useNodeInTerminal(versionInput: string): Promise<void> {
+  const version = requiredText(versionInput, 'Node 版本', 40).replace(/^v/, '')
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Node 版本号无效')
+  if (process.platform !== 'darwin')
+    throw new Error('当前平台暂不支持从应用直接启动带 Node 环境的终端，请在终端执行 nvm use')
+  const nvmScript = await findNvmScript()
+  if (!nvmScript) throw new Error('未找到 nvm 脚本，请安装 nvm 后重试')
+  const command = `bash -lc ${JSON.stringify(`. ${JSON.stringify(nvmScript)}; nvm use ${version}; exec $SHELL -l`)}`
+  await execFileAsync('osascript', [
+    '-e',
+    `tell application "Terminal" to do script ${JSON.stringify(command)}`
+  ]).catch(() => {
+    throw new Error('无法启动 Terminal，请确认系统允许开发工坊自动化控制 Terminal')
+  })
 }
 
 export async function removeNode(versionInput: string): Promise<NodeState> {
@@ -789,7 +895,11 @@ async function directorySize(path: string): Promise<number> {
   return sizes.reduce((total, size) => total + size, 0)
 }
 
-async function resolveCachePaths(): Promise<Array<{ name: string; path: string }>> {
+type CacheId = NonNullable<NodeCacheSnapshot['id']>
+
+async function resolveCachePaths(): Promise<
+  Array<Pick<NodeCacheSnapshot, 'id' | 'name' | 'path' | 'clearable'>>
+> {
   const npmPath = await runCommand('npm', ['config', 'get', 'cache']).catch(() =>
     join(homedir(), '.npm')
   )
@@ -800,10 +910,21 @@ async function resolveCachePaths(): Promise<Array<{ name: string; path: string }
     join(homedir(), '.cache', 'yarn')
   )
   return [
-    { name: 'npm 缓存', path: npmPath },
-    { name: 'pnpm Store', path: pnpmPath },
-    { name: 'yarn 缓存', path: yarnPath },
-    { name: 'nvm 版本目录', path: join(homedir(), '.nvm', 'versions', 'node') }
+    { id: 'npm', name: 'npm 缓存', path: npmPath, clearable: true },
+    { id: 'pnpm', name: 'pnpm Store', path: pnpmPath, clearable: true },
+    { id: 'yarn', name: 'yarn 缓存', path: yarnPath, clearable: true },
+    {
+      id: 'bun',
+      name: 'Bun 缓存',
+      path: join(homedir(), '.bun', 'install', 'cache'),
+      clearable: true
+    },
+    {
+      id: 'nvm',
+      name: 'nvm 版本目录',
+      path: getNodeVersionsDirectory(),
+      clearable: false
+    }
   ]
 }
 
@@ -822,16 +943,38 @@ export async function scanNodeCaches(): Promise<NodeState> {
   return next
 }
 
+async function clearPackageManagerCache(id: CacheId): Promise<void> {
+  const commands: Record<Exclude<CacheId, 'nvm'>, [string, string[]]> = {
+    npm: ['npm', ['cache', 'clean', '--force']],
+    pnpm: ['pnpm', ['store', 'prune']],
+    yarn: ['yarn', ['cache', 'clean']],
+    bun: ['bun', ['pm', 'cache', 'rm']]
+  }
+  if (id === 'nvm') throw new Error('nvm 版本目录不是缓存，不能在此清理')
+  const [command, args] = commands[id]
+  if (!(await commandVersion(command))) throw new Error(`${command} 不可用，无法清理对应缓存`)
+  await runCommand(command, args).catch(() => {
+    throw new Error(`${command} 缓存清理失败，请检查权限和当前任务状态`)
+  })
+}
+
+/** 清理指定缓存；保留原有全量方法以兼容旧界面和预加载契约。 */
+export async function clearNodeCache(id: CacheId): Promise<NodeState> {
+  await clearPackageManagerCache(id)
+  return scanNodeCaches()
+}
+
 export async function clearNodeCaches(): Promise<NodeState> {
   const state = await getNodeState()
-  const commands: Array<[string, string[]]> = [
-    ['npm', ['cache', 'clean', '--force']],
-    ['pnpm', ['store', 'prune']],
-    ['yarn', ['cache', 'clean']],
-    ['bun', ['pm', 'cache', 'rm']]
-  ]
-  for (const [command, args] of commands)
-    if (state.packageManagers.some((item) => item.name === command && item.available))
-      await runCommand(command, args).catch(() => undefined)
+  const available = state.packageManagers
+    .filter((item) => item.available)
+    .map((item) => item.name as CacheId)
+  const failures: string[] = []
+  for (const id of available) {
+    await clearPackageManagerCache(id).catch((error: unknown) => {
+      failures.push(error instanceof Error ? error.message : `${id} 缓存清理失败`)
+    })
+  }
+  if (failures.length) throw new Error(failures.join('；'))
   return scanNodeCaches()
 }

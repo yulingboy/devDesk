@@ -14,6 +14,16 @@ import { createId, isValidEmail, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
 
+function configValue(value: string, label: string, maxLength: number): string {
+  const text = requiredText(value, label, maxLength)
+  if (/[\r\n\0]/.test(text)) throw new Error(`${label}不能包含换行或控制字符`)
+  return text
+}
+
+function escapeGitConfigPattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 async function git(args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync('git', args)
@@ -52,11 +62,11 @@ async function writeProfile(identity: GitIdentity, keys: SSHKey[]): Promise<void
   await mkdir(directory, { recursive: true })
   const key = keys.find((item) => item.id === identity.sshKeyId && item.privateKeyPath)
   const sshSection = key?.privateKeyPath
-    ? `\n[core]\n\tsshCommand = ssh -i "${key.privateKeyPath}" -o IdentitiesOnly=yes\n`
+    ? `\n[core]\n\tsshCommand = ssh -i "${configValue(key.privateKeyPath, 'SSH 私钥路径', 1_000)}" -o IdentitiesOnly=yes\n`
     : ''
   await writeFile(
     join(directory, `${identity.id}.profile`),
-    `[user]\n\tname = ${identity.username}\n\temail = ${identity.email}\n${sshSection}`,
+    `[user]\n\tname = ${configValue(identity.username, '用户名', 120)}\n\temail = ${configValue(identity.email, '邮箱', 200)}\n${sshSection}`,
     'utf8'
   )
 }
@@ -87,8 +97,27 @@ export async function syncGitRules(): Promise<void> {
     .then(({ stdout }) => stdout.split('\n'))
     .catch(() => [] as string[])
   const includePath = join(directory, 'workspace-rules.inc')
+  if (!lines.length) {
+    await removeGitRuleInclude(includePath)
+    return
+  }
   if (!includes.includes(includePath))
     await git(['config', '--global', '--add', 'include.path', includePath])
+}
+
+/** 只移除本应用精确写入的 include.path，绝不影响用户自己的 Git include 配置。 */
+export async function removeGitRuleInclude(includePath: string): Promise<void> {
+  await execFileAsync('git', [
+    'config',
+    '--global',
+    '--unset-all',
+    'include.path',
+    `^${escapeGitConfigPattern(includePath)}$`
+  ]).catch((error: unknown) => {
+    // Git 在键不存在时返回退出码 5，这不是异常；其他失败应保留给调用方处理。
+    if (error instanceof Error && 'code' in error && error.code === 5) return
+    throw error
+  })
 }
 
 export async function getGitState(): Promise<GitState> {
@@ -152,8 +181,8 @@ export async function getGitIdentityDetail(id: string): Promise<GitIdentityDetai
 }
 
 export async function saveGlobalGit(value: { username: string; email: string }): Promise<GitState> {
-  const username = requiredText(value.username, 'Git 用户名', 120)
-  const email = requiredText(value.email, 'Git 邮箱', 200)
+  const username = configValue(value.username, 'Git 用户名', 120)
+  const email = configValue(value.email, 'Git 邮箱', 200)
   if (!isValidEmail(email)) throw new Error('Git 邮箱格式无效')
   await git(['config', '--global', '--replace-all', 'user.name', username])
   await git(['config', '--global', '--replace-all', 'user.email', email])
@@ -161,9 +190,9 @@ export async function saveGlobalGit(value: { username: string; email: string }):
 }
 
 export async function saveGitIdentity(input: GitIdentity): Promise<GitState> {
-  const name = requiredText(input.name, '身份名称', 80)
-  const username = requiredText(input.username, '用户名', 120)
-  const email = requiredText(input.email, '邮箱', 200)
+  const name = configValue(input.name, '身份名称', 80)
+  const username = configValue(input.username, '用户名', 120)
+  const email = configValue(input.email, '邮箱', 200)
   if (!isValidEmail(email)) throw new Error('身份邮箱格式无效')
   const existing = await store.gitIdentities.read()
   if (

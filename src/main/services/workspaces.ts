@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { lstat, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -9,19 +9,38 @@ import { createId, requiredText } from './common'
 import { syncGitRules } from './git'
 
 const execFileAsync = promisify(execFile)
+const scanConcurrency = 6
 
 async function readGitStatus(
   path: string
 ): Promise<Pick<Project, 'branch' | 'dirty' | 'gitError'>> {
   try {
     const [{ stdout: branch }, { stdout: status }] = await Promise.all([
-      execFileAsync('git', ['-C', path, 'branch', '--show-current']),
-      execFileAsync('git', ['-C', path, 'status', '--porcelain'])
+      execFileAsync('git', ['-C', path, 'branch', '--show-current'], { timeout: 8_000 }),
+      execFileAsync('git', ['-C', path, 'status', '--porcelain'], { timeout: 8_000 })
     ])
     return { branch: branch.trim() || '分离头指针', dirty: Boolean(status.trim()) }
   } catch (error) {
     return { gitError: error instanceof Error ? '无法读取 Git 状态' : 'Git 状态读取失败' }
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const result = new Array<R>(items.length)
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = cursor++
+      if (index >= items.length) return
+      result[index] = await mapper(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return result
 }
 
 export async function listWorkspaces(): Promise<Workspace[]> {
@@ -31,6 +50,8 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
   const name = requiredText(input.name, '工作区名称', 80)
   const rootPath = resolve(requiredText(input.rootPath, '工作区目录', 1_000))
+  const metadata = await lstat(rootPath).catch(() => undefined)
+  if (!metadata?.isDirectory()) throw new Error('工作区目录不存在或不是有效目录')
   const existing = await store.workspaces.read()
   if (
     existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
@@ -49,7 +70,8 @@ export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
     name,
     rootPath,
     description: (input.description ?? '').trim().slice(0, 200),
-    projects: input.projects ?? []
+    // 项目清单只能由扫描流程刷新；编辑工作区元数据不能覆盖既有扫描结果。
+    projects: existing.find((item) => item.id === input.id)?.projects ?? []
   }
   await store.workspaces.write([...existing.filter((item) => item.id !== workspace.id), workspace])
   await syncGitRules()
@@ -80,18 +102,17 @@ export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanRe
     (entry) => entry.isDirectory() && !entry.name.startsWith('.')
   )
   const candidates = allCandidates.slice(0, 500)
-  const projects: Project[] = []
-  for (const entry of candidates) {
+  const projects = await mapWithConcurrency(candidates, scanConcurrency, async (entry) => {
     const path = resolve(workspace.rootPath, entry.name)
     const previous = workspace.projects.find((project) => project.path === path)
-    projects.push({
+    return {
       id: previous?.id ?? createId('project'),
       workspaceId: id,
       name: entry.name,
       path,
       ...(await readGitStatus(path))
-    })
-  }
+    }
+  })
   const updated = { ...workspace, projects }
   await store.workspaces.write(existing.map((item) => (item.id === id ? updated : item)))
   const knownPaths = new Set(workspace.projects.map((item) => item.path))

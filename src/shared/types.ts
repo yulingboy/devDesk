@@ -144,6 +144,7 @@ export interface AppApi {
     }) => Promise<NodeRelease[]>
     install: (options: NodeInstallOptions) => Promise<NodeState>
     switch: (version: string, setDefault: boolean) => Promise<NodeState>
+    useInTerminal: (version: string) => Promise<void>
     remove: (version: string) => Promise<NodeState>
     registries: () => Promise<NodeRegistry[]>
     saveRegistry: (draft: NodeRegistryDraft) => Promise<NodeRegistry[]>
@@ -158,9 +159,13 @@ export interface AppApi {
     updatePackage: (name: string) => Promise<GlobalPackage[]>
     scanCaches: () => Promise<NodeState>
     clearCaches: () => Promise<NodeState>
+    clearCache: (id: 'npm' | 'pnpm' | 'yarn' | 'bun') => Promise<NodeState>
     checkOutdated: () => Promise<GlobalPackage[]>
     environmentPaths: () => Promise<NodeEnvironmentPath[]>
     tasks: () => Promise<NodeTask[]>
+    cancelTask: (id: string) => Promise<NodeState>
+    retryTask: (id: string) => Promise<NodeState>
+    clearTasks: () => Promise<NodeState>
     openPath: (path: string) => Promise<void>
     onTaskUpdated: (listener: (state: NodeState) => void) => () => void
   }

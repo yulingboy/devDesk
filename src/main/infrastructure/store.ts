@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppPaths } from '@shared/types'
 import type {
@@ -57,12 +57,79 @@ function getSettingsDirectory(): string {
   return settingsDirectory
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * 旧版本数据缺少新增字段时在读取边界补齐，避免一次功能升级要求用户清空数据目录。
+ * 这里只处理设置的默认值；业务对象由各自服务在使用时继续校验。
+ */
+function normalizeSettings(value: unknown, dataDirectory: string): AppSettings {
+  const fallback = emptySettings(dataDirectory)
+  if (!isRecord(value)) return fallback
+  const general = isRecord(value.general) ? value.general : {}
+  const advanced = isRecord(value.advanced) ? value.advanced : {}
+  const node = isRecord(value.node) ? value.node : {}
+  const data = isRecord(value.data) ? value.data : {}
+  return {
+    schemaVersion,
+    general: {
+      theme:
+        typeof general.theme === 'string'
+          ? (general.theme as AppSettings['general']['theme'])
+          : 'blue',
+      launchAtLogin: Boolean(general.launchAtLogin),
+      minimizeToTray: Boolean(general.minimizeToTray)
+    },
+    data: {
+      directory:
+        typeof data.directory === 'string' && data.directory ? data.directory : dataDirectory
+    },
+    advanced: {
+      logLevel:
+        advanced.logLevel === 'debug' ||
+        advanced.logLevel === 'info' ||
+        advanced.logLevel === 'warn' ||
+        advanced.logLevel === 'error'
+          ? advanced.logLevel
+          : 'info',
+      developerTools: Boolean(advanced.developerTools)
+    },
+    node: {
+      indexUrl:
+        typeof node.indexUrl === 'string' && node.indexUrl ? node.indexUrl : fallback.node.indexUrl,
+      downloadSource:
+        typeof node.downloadSource === 'string' && node.downloadSource
+          ? node.downloadSource
+          : fallback.node.downloadSource,
+      packageManager:
+        typeof node.packageManager === 'string' && node.packageManager
+          ? node.packageManager
+          : fallback.node.packageManager,
+      registry:
+        typeof node.registry === 'string' && node.registry ? node.registry : fallback.node.registry
+    }
+  }
+}
+
+async function quarantineCorruptJson(directory: string, fileName: string): Promise<void> {
+  const source = join(directory, fileName)
+  const target = `${source}.${new Date().toISOString().replace(/[:.]/g, '-')}.corrupt`
+  await rename(source, target).catch(() => undefined)
+}
+
 async function readJsonFrom<T>(directory: string, fileName: string, fallback: T): Promise<T> {
   try {
     const raw = await readFile(join(directory, fileName), 'utf8')
     return JSON.parse(raw) as T
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return fallback
+    if (error instanceof SyntaxError) {
+      // JSON 损坏时保留原始文件供诊断，并让应用以安全默认值继续启动。
+      await quarantineCorruptJson(directory, fileName)
+      return fallback
+    }
     throw new Error(`读取数据文件失败：${fileName}`)
   }
 }
@@ -99,7 +166,14 @@ async function writeJson<T>(fileName: string, value: T): Promise<void> {
 export const store = {
   settings: {
     read: async (): Promise<AppSettings> =>
-      readJsonFrom(getSettingsDirectory(), 'settings.json', emptySettings(getStoreDirectory())),
+      normalizeSettings(
+        await readJsonFrom(
+          getSettingsDirectory(),
+          'settings.json',
+          emptySettings(getStoreDirectory())
+        ),
+        getStoreDirectory()
+      ),
     write: (value: AppSettings): Promise<void> =>
       writeJsonTo(getSettingsDirectory(), 'settings.json', { ...value, schemaVersion })
   },
@@ -156,23 +230,52 @@ export const store = {
     }
   },
   async importData(value: DataExport): Promise<void> {
-    if (value.schemaVersion !== schemaVersion) throw new Error('不支持的数据版本')
-    // 导入备份不应偷偷改变本机的数据目录。
-    await store.settings.write({
-      ...value.settings,
-      data: { directory: getStoreDirectory() }
-    })
-    await store.hosts.write(value.hosts)
-    await store.sshKeys.write(value.sshKeys)
-    await store.gitIdentities.write(value.gitIdentities)
-    await store.workspaces.write(value.workspaces)
-    await store.templates.write(value.templates)
-    if (value.nodeState) await store.node.write(value.nodeState)
-    if (value.nodeReleases) await store.nodeReleases.write(value.nodeReleases)
-    if (value.overview) await store.overview.write(value.overview)
-    if (value.hostsBackup) {
-      await mkdir(getStoreDirectory(), { recursive: true })
-      await writeFile(join(getStoreDirectory(), 'hosts.backup'), value.hostsBackup, 'utf8')
+    validateDataExport(value)
+    const previous = await store.exportData()
+    try {
+      await writeImportedData(value)
+    } catch (error) {
+      // 多文件存储无法由文件系统提供跨文件事务，失败时立即回滚到完整导入前快照。
+      await writeImportedData(previous).catch(() => undefined)
+      throw new Error(
+        `导入数据失败，已恢复导入前数据：${error instanceof Error ? error.message : '未知错误'}`
+      )
     }
   }
+}
+
+function validateDataExport(value: unknown): asserts value is DataExport {
+  if (!isRecord(value) || value.schemaVersion !== schemaVersion)
+    throw new Error('备份文件版本不受支持')
+  const arrayFields = ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates']
+  if (!isRecord(value.settings) || arrayFields.some((field) => !Array.isArray(value[field]))) {
+    throw new Error('备份文件结构无效，请选择由开发工坊导出的 JSON 文件')
+  }
+}
+
+async function writeImportedData(value: DataExport): Promise<void> {
+  // 导入备份不应偷偷改变本机的数据目录。
+  await store.settings.write({
+    ...normalizeSettings(value.settings, getStoreDirectory()),
+    data: { directory: getStoreDirectory() }
+  })
+  await store.hosts.write(value.hosts)
+  await store.sshKeys.write(value.sshKeys)
+  await store.gitIdentities.write(value.gitIdentities)
+  await store.workspaces.write(value.workspaces)
+  await store.templates.write(value.templates)
+  if (value.nodeState) await store.node.write(value.nodeState)
+  else await removeImportedOptionalFile('node-manager.json')
+  if (value.nodeReleases) await store.nodeReleases.write(value.nodeReleases)
+  else await removeImportedOptionalFile('node-releases.json')
+  if (value.overview) await store.overview.write(value.overview)
+  else await removeImportedOptionalFile('system-overview-snapshot.json')
+  if (value.hostsBackup) {
+    await mkdir(getStoreDirectory(), { recursive: true })
+    await writeFile(join(getStoreDirectory(), 'hosts.backup'), value.hostsBackup, 'utf8')
+  } else await removeImportedOptionalFile('hosts.backup')
+}
+
+async function removeImportedOptionalFile(fileName: string): Promise<void> {
+  await rm(join(getStoreDirectory(), fileName), { force: true })
 }

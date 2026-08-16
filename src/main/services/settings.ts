@@ -9,7 +9,7 @@ import { getAppPaths } from '@main/infrastructure/paths'
 import { getStoreDirectory, setStoreDirectory, store } from '@main/infrastructure/store'
 import { setMinimizeToTray } from '@main/tray'
 import { setLogLevel } from '@main/infrastructure/logger'
-import { syncGitRules } from '@main/services/git'
+import { removeGitRuleInclude, syncGitRules } from '@main/services/git'
 import { listSshKeys } from '@main/services/ssh'
 
 const execFileAsync = promisify(execFile)
@@ -86,7 +86,12 @@ export async function importSettingsFile(): Promise<AppSettings> {
     filters: [{ name: 'JSON 文件', extensions: ['json'] }]
   })
   if (result.canceled || !result.filePaths[0]) return store.settings.read()
-  const data = JSON.parse(await readFile(result.filePaths[0], 'utf8')) as DataExport
+  let data: DataExport
+  try {
+    data = JSON.parse(await readFile(result.filePaths[0], 'utf8')) as DataExport
+  } catch {
+    throw new Error('备份文件不是有效的 JSON，请重新选择导出的备份文件')
+  }
   return importSettings(data)
 }
 
@@ -141,12 +146,14 @@ export async function changeDataDirectory(): Promise<AppSettings> {
   }
   const next = { ...current, data: { directory: target } }
   // 先在新目录重建 Git 路径规则，成功后再更新固定位置的目录指针。
+  await removeGitRuleInclude(join(source, 'git-rules', 'workspace-rules.inc'))
   setStoreDirectory(target)
   try {
     await syncGitRules()
     await store.settings.write(next)
   } catch (error) {
     setStoreDirectory(source)
+    await syncGitRules().catch(() => undefined)
     throw error
   }
   return next
@@ -162,17 +169,21 @@ export async function clearBusinessData(): Promise<AppSettings> {
   return store.settings.read()
 }
 
-async function directoryStats(path: string): Promise<{ sizeBytes: number; fileCount: number }> {
+async function directoryStats(
+  path: string,
+  budget: { entries: number } = { entries: 20_000 },
+  depth = 0
+): Promise<{ sizeBytes: number; fileCount: number }> {
   const metadata = await lstat(path).catch(() => undefined)
   if (!metadata) return { sizeBytes: 0, fileCount: 0 }
   if (!metadata.isDirectory()) return { sizeBytes: metadata.size, fileCount: 1 }
+  if (budget.entries-- <= 0 || depth >= 24) return { sizeBytes: 0, fileCount: 0 }
   const entries = await readdir(path, { withFileTypes: true }).catch(() => [])
   const children = await Promise.all(
-    entries.map((entry) =>
-      entry.isSymbolicLink()
-        ? Promise.resolve({ sizeBytes: 0, fileCount: 0 })
-        : directoryStats(join(path, entry.name))
-    )
+    entries.slice(0, 1_000).map(async (entry) => {
+      if (entry.isSymbolicLink()) return { sizeBytes: 0, fileCount: 0 }
+      return directoryStats(join(path, entry.name), budget, depth + 1)
+    })
   )
   return children.reduce(
     (total, item) => ({

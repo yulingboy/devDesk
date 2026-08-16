@@ -7,6 +7,8 @@ import {
   Download,
   FolderOpen,
   RefreshCw,
+  RotateCcw,
+  Square,
   Trash2
 } from 'lucide-react'
 import type { NodeEnvironmentPath, NodeRelease, NodeState, NodeTask } from '@shared/domain'
@@ -147,7 +149,9 @@ export function NodePage(): React.JSX.Element {
       <CardHeader className="flex-row items-start justify-between">
         <div>
           <CardTitle>已安装版本</CardTitle>
-          <CardDescription>当前版本不能直接删除，切换后再清理旧版本。</CardDescription>
+          <CardDescription>
+            “使用”会打开已启用该版本的新终端；当前版本不能直接删除。
+          </CardDescription>
         </div>
         <TooltipButton onClick={load} size="icon" tooltip="刷新状态" variant="ghost">
           <RefreshCw size={15} />
@@ -166,18 +170,14 @@ export function NodePage(): React.JSX.Element {
               <Button
                 onClick={() =>
                   void window.api?.node
-                    .switch(item.version, false)
-                    .then((value) => {
-                      setState(value)
-                      setTasks(value.tasks)
-                      toast.success(`已切换到 Node ${item.version}`)
-                    })
+                    .useInTerminal(item.version)
+                    .then(() => toast.success(`已在新终端中启用 Node ${item.version}`))
                     .catch(report)
                 }
                 size="sm"
                 variant="ghost"
               >
-                使用
+                在终端中使用
               </Button>
               <Button
                 disabled={item.isDefault}
@@ -363,9 +363,31 @@ export function NodePage(): React.JSX.Element {
 
   const taskPanel = (
     <Card>
-      <CardHeader>
-        <CardTitle>安装任务</CardTitle>
-        <CardDescription>任务状态和日志会持久化，失败后仍可查看原因。</CardDescription>
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle>安装任务</CardTitle>
+          <CardDescription>
+            任务状态和日志会持久化，失败任务可重试，历史可单独清理。
+          </CardDescription>
+        </div>
+        <ConfirmAction
+          description="将清理已完成、已失败和已取消的任务记录；正在执行的安装任务会保留。"
+          onConfirm={() =>
+            void window.api?.node
+              .clearTasks()
+              .then((value) => {
+                setState(value)
+                setTasks(value.tasks)
+              })
+              .catch(report)
+          }
+          title="清理任务历史？"
+        >
+          <Button size="sm" variant="ghost">
+            <Trash2 size={14} />
+            清理历史
+          </Button>
+        </ConfirmAction>
       </CardHeader>
       <CardContent className="space-y-2">
         <Accordion className="space-y-2" type="multiple">
@@ -388,6 +410,46 @@ export function NodePage(): React.JSX.Element {
                       {task.logs.join('\n') || '暂无日志'}
                     </pre>
                   </ScrollArea>
+                  <div className="mt-2 flex justify-end gap-1">
+                    {['waiting', 'downloading', 'extracting'].includes(task.status) && (
+                      <ConfirmAction
+                        description={`将终止 Node ${task.version} 的安装任务，并清除未完成的安装文件。`}
+                        onConfirm={() =>
+                          void window.api?.node
+                            .cancelTask(task.id)
+                            .then((value) => {
+                              setState(value)
+                              setTasks(value.tasks)
+                            })
+                            .catch(report)
+                        }
+                        title="取消安装任务？"
+                      >
+                        <Button size="sm" variant="secondary">
+                          <Square size={13} />
+                          取消任务
+                        </Button>
+                      </ConfirmAction>
+                    )}
+                    {['failed', 'cancelled'].includes(task.status) && (
+                      <Button
+                        onClick={() =>
+                          void window.api?.node
+                            .retryTask(task.id)
+                            .then((value) => {
+                              setState(value)
+                              setTasks(value.tasks)
+                            })
+                            .catch(report)
+                        }
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <RotateCcw size={13} />
+                        重试
+                      </Button>
+                    )}
+                  </div>
                 </AccordionContent>
               </AccordionItem>
             ))}
