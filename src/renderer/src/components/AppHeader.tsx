@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Minus, MonitorCog, PanelTop, Square, X } from 'lucide-react'
+import { Minus, MonitorCog, PanelTop, Square, Wifi, X } from 'lucide-react'
+import type { SystemOverviewSnapshot } from '@shared/domain'
 import type { WindowState } from '@shared/types'
 import { TooltipButton } from '@/components/TooltipButton'
 import { rendererLogger } from '@/lib/logger'
@@ -12,6 +13,7 @@ const defaultWindowState: WindowState = {
 
 export function AppHeader(): React.JSX.Element {
   const [windowState, setWindowState] = useState(defaultWindowState)
+  const [ipv4Address, setIpv4Address] = useState<string | null>(null)
   const hasDesktopRuntime = Boolean(window.api)
   const isMac =
     window.api?.app.platform === 'darwin' ||
@@ -23,6 +25,24 @@ export function AppHeader(): React.JSX.Element {
 
     void window.api.window.getState().then(setWindowState).catch(logWindowError)
     return window.api.window.onStateChanged(setWindowState)
+  }, [])
+
+  // 顶部只展示主机当前主要 IPv4，避免把多个虚拟网卡信息带入首页布局。
+  useEffect(() => {
+    if (!window.api) return
+    const updateAddress = (snapshot: SystemOverviewSnapshot): void => {
+      const primary =
+        snapshot.networks.find((network) => network.name === 'en0') ?? snapshot.networks[0]
+      setIpv4Address(primary?.address ?? null)
+    }
+    const unsubscribe = window.api.overview.onUpdated(updateAddress)
+    void window.api.overview
+      .getSnapshot()
+      .then((snapshot) => {
+        if (snapshot) updateAddress(snapshot)
+      })
+      .catch(() => undefined)
+    return unsubscribe
   }, [])
 
   const runWindowAction = (action: () => Promise<unknown>): void => {
@@ -45,6 +65,12 @@ export function AppHeader(): React.JSX.Element {
 
       <div className="app-no-drag flex h-full items-center">
         <div className="mr-4 hidden items-center gap-2 text-[11px] text-slate-400 md:flex">
+          {ipv4Address && (
+            <span className="flex items-center gap-1 font-mono tabular-nums text-slate-500">
+              <Wifi size={12} />
+              {ipv4Address}
+            </span>
+          )}
           <span
             className={`size-1.5 rounded-full ${hasDesktopRuntime ? 'bg-emerald-500' : 'bg-amber-500'}`}
           />

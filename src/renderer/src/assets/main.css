@@ -74,6 +74,15 @@ svg.lucide {
   background: #94a3b8;
 }
 
+/* 仪表盘优先保持整洁，仍可使用触控板或滚轮滚动超出视口的窄屏内容。 */
+.dashboard-scroll {
+  scrollbar-width: none;
+}
+
+.dashboard-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 button {
   font: inherit;
 }
