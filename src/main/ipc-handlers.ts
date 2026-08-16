@@ -33,7 +33,12 @@ import {
   runEnvironmentCheck,
   openEnvironmentGuide,
   installEnvironmentTool,
-  listEnvironmentTools
+  listEnvironmentTools,
+  getEnvironmentCheckSnapshot,
+  checkEnvironmentTool,
+  getLogStats,
+  openLogDirectory,
+  clearLogArchives
 } from '@main/services/settings'
 import {
   listHosts,
@@ -117,9 +122,15 @@ import { store } from '@main/infrastructure/store'
 
 /** 集中注册应用信息、日志和窗口控制相关 IPC。 */
 export function registerApplicationIpc(): void {
+  const broadcastDataChanged = (): void => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(IPC_CHANNELS.settings.dataChanged)
+    }
+  }
   registerIpcHandler<RuntimeInfo>(IPC_CHANNELS.app.getRuntimeInfo, () => ({
     appName: app.getName(),
     appVersion: app.getVersion(),
+    buildDate: __BUILD_DATE__,
     platform: process.platform,
     arch: process.arch,
     paths: getAppPaths(),
@@ -323,16 +334,35 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.settings.reset, () => resetSettings())
   registerIpcHandler(IPC_CHANNELS.settings.export, () => exportSettings())
   registerIpcHandler(IPC_CHANNELS.settings.exportFile, () => exportSettingsFile())
-  registerIpcHandler(IPC_CHANNELS.settings.import, (_, data) =>
-    importSettings(parseDataExport(data))
-  )
-  registerIpcHandler(IPC_CHANNELS.settings.importFile, () => importSettingsFile())
+  registerIpcHandler(IPC_CHANNELS.settings.import, async (_, data) => {
+    const result = await importSettings(parseDataExport(data))
+    broadcastDataChanged()
+    return result
+  })
+  registerIpcHandler(IPC_CHANNELS.settings.importFile, async () => {
+    const result = await importSettingsFile()
+    if (!result.cancelled) broadcastDataChanged()
+    return result
+  })
   registerIpcHandler(IPC_CHANNELS.settings.openData, () => openDataDirectory())
-  registerIpcHandler(IPC_CHANNELS.settings.changeDataDirectory, () => changeDataDirectory())
-  registerIpcHandler(IPC_CHANNELS.settings.clearBusinessData, () => clearBusinessData())
+  registerIpcHandler(IPC_CHANNELS.settings.changeDataDirectory, async () => {
+    const result = await changeDataDirectory()
+    if (!result.cancelled) broadcastDataChanged()
+    return result
+  })
+  registerIpcHandler(IPC_CHANNELS.settings.clearBusinessData, async () => {
+    const result = await clearBusinessData()
+    broadcastDataChanged()
+    return result
+  })
   const stoppedEnvironmentChecks = new Set<number>()
   const activeEnvironmentChecks = new Map<number, ChildProcess>()
+  const runningEnvironmentChecks = new Set<number>()
   registerIpcHandler(IPC_CHANNELS.settings.environmentCheck, (event) => {
+    if (runningEnvironmentChecks.has(event.sender.id)) {
+      throw new Error('环境检测正在运行，请等待完成或先停止当前检测')
+    }
+    runningEnvironmentChecks.add(event.sender.id)
     stoppedEnvironmentChecks.delete(event.sender.id)
     return runEnvironmentCheck(
       () => stoppedEnvironmentChecks.has(event.sender.id) || event.sender.isDestroyed(),
@@ -347,6 +377,7 @@ export function registerApplicationIpc(): void {
     ).finally(() => {
       stoppedEnvironmentChecks.delete(event.sender.id)
       activeEnvironmentChecks.delete(event.sender.id)
+      runningEnvironmentChecks.delete(event.sender.id)
     })
   })
   registerIpcHandler<void>(IPC_CHANNELS.settings.stopEnvironmentCheck, (event) => {
@@ -357,10 +388,26 @@ export function registerApplicationIpc(): void {
     openEnvironmentGuide(String(id))
   )
   registerIpcHandler(IPC_CHANNELS.settings.environmentTools, () => listEnvironmentTools())
-  registerIpcHandler(IPC_CHANNELS.settings.installEnvironmentTool, (_, id) =>
-    installEnvironmentTool(String(id))
+  registerIpcHandler(IPC_CHANNELS.settings.environmentCheckSnapshot, () =>
+    getEnvironmentCheckSnapshot()
   )
+  registerIpcHandler(IPC_CHANNELS.settings.environmentCheckTool, (event, id) => {
+    if (runningEnvironmentChecks.has(event.sender.id)) throw new Error('环境检测正在运行')
+    return checkEnvironmentTool(String(id))
+  })
+  registerIpcHandler(IPC_CHANNELS.settings.installEnvironmentTool, async (event, id) => {
+    if (runningEnvironmentChecks.has(event.sender.id)) throw new Error('环境操作正在运行')
+    runningEnvironmentChecks.add(event.sender.id)
+    try {
+      return await installEnvironmentTool(String(id))
+    } finally {
+      runningEnvironmentChecks.delete(event.sender.id)
+    }
+  })
   registerIpcHandler(IPC_CHANNELS.settings.dataStats, () => getDataStats())
+  registerIpcHandler(IPC_CHANNELS.settings.logStats, () => getLogStats())
+  registerIpcHandler(IPC_CHANNELS.settings.openLogs, () => openLogDirectory())
+  registerIpcHandler(IPC_CHANNELS.settings.clearLogArchives, () => clearLogArchives())
   registerIpcHandler<void>(IPC_CHANNELS.settings.openDeveloperTools, async (event) => {
     const settings = await getSettings()
     if (!settings.advanced.developerTools) throw new Error('请先在高级设置中启用开发者工具')
@@ -544,6 +591,14 @@ function parseAppSettings(value: unknown): AppSettings {
   ) {
     throw new Error('设置参数无效')
   }
+  const logLevel = text(advanced.logLevel, '日志级别')
+  const packageManager = text(node.packageManager, '默认包管理器')
+  if (!['debug', 'info', 'warn', 'error'].includes(logLevel ?? '')) {
+    throw new Error('日志级别无效')
+  }
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(packageManager ?? '')) {
+    throw new Error('默认包管理器无效')
+  }
   return {
     schemaVersion: 1,
     general: {
@@ -553,13 +608,13 @@ function parseAppSettings(value: unknown): AppSettings {
     },
     data: { directory: text(input.data.directory, '数据目录')! },
     advanced: {
-      logLevel: text(advanced.logLevel, '日志级别') as AppSettings['advanced']['logLevel'],
+      logLevel: logLevel as AppSettings['advanced']['logLevel'],
       developerTools: advanced.developerTools
     },
     node: {
       indexUrl: text(node.indexUrl, '版本索引')!,
       downloadSource: text(node.downloadSource, '下载源')!,
-      packageManager: text(node.packageManager, '默认包管理器')!,
+      packageManager: packageManager!,
       registry: text(node.registry, '默认 Registry')!
     }
   }

@@ -169,6 +169,8 @@ const api: AppApi = {
     changeDataDirectory: () => invoke(IPC_CHANNELS.settings.changeDataDirectory),
     clearBusinessData: () => invoke(IPC_CHANNELS.settings.clearBusinessData),
     environmentCheck: () => invoke(IPC_CHANNELS.settings.environmentCheck),
+    environmentCheckSnapshot: () => invoke(IPC_CHANNELS.settings.environmentCheckSnapshot),
+    environmentCheckTool: (id) => invoke(IPC_CHANNELS.settings.environmentCheckTool, id),
     stopEnvironmentCheck: () => invoke(IPC_CHANNELS.settings.stopEnvironmentCheck),
     openEnvironmentGuide: (id) => invoke(IPC_CHANNELS.settings.openEnvironmentGuide, id),
     environmentTools: () => invoke(IPC_CHANNELS.settings.environmentTools),
@@ -183,6 +185,14 @@ const api: AppApi = {
         ipcRenderer.removeListener(IPC_CHANNELS.settings.environmentCheckUpdated, handler)
     },
     dataStats: () => invoke(IPC_CHANNELS.settings.dataStats),
+    logStats: () => invoke(IPC_CHANNELS.settings.logStats),
+    openLogs: () => invoke(IPC_CHANNELS.settings.openLogs),
+    clearLogArchives: () => invoke(IPC_CHANNELS.settings.clearLogArchives),
+    onDataChanged: (listener) => {
+      const handler = (): void => listener()
+      ipcRenderer.on(IPC_CHANNELS.settings.dataChanged, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.settings.dataChanged, handler)
+    },
     openDeveloperTools: () => invoke(IPC_CHANNELS.settings.openDeveloperTools)
   }
 }

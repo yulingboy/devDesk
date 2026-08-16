@@ -49,6 +49,54 @@ describe('数据存储', () => {
     expect(order).toEqual(['first-start', 'first-end', 'second-start', 'second-end'])
   })
 
+  it('跨文件变更期间会阻止普通业务写入切入', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const order: string[] = []
+    let release!: () => void
+    let markStarted!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve
+    })
+
+    const mutation = withDataMutation(async () => {
+      order.push('mutation-start')
+      markStarted()
+      await gate
+      order.push('mutation-end')
+    })
+    await started
+    const write = store.hosts
+      .write([
+        { id: 'host-waiting', ip: '127.0.0.1', domain: 'wait.test', enabled: true, remark: '' }
+      ])
+      .then(() => order.push('write'))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(order).toEqual(['mutation-start'])
+    release()
+    await Promise.all([mutation, write])
+    expect(order).toEqual(['mutation-start', 'mutation-end', 'write'])
+  })
+
+  it('会先完成已经提交的普通写入再开始跨文件变更', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    let observedVersion = ''
+
+    const write = store.node.write(state('22.0.0'))
+    const mutation = withDataMutation(async () => {
+      observedVersion = (await store.node.read())?.currentVersion ?? ''
+    })
+    await Promise.all([write, mutation])
+
+    expect(observedVersion).toBe('22.0.0')
+  })
+
   it('会串行写入同一状态文件并保留有效 JSON', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
     temporaryDirectories.push(directory)
@@ -88,6 +136,41 @@ describe('数据存储', () => {
       '备份文件结构无效'
     )
     await expect(store.hosts.read()).resolves.toHaveLength(1)
+  })
+
+  it('会拒绝业务字段类型错误的备份', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const backup = await store.exportData()
+    backup.hosts = [{ id: 'broken', ip: 123 } as never]
+
+    await expect(store.importData(backup)).rejects.toThrow('无效的业务字段')
+    await expect(store.hosts.read()).resolves.toEqual([])
+  })
+
+  it('会导出并恢复最近一次环境检测快照', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const checkedAt = new Date().toISOString()
+    await store.environmentCheck.write({
+      checkedAt,
+      checks: [
+        {
+          id: 'git',
+          name: 'Git',
+          command: 'git --version',
+          status: 'passed',
+          version: 'git version 2',
+          detail: 'git version 2',
+          checkedAt
+        }
+      ]
+    })
+
+    const backup = await store.exportData()
+    expect(backup.environmentCheck?.checks[0]?.id).toBe('git')
   })
 
   it('导入不含可选 Node 状态的旧备份时会清除残留状态', async () => {

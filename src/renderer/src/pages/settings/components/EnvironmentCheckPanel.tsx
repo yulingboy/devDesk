@@ -1,18 +1,38 @@
-import { useEffect, useState } from 'react'
-import { CheckCircle2, ExternalLink, Play, Square, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CheckCircle2, ExternalLink, Play, RefreshCw, Square, XCircle } from 'lucide-react'
 import type { EnvironmentCheck, EnvironmentTool } from '@shared/domain'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger
 } from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ConfirmAction } from '@/components/ConfirmAction'
+
+const groups: Array<{ id: EnvironmentTool['group']; label: string }> = [
+  { id: 'base', label: '基础' },
+  { id: 'node', label: 'Node' },
+  { id: 'java', label: 'Java' },
+  { id: 'python', label: 'Python' },
+  { id: 'go', label: 'Go' },
+  { id: 'container', label: '容器' }
+]
+
+const statusLabel: Record<EnvironmentCheck['status'], string> = {
+  passed: '可用',
+  missing: '未安装',
+  failed: '异常',
+  timeout: '超时',
+  'permission-denied': '权限不足',
+  'daemon-unavailable': '服务未启动',
+  cancelled: '已取消',
+  skipped: '已跳过'
+}
 
 export function EnvironmentCheckPanel({
   report
@@ -21,141 +41,215 @@ export function EnvironmentCheckPanel({
 }): React.JSX.Element {
   const [checks, setChecks] = useState<EnvironmentCheck[]>([])
   const [tools, setTools] = useState<EnvironmentTool[]>([])
+  const [checkedAt, setCheckedAt] = useState<string>()
   const [running, setRunning] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [pendingTool, setPendingTool] = useState<string>()
 
   useEffect(() => {
-    void window.api?.settings.environmentTools().then(setTools).catch(report)
-    return window.api?.settings.onEnvironmentCheckUpdated(setChecks)
+    void Promise.allSettled([
+      window.api!.settings.environmentTools(),
+      window.api!.settings.environmentCheckSnapshot()
+    ]).then(([toolsResult, snapshotResult]) => {
+      if (toolsResult.status === 'fulfilled') setTools(toolsResult.value)
+      else report(toolsResult.reason)
+      if (snapshotResult.status === 'fulfilled' && snapshotResult.value) {
+        setChecks(snapshotResult.value.checks)
+        setCheckedAt(snapshotResult.value.checkedAt)
+      }
+    })
+    return window.api!.settings.onEnvironmentCheckUpdated(setChecks)
   }, [report])
 
+  const checkMap = useMemo(() => new Map(checks.map((item) => [item.id, item])), [checks])
+  const summary = useMemo(() => {
+    const passed = checks.filter((item) => item.status === 'passed').length
+    return {
+      passed,
+      issues: checks.length - passed,
+      unchecked: Math.max(tools.length - checks.length, 0)
+    }
+  }, [checks, tools.length])
+  const replaceCheck = (result: EnvironmentCheck): void => {
+    setChecks((current) => {
+      const index = current.findIndex((item) => item.id === result.id)
+      if (index < 0) return [...current, result]
+      const next = [...current]
+      next[index] = result
+      return next
+    })
+    setCheckedAt(result.checkedAt)
+  }
   const run = (): void => {
     setRunning(true)
-    void window.api?.settings
-      .environmentCheck()
-      .then(setChecks)
+    void window
+      .api!.settings.environmentCheck()
+      .then((value) => {
+        setChecks(value)
+        setCheckedAt(new Date().toISOString())
+      })
       .catch(report)
       .finally(() => {
         setRunning(false)
         setStopping(false)
       })
   }
+  const retry = (id: string): void => {
+    setPendingTool(id)
+    void window
+      .api!.settings.environmentCheckTool(id)
+      .then(replaceCheck)
+      .catch(report)
+      .finally(() => setPendingTool(undefined))
+  }
   const stop = (): void => {
     setStopping(true)
-    void window.api?.settings.stopEnvironmentCheck().catch((error) => {
+    void window.api!.settings.stopEnvironmentCheck().catch((error) => {
       setStopping(false)
       report(error)
     })
   }
-  const passed = checks.filter((item) => item.status === 'passed').length
-  const failed = checks.filter((item) => item.status === 'failed').length
-  const cancelled = checks.filter((item) => item.status === 'cancelled').length
-  const skipped = checks.filter((item) => item.status === 'skipped').length
 
-  return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between">
-        <div>
-          <CardTitle>环境检测</CardTitle>
-          <CardDescription>逐项执行真实版本命令，并保留命令输出用于排障。</CardDescription>
+  const renderGroup = (group: EnvironmentTool['group']): React.JSX.Element => {
+    const groupTools = tools.filter((tool) => tool.group === group)
+    const groupMeta = groups.find((item) => item.id === group)
+    return (
+      <section key={group}>
+        <div className="flex h-8 items-center justify-between border-y border-slate-100 bg-slate-50/80 px-3 first:border-t-0">
+          <h3 className="text-xs font-semibold text-slate-700">{groupMeta?.label}</h3>
+          <span className="text-[10px] text-slate-400">{groupTools.length} 项</span>
         </div>
-        {running ? (
-          <Button disabled={stopping} onClick={stop} variant="secondary">
-            <Square size={14} />
-            {stopping ? '正在停止当前检测' : '停止检测'}
-          </Button>
-        ) : (
-          <Button onClick={run} variant="secondary">
-            <Play size={15} />
-            开始检测
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {!!checks.length && (
-          <p className="pb-2 text-xs text-slate-500">
-            通过 {passed} 项，失败 {failed} 项{cancelled ? `，已取消 ${cancelled} 项` : ''}
-            {skipped ? `，已跳过 ${skipped} 项` : ''}
-          </p>
-        )}
-        <Accordion className="space-y-2" type="multiple">
-          {checks.map((item) => (
-            <AccordionItem key={item.id} value={item.id}>
-              <AccordionTrigger className="gap-3">
-                {item.status === 'passed' ? (
-                  <CheckCircle2 className="text-emerald-600" size={17} />
-                ) : item.status === 'cancelled' ? (
-                  <Square className="text-amber-500" size={16} />
-                ) : (
-                  <XCircle className="text-red-500" size={17} />
-                )}
-                <span className="font-medium">{item.name}</span>
-                <Badge variant={item.status === 'passed' ? 'success' : 'secondary'}>
-                  {item.status === 'passed'
-                    ? '通过'
-                    : item.status === 'cancelled'
-                      ? '已取消'
-                      : item.status === 'skipped'
-                        ? '已跳过'
-                        : '未通过'}
-                </Badge>
-                <span className="ml-auto truncate text-xs text-slate-500">
-                  {item.version || '未检测到'}
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <ScrollArea className="max-h-40 rounded-md bg-slate-50">
-                  <div className="p-3 font-mono text-xs text-slate-600">
-                    <p>$ {item.command}</p>
-                    <pre className="mt-2 whitespace-pre-wrap">{item.detail}</pre>
-                  </div>
-                </ScrollArea>
-                {item.status === 'failed' && (
-                  <div className="mt-2 flex gap-1">
-                    {tools.find((tool) => tool.id === item.id)?.installable ? (
+        <Accordion className="divide-y divide-slate-100" type="multiple">
+          {groupTools.map((tool) => {
+            const check = checkMap.get(tool.id)
+            const failed = check && check.status !== 'passed'
+            return (
+              <AccordionItem className="rounded-none border-0" key={tool.id} value={tool.id}>
+                <AccordionTrigger className="h-9 gap-2 px-3 py-1 hover:bg-slate-50/70">
+                  {check?.status === 'passed' ? (
+                    <CheckCircle2 className="text-emerald-600" />
+                  ) : check ? (
+                    <XCircle className="text-red-500" />
+                  ) : (
+                    <span className="size-4 rounded-full border border-slate-300" />
+                  )}
+                  <span className="w-28 shrink-0 truncate font-medium text-slate-700">
+                    {tool.name}
+                  </span>
+                  <Badge variant={check?.status === 'passed' ? 'success' : 'outline'}>
+                    {check ? statusLabel[check.status] : '未检测'}
+                  </Badge>
+                  <span className="ml-2 min-w-0 flex-1 truncate text-[10px] font-normal text-slate-400">
+                    {check?.version ?? tool.command}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="border-t border-slate-100 bg-slate-50/40 px-3 pb-3 pt-2.5">
+                  {check ? (
+                    <ScrollArea className="max-h-32 rounded-md border border-slate-100 bg-white">
+                      <div className="p-2.5 font-mono text-[10px] leading-4 text-slate-600">
+                        <p>$ {check.command}</p>
+                        <pre className="mt-1.5 whitespace-pre-wrap">{check.detail}</pre>
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">尚未执行此项检测。</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <Button
+                      disabled={running || Boolean(pendingTool)}
+                      onClick={() => retry(tool.id)}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      <RefreshCw size={13} />
+                      {pendingTool === tool.id ? '检测中' : '重新检测'}
+                    </Button>
+                    {failed && tool.installable ? (
                       <ConfirmAction
-                        description={`将执行受信任的本机安装命令以安装 ${item.name}，请确认网络与权限。`}
-                        onConfirm={() =>
-                          void window.api?.settings
-                            .installEnvironmentTool(item.id)
-                            .then((result) => {
-                              setChecks((current) => [
-                                ...current.filter((check) => check.id !== result.id),
-                                result
-                              ])
-                            })
+                        description={`将执行：${tool.installCommand}${tool.prerequisite ? `。${tool.prerequisite}` : ''}`}
+                        onConfirm={async () => {
+                          setPendingTool(tool.id)
+                          await window
+                            .api!.settings.installEnvironmentTool(tool.id)
+                            .then(replaceCheck)
                             .catch(report)
-                        }
-                        title={`安装 ${item.name}？`}
+                            .finally(() => setPendingTool(undefined))
+                        }}
+                        title={`安装 ${tool.name}？`}
                       >
-                        <Button size="sm" variant="secondary">
+                        <Button disabled={Boolean(pendingTool)} size="sm" variant="outline">
                           安装
                         </Button>
                       </ConfirmAction>
                     ) : null}
-                    <Button
-                      onClick={() =>
-                        void window.api?.settings.openEnvironmentGuide(item.id).catch(report)
-                      }
-                      size="sm"
-                      variant="ghost"
-                    >
-                      <ExternalLink size={13} />
-                      安装指引
-                    </Button>
+                    {failed && (
+                      <Button
+                        onClick={() =>
+                          void window.api!.settings.openEnvironmentGuide(tool.id).catch(report)
+                        }
+                        size="sm"
+                        variant="ghost"
+                      >
+                        <ExternalLink size={13} />
+                        安装指引
+                      </Button>
+                    )}
                   </div>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+                </AccordionContent>
+              </AccordionItem>
+            )
+          })}
         </Accordion>
-        {!checks.length && (
-          <Empty>
-            <EmptyTitle>尚未执行环境检测</EmptyTitle>
-            <EmptyDescription>开始检测后会展示每个运行时的命令输出。</EmptyDescription>
+        {!groupTools.length && (
+          <Empty className="min-h-24">
+            <EmptyTitle>暂无检测项</EmptyTitle>
+            <EmptyDescription>此分类尚未配置工具。</EmptyDescription>
           </Empty>
         )}
-      </CardContent>
+      </section>
+    )
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex min-h-14 items-center gap-4 border-b border-slate-100 px-4 py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-slate-700">
+            {checkedAt ? '环境快照已更新' : '尚未执行环境检测'}
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {checkedAt
+              ? new Date(checkedAt).toLocaleString('zh-CN')
+              : '首次检测会依次读取本机命令和服务状态'}
+          </p>
+        </div>
+        <div className="hidden items-center gap-4 text-[11px] sm:flex">
+          <span className="text-emerald-600">可用 {summary.passed}</span>
+          <span className={summary.issues ? 'text-red-500' : 'text-slate-400'}>
+            异常 {summary.issues}
+          </span>
+          <span className="text-slate-400">未检测 {summary.unchecked}</span>
+        </div>
+        {running ? (
+          <Button disabled={stopping} onClick={stop} variant="secondary">
+            <Square />
+            {stopping ? '正在停止' : '停止'}
+          </Button>
+        ) : (
+          <Button onClick={run} variant="secondary">
+            <Play />
+            检测全部
+          </Button>
+        )}
+      </div>
+      {tools.length ? (
+        <div>{groups.map((group) => renderGroup(group.id))}</div>
+      ) : (
+        <Empty>
+          <EmptyTitle>未读取到检测项</EmptyTitle>
+          <EmptyDescription>请稍后重试或查看应用日志。</EmptyDescription>
+        </Empty>
+      )}
     </Card>
   )
 }

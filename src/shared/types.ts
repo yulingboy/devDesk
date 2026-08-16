@@ -1,6 +1,7 @@
 export interface RuntimeInfo {
   appName: string
   appVersion: string
+  buildDate: string
   platform: NodeJS.Platform
   arch: string
   paths: AppPaths
@@ -75,7 +76,10 @@ import type {
   NodeEnvironmentPath,
   NodeTask,
   SSHDeleteImpact,
-  WorkspaceScanResult
+  WorkspaceScanResult,
+  DialogOperationResult,
+  EnvironmentCheckSnapshot,
+  LogStats
 } from './domain'
 
 export interface AppApi {
@@ -191,19 +195,25 @@ export interface AppApi {
     save: (settings: AppSettings) => Promise<AppSettings>
     reset: () => Promise<AppSettings>
     export: () => Promise<DataExport>
-    exportFile: () => Promise<void>
+    exportFile: () => Promise<DialogOperationResult>
     import: (data: DataExport) => Promise<AppSettings>
-    importFile: () => Promise<AppSettings>
+    importFile: () => Promise<DialogOperationResult<AppSettings>>
     openData: () => Promise<void>
-    changeDataDirectory: () => Promise<AppSettings>
+    changeDataDirectory: () => Promise<DialogOperationResult<AppSettings>>
     clearBusinessData: () => Promise<AppSettings>
     environmentCheck: () => Promise<EnvironmentCheck[]>
+    environmentCheckSnapshot: () => Promise<EnvironmentCheckSnapshot | null>
+    environmentCheckTool: (id: string) => Promise<EnvironmentCheck>
     stopEnvironmentCheck: () => Promise<void>
     openEnvironmentGuide: (id: string) => Promise<void>
     environmentTools: () => Promise<EnvironmentTool[]>
     installEnvironmentTool: (id: string) => Promise<EnvironmentCheck>
     onEnvironmentCheckUpdated: (listener: (checks: EnvironmentCheck[]) => void) => () => void
     dataStats: () => Promise<DataStats>
+    logStats: () => Promise<LogStats>
+    openLogs: () => Promise<void>
+    clearLogArchives: () => Promise<LogStats>
+    onDataChanged: (listener: () => void) => () => void
     openDeveloperTools: () => Promise<void>
   }
 }

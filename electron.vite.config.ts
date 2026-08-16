@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   main: {
+    define: { __BUILD_DATE__: JSON.stringify(new Date().toISOString()) },
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),

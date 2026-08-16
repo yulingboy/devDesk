@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 export interface TabItem {
   value: string
   label: string
+  icon?: ReactNode
   content: ReactNode
 }
 
@@ -14,6 +15,9 @@ interface TabsProps {
   value?: string
   onValueChange?: (value: string) => void
   className?: string
+  listClassName?: string
+  triggerClassName?: string
+  contentClassName?: string
   orientation?: 'horizontal' | 'vertical'
   fill?: boolean
 }
@@ -25,6 +29,9 @@ export function Tabs({
   value,
   onValueChange,
   className,
+  listClassName,
+  triggerClassName,
+  contentClassName,
   orientation = 'horizontal',
   fill = false
 }: TabsProps): React.JSX.Element {
@@ -46,21 +53,24 @@ export function Tabs({
         aria-label="页面分区"
         className={cn(
           orientation === 'vertical'
-            ? 'flex w-32 shrink-0 flex-col gap-1 border-r border-slate-200 pr-2'
-            : 'flex min-w-0 gap-1 overflow-x-auto border-b border-slate-200'
+            ? 'flex w-44 shrink-0 flex-col gap-1 border-r border-slate-200 bg-white px-3 py-4'
+            : 'flex min-w-0 gap-1 overflow-x-auto border-b border-slate-200',
+          listClassName
         )}
       >
         {items.map((item) => (
           <TabsPrimitive.Trigger
             className={cn(
-              'shrink-0 border-transparent px-2 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-700 data-[state=active]:text-[var(--accent)]',
+              'inline-flex shrink-0 items-center gap-1.5 border-transparent px-2 py-1.5 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-700 data-[state=active]:text-[var(--accent)]',
               orientation === 'vertical'
-                ? 'rounded-sm border-l-2 text-left hover:bg-slate-50 data-[state=active]:border-[var(--accent)] data-[state=active]:bg-slate-50'
-                : 'border-b-2 hover:border-slate-300 data-[state=active]:border-[var(--accent)]'
+                ? 'flex h-9 items-center gap-2 rounded-md border text-left text-xs hover:bg-slate-50 data-[state=active]:border-[var(--theme-border)] data-[state=active]:bg-[var(--theme-lighter)] data-[state=active]:shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+                : 'border-b-2 hover:border-slate-300 data-[state=active]:border-[var(--accent)]',
+              triggerClassName
             )}
             key={item.value}
             value={item.value}
           >
+            {item.icon}
             {item.label}
           </TabsPrimitive.Trigger>
         ))}
@@ -69,7 +79,9 @@ export function Tabs({
         <TabsPrimitive.Content
           className={cn(
             'min-w-0 outline-none',
-            (orientation === 'vertical' || fill) && 'min-h-0 flex-1 overflow-auto'
+            orientation === 'vertical' && 'min-h-0 flex-1 overflow-auto bg-slate-50/70 px-6 py-5',
+            fill && orientation !== 'vertical' && 'min-h-0 flex-1 overflow-auto',
+            contentClassName
           )}
           key={item.value}
           value={item.value}

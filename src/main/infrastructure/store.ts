@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppPaths } from '@shared/types'
@@ -12,15 +13,17 @@ import type {
   ProjectTemplate,
   SSHKey,
   SystemOverviewSnapshot,
-  Workspace
+  Workspace,
+  EnvironmentCheckSnapshot
 } from '@shared/domain'
 
 const schemaVersion = 1 as const
 let storeDirectory: string | undefined
 let settingsDirectory: string | undefined
 const pendingWrites = new Map<string, Promise<void>>()
-// 导入、清空等跨文件操作需要互斥，避免两个危险操作交叉覆盖部分文件。
+// 所有存储操作共用一个可重入队列，跨文件变更期间不会混入普通业务读写。
 let dataMutationQueue: Promise<void> = Promise.resolve()
+const dataMutationContext = new AsyncLocalStorage<boolean>()
 
 const emptySettings = (dataDirectory: string): AppSettings => ({
   schemaVersion,
@@ -55,6 +58,11 @@ export function setStoreDirectory(directory: string): void {
 }
 
 export async function withDataMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  return withStoreLock(mutation)
+}
+
+async function withStoreLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (dataMutationContext.getStore()) return operation()
   const previous = dataMutationQueue
   let release!: () => void
   dataMutationQueue = new Promise<void>((resolve) => {
@@ -62,7 +70,7 @@ export async function withDataMutation<T>(mutation: () => Promise<T>): Promise<T
   })
   await previous.catch(() => undefined)
   try {
-    return await mutation()
+    return await dataMutationContext.run(true, operation)
   } finally {
     release()
   }
@@ -136,6 +144,14 @@ async function quarantineCorruptJson(directory: string, fileName: string): Promi
 }
 
 async function readJsonFrom<T>(directory: string, fileName: string, fallback: T): Promise<T> {
+  return withStoreLock(() => readJsonFromUnlocked(directory, fileName, fallback))
+}
+
+async function readJsonFromUnlocked<T>(
+  directory: string,
+  fileName: string,
+  fallback: T
+): Promise<T> {
   try {
     const raw = await readFile(join(directory, fileName), 'utf8')
     return JSON.parse(raw) as T
@@ -151,10 +167,18 @@ async function readJsonFrom<T>(directory: string, fileName: string, fallback: T)
 }
 
 async function readJson<T>(fileName: string, fallback: T): Promise<T> {
-  return readJsonFrom(getStoreDirectory(), fileName, fallback)
+  return withStoreLock(() => readJsonFromUnlocked(getStoreDirectory(), fileName, fallback))
 }
 
 async function writeJsonTo<T>(directory: string, fileName: string, value: T): Promise<void> {
+  return withStoreLock(() => writeJsonToUnlocked(directory, fileName, value))
+}
+
+async function writeJsonToUnlocked<T>(
+  directory: string,
+  fileName: string,
+  value: T
+): Promise<void> {
   const target = join(directory, fileName)
   const previous = pendingWrites.get(target) ?? Promise.resolve()
   const write = previous
@@ -176,7 +200,7 @@ async function writeJsonTo<T>(directory: string, fileName: string, value: T): Pr
 }
 
 async function writeJson<T>(fileName: string, value: T): Promise<void> {
-  return writeJsonTo(getStoreDirectory(), fileName, value)
+  return withStoreLock(() => writeJsonToUnlocked(getStoreDirectory(), fileName, value))
 }
 
 export const store = {
@@ -227,6 +251,11 @@ export const store = {
     read: (): Promise<NodeReleaseCache | null> => readJson('node-releases.json', null),
     write: (value: NodeReleaseCache): Promise<void> => writeJson('node-releases.json', value)
   },
+  environmentCheck: {
+    read: (): Promise<EnvironmentCheckSnapshot | null> => readJson('environment-check.json', null),
+    write: (value: EnvironmentCheckSnapshot): Promise<void> =>
+      writeJson('environment-check.json', value)
+  },
   async exportData(): Promise<DataExport> {
     return {
       schemaVersion,
@@ -242,7 +271,8 @@ export const store = {
       overview: await store.overview.read(),
       hostsBackup: await readFile(join(getStoreDirectory(), 'hosts.backup'), 'utf8').catch(
         () => undefined
-      )
+      ),
+      environmentCheck: await store.environmentCheck.read()
     }
   },
   async importData(value: DataExport): Promise<void> {
@@ -284,6 +314,42 @@ function validateDataExport(value: unknown): asserts value is DataExport {
       throw new Error(`备份文件中的 ${field} 数据无效`)
     }
   }
+  const candidate = value as unknown as DataExport
+  const hasStrings = (item: unknown, fields: string[]): boolean =>
+    isRecord(item) && fields.every((field) => typeof item[field] === 'string')
+  if (
+    candidate.hosts.some(
+      (item) =>
+        !hasStrings(item, ['id', 'ip', 'domain', 'remark']) || typeof item.enabled !== 'boolean'
+    ) ||
+    candidate.sshKeys.some(
+      (item) => !hasStrings(item, ['id', 'name', 'algorithm', 'source', 'publicKey', 'fingerprint'])
+    ) ||
+    candidate.gitIdentities.some(
+      (item) => !hasStrings(item, ['id', 'name', 'username', 'email'])
+    ) ||
+    candidate.workspaces.some(
+      (item) =>
+        !hasStrings(item, ['id', 'name', 'rootPath', 'description']) ||
+        !Array.isArray(item.projects) ||
+        item.projects.some((project) => !hasStrings(project, ['id', 'workspaceId', 'name', 'path']))
+    ) ||
+    candidate.templates.some(
+      (item) =>
+        !hasStrings(item, ['id', 'name', 'description', 'type', 'source']) ||
+        !['git', 'local'].includes(item.type)
+    )
+  ) {
+    throw new Error('备份文件包含无效的业务字段，未导入任何数据')
+  }
+  if (
+    candidate.environmentCheck != null &&
+    (!isRecord(candidate.environmentCheck) ||
+      typeof candidate.environmentCheck.checkedAt !== 'string' ||
+      !Array.isArray(candidate.environmentCheck.checks))
+  ) {
+    throw new Error('备份文件中的环境检测快照无效')
+  }
 }
 
 async function writeImportedData(value: DataExport): Promise<void> {
@@ -307,6 +373,8 @@ async function writeImportedData(value: DataExport): Promise<void> {
     await mkdir(getStoreDirectory(), { recursive: true })
     await writeFile(join(getStoreDirectory(), 'hosts.backup'), value.hostsBackup, 'utf8')
   } else await removeImportedOptionalFile('hosts.backup')
+  if (value.environmentCheck) await store.environmentCheck.write(value.environmentCheck)
+  else await removeImportedOptionalFile('environment-check.json')
 }
 
 async function removeImportedOptionalFile(fileName: string): Promise<void> {

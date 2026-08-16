@@ -1,77 +1,44 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import { Code2, Database, FolderOpen, RotateCcw, Save, ShieldAlert } from 'lucide-react'
-import type { AppSettings, DataStats } from '@shared/domain'
-import type { RuntimeInfo } from '@shared/types'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useState } from 'react'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Tabs } from '@/components/ui/tabs'
-import { rendererLogger } from '@/lib/logger'
-import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
-import { ConfirmAction } from '@/components/ConfirmAction'
+  Activity,
+  Database,
+  Info,
+  RotateCcw,
+  Save,
+  Settings2,
+  ShieldAlert,
+  SlidersHorizontal,
+  Undo2
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { useAsyncAction } from '@/hooks/useAsyncAction'
-
-function formatBytes(value: number): string {
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / 1024 ** 2).toFixed(1)} MB`
-}
+import { Tabs } from '@/components/ui/tabs'
+import { ConfirmAction } from '@/components/ConfirmAction'
+import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { AboutPanel } from './components/AboutPanel'
+import { AdvancedSettingsPanel } from './components/AdvancedSettingsPanel'
+import { DataSettingsPanel } from './components/DataSettingsPanel'
+import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
+import { GeneralSettingsPanel } from './components/GeneralSettingsPanel'
+import { SettingsPane } from './components/SettingsPane'
+import { useSettingsPage } from './hooks/useSettingsPage'
 
 export function SettingsPage(): React.JSX.Element {
-  const [settings, setSettings] = useState<AppSettings | null>(null)
-  const [status, setStatus] = useState('')
-  const [dataStats, setDataStats] = useState<DataStats | null>(null)
-  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null)
+  const page = useSettingsPage()
   const [activeTab, setActiveTab] = useState('general')
-  const [loading, setLoading] = useState(true)
-  const report = (error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
-    toast.error(message)
-    rendererLogger.error('设置操作失败', { error: message })
-  }
-  const load = (): void => {
-    void Promise.all([
-      window.api?.settings.get(),
-      window.api?.settings.dataStats(),
-      window.api?.app.getRuntimeInfo()
-    ])
-      .then(([settingsValue, statsValue, runtimeValue]) => {
-        if (settingsValue) setSettings(settingsValue)
-        if (statsValue) setDataStats(statsValue)
-        if (runtimeValue) setRuntime(runtimeValue)
-      })
-      .catch(report)
-      .finally(() => setLoading(false))
-  }
-  const retry = (): void => {
-    setLoading(true)
-    load()
-  }
-  useEffect(load, [])
-  const { isPending, run } = useAsyncAction(report)
-  if (loading) return <PageLoadingSkeleton />
-  if (!settings) {
+  const [pending, setPending] = useState<string>()
+
+  if (page.loading) return <PageLoadingSkeleton />
+  if (!page.draft || !page.persisted) {
     return (
-      <div className="h-full overflow-auto p-3">
+      <div className="h-full p-3">
         <Alert variant="destructive">
           <ShieldAlert size={16} />
           <AlertDescription className="flex items-center justify-between gap-3">
-            <span>{status || '设置读取失败，请重试。'}</span>
-            <Button onClick={retry} size="sm" variant="secondary">
+            <span>{page.errors.settings ?? '设置读取失败，请重试。'}</span>
+            <Button onClick={page.retry} size="sm" variant="secondary">
               重试
             </Button>
           </AlertDescription>
@@ -79,379 +46,212 @@ export function SettingsPage(): React.JSX.Element {
       </div>
     )
   }
-  const save = async (): Promise<void> => {
-    const value = await run('settings-save', async () => {
-      const next = await window.api?.settings.save(settings)
-      if (!next) throw new Error('当前页面未连接桌面服务，无法保存设置。')
-      return next
-    })
-    if (value) {
-      setSettings(value)
-      setStatus('')
-      toast.success('设置已保存')
-    }
-  }
-  const reset = async (): Promise<void> => {
-    const value = await run('settings-reset', async () => {
-      const next = await window.api?.settings.reset()
-      if (!next) throw new Error('当前页面未连接桌面服务，无法恢复设置。')
-      return next
-    })
-    if (value) {
-      setSettings(value)
-      toast.success('设置已恢复默认值')
-    }
-  }
-  const clear = async (): Promise<void> => {
-    const value = await run('settings-clear', async () => {
-      const next = await window.api?.settings.clearBusinessData()
-      if (!next) throw new Error('当前页面未连接桌面服务，无法清空业务数据。')
-      return next
-    })
-    if (value) {
-      setSettings(value)
-      toast.success('业务数据已清空')
-      void window.api?.settings.dataStats().then(setDataStats)
+
+  const run = async (key: string, operation: () => Promise<void>): Promise<void> => {
+    if (pending) return
+    setPending(key)
+    try {
+      await operation()
+    } catch (error) {
+      page.report(error)
+    } finally {
+      setPending(undefined)
     }
   }
 
-  const general = (
-    <Card>
-      <CardHeader>
-        <CardTitle>通用设置</CardTitle>
-        <CardDescription>界面固定使用 Codex 浅色风格，仅保留桌面行为设置。</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="divide-y divide-slate-100 border-y border-slate-100">
-          <Label className="flex items-center justify-between gap-4 py-2.5">
-            <span>
-              <span className="block text-xs font-medium text-slate-700">开机自启</span>
-              <span className="mt-0.5 block text-[11px] text-slate-400">
-                登录系统后自动启动开发工坊
-              </span>
-            </span>
-            <Switch
-              checked={settings.general.launchAtLogin}
-              onCheckedChange={(checked) =>
-                setSettings({
-                  ...settings,
-                  general: { ...settings.general, launchAtLogin: checked }
-                })
-              }
-            />
-          </Label>
-          <Label className="flex items-center justify-between gap-4 py-2.5">
-            <span>
-              <span className="block text-xs font-medium text-slate-700">最小化到托盘</span>
-              <span className="mt-0.5 block text-[11px] text-slate-400">
-                关闭主窗口时保持后台服务运行
-              </span>
-            </span>
-            <Switch
-              checked={settings.general.minimizeToTray}
-              onCheckedChange={(checked) =>
-                setSettings({
-                  ...settings,
-                  general: { ...settings.general, minimizeToTray: checked }
-                })
-              }
-            />
-          </Label>
-        </div>
-        <div className="mt-3 flex gap-1.5">
-          <Button
-            disabled={isPending('settings-save')}
-            onClick={() => void save()}
-            variant="success"
-          >
-            {isPending('settings-save') ? <Spinner /> : <Save size={14} />}
-            保存设置
-          </Button>
-          <ConfirmAction
-            description="将启动行为和高级设置恢复为默认值，不会删除业务数据。"
-            onConfirm={reset}
-            title="恢复默认设置？"
-          >
-            <Button variant="secondary">
-              <RotateCcw size={14} />
-              重置
-            </Button>
-          </ConfirmAction>
-        </div>
-        {status && (
-          <Alert variant="destructive">
-            <AlertDescription>{status}</AlertDescription>
-          </Alert>
-        )}
-      </CardContent>
-    </Card>
-  )
-
-  const data = (
-    <Card>
-      <CardHeader>
-        <CardTitle>数据管理</CardTitle>
-        <CardDescription>当前目录和导入导出入口，统计来自真实业务存储。</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">
-          <Database size={13} className="mr-1" />
-          {settings.data.directory}
-        </Badge>
-        {dataStats && (
-          <Badge variant="secondary">
-            {formatBytes(dataStats.sizeBytes)} · {dataStats.fileCount} 个文件
-          </Badge>
-        )}
-        {dataStats && (
-          <Badge variant="secondary">
-            {dataStats.gitIdentityCount} 个 Git 身份 · {dataStats.workspaceCount} 个工作区 ·{' '}
-            {dataStats.sshKeyCount} 个 SSH 密钥
-          </Badge>
-        )}
-        <Button
-          onClick={() => void window.api?.settings.openData().catch(report)}
-          variant="secondary"
-        >
-          <FolderOpen size={14} />
-          打开数据目录
-        </Button>
-        <Button
-          onClick={() =>
-            void window.api?.settings
-              .changeDataDirectory()
-              .then((value) => {
-                setSettings(value)
-                toast.success('数据目录已迁移并切换')
-                void window.api?.settings.dataStats().then(setDataStats)
-              })
-              .catch(report)
+  const dataPanel = (
+    <DataSettingsPanel
+      busy={pending === 'data'}
+      error={page.errors.data}
+      onClear={() =>
+        void run('data', async () => {
+          page.acceptSettings(await window.api!.settings.clearBusinessData())
+          await page.refreshStats()
+          toast.success('工作台数据已清空')
+        })
+      }
+      onCopy={() =>
+        void run('data', async () => {
+          await navigator.clipboard.writeText(
+            JSON.stringify(await window.api!.settings.export(), null, 2)
+          )
+          toast.success('数据快照已复制')
+        })
+      }
+      onExport={() =>
+        void run('data', async () => {
+          const result = await window.api!.settings.exportFile()
+          if (!result.cancelled) toast.success('备份文件已导出')
+        })
+      }
+      onImport={() =>
+        void run('data', async () => {
+          const result = await window.api!.settings.importFile()
+          if (!result.cancelled && result.value) {
+            page.acceptSettings(result.value)
+            await page.refreshStats()
+            toast.success('备份数据已恢复')
           }
-          variant="secondary"
-        >
-          <FolderOpen size={14} />
-          更改数据目录
-        </Button>
-        <ConfirmAction
-          confirmLabel="复制快照"
-          description="快照会复制到剪贴板，包含本机路径、Git profile 与 include 规则、SSH 公钥和 Hosts 备份元数据。它适合检查内容，不会自动生成文件。"
-          onConfirm={async () => {
-            await run('settings-export-snapshot', async () => {
-              const value = await window.api?.settings.export()
-              if (!value) throw new Error('当前页面未连接桌面服务，无法导出数据。')
-              await navigator.clipboard.writeText(JSON.stringify(value, null, 2))
-              toast.success('数据快照 JSON 已复制，可保存为备份文件')
-            })
-          }}
-          title="复制包含本机信息的数据快照？"
-        >
-          <Button disabled={isPending('settings-export-snapshot')} variant="outline">
-            {isPending('settings-export-snapshot') && <Spinner />}
-            导出快照
-          </Button>
-        </ConfirmAction>
-        <ConfirmAction
-          confirmLabel="选择位置并导出"
-          description="文件备份包含本机路径、Git profile 与 include 规则、SSH 公钥和 Hosts 备份元数据。请仅保存到受信任的位置；与“导出快照”不同，此操作会打开文件保存对话框。"
-          onConfirm={async () => {
-            await run('settings-export-file', async () => {
-              await window.api?.settings.exportFile()
-              toast.success('数据已导出')
-            })
-          }}
-          title="导出包含本机信息的备份文件？"
-        >
-          <Button disabled={isPending('settings-export-file')} variant="outline">
-            {isPending('settings-export-file') && <Spinner />}
-            导出文件
-          </Button>
-        </ConfirmAction>
-        <Button
-          onClick={() =>
-            void window.api?.settings
-              .importFile()
-              .then((value) => {
-                setSettings(value)
-                toast.success('数据已导入')
-                void window.api?.settings.dataStats().then(setDataStats)
-              })
-              .catch(report)
+        })
+      }
+      onMigrate={() =>
+        void run('data', async () => {
+          const result = await window.api!.settings.changeDataDirectory()
+          if (!result.cancelled && result.value) {
+            page.acceptSettings(result.value)
+            await page.refreshStats()
+            toast.success('数据目录已迁移')
           }
-          variant="outline"
-        >
-          导入文件
-        </Button>
-        <ConfirmAction
-          description="将清空 Git 身份、SSH 元数据、工作区、模板和 Hosts 业务数据，此操作不可撤销。"
-          onConfirm={clear}
-          title="清空全部业务数据？"
-        >
-          <Button variant="destructive">
-            <ShieldAlert size={14} />
-            清空业务数据
-          </Button>
-        </ConfirmAction>
-      </CardContent>
-    </Card>
+        })
+      }
+      onOpen={() => void run('data', () => window.api!.settings.openData())}
+      settings={page.draft}
+      stats={page.dataStats}
+    />
   )
 
-  const advanced = (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader>
-          <CardTitle>Node 设置</CardTitle>
-          <CardDescription>版本索引、下载源、默认包管理器和 Registry。</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          {[
-            ['node-index', '版本索引', 'indexUrl'],
-            ['node-source', '下载源', 'downloadSource'],
-            ['node-registry', '默认 Registry', 'registry']
-          ].map(([id, label, key]) => (
-            <div className="space-y-1.5" key={id}>
-              <Label htmlFor={id}>{label}</Label>
-              <Input
-                id={id}
-                onChange={(event) =>
-                  setSettings({
-                    ...settings,
-                    node: { ...settings.node, [key]: event.target.value }
-                  })
-                }
-                value={settings.node[key as 'indexUrl' | 'downloadSource' | 'registry']}
-              />
-            </div>
-          ))}
-          <div className="space-y-1.5">
-            <Label htmlFor="node-package-manager">默认包管理器</Label>
-            <Select
-              onValueChange={(value) =>
-                setSettings({ ...settings, node: { ...settings.node, packageManager: value } })
-              }
-              value={settings.node.packageManager}
-            >
-              <SelectTrigger id="node-package-manager">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {['npm', 'pnpm', 'yarn', 'bun'].map((item) => (
-                  <SelectItem key={item} value={item}>
-                    {item}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>高级设置</CardTitle>
-          <CardDescription>调整诊断日志，并按需打开开发者工具。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="log-level">日志级别</Label>
-              <Select
-                onValueChange={(value) =>
-                  setSettings({
-                    ...settings,
-                    advanced: {
-                      ...settings.advanced,
-                      logLevel: value as AppSettings['advanced']['logLevel']
-                    }
-                  })
-                }
-                value={settings.advanced.logLevel}
-              >
-                <SelectTrigger id="log-level">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {['debug', 'info', 'warn', 'error'].map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Label className="flex items-center gap-2 self-end pb-1 text-xs">
-              <Switch
-                checked={settings.advanced.developerTools}
-                onCheckedChange={(checked) =>
-                  setSettings({
-                    ...settings,
-                    advanced: { ...settings.advanced, developerTools: checked }
-                  })
-                }
-              />
-              允许打开开发者工具
-            </Label>
-          </div>
-          <Button
-            disabled={!settings.advanced.developerTools}
-            onClick={() => void window.api?.settings.openDeveloperTools().catch(report)}
-            variant="secondary"
-          >
-            <Code2 size={14} />
-            打开开发者工具
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  )
-
-  const about = (
-    <Card>
-      <CardHeader>
-        <CardTitle>关于</CardTitle>
-        <CardDescription>开发工坊本地开发环境管理工具</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-xs md:grid-cols-3">
-        <div>
-          <p className="text-[11px] text-slate-400">应用版本</p>
-          <p className="mt-1 font-mono">{runtime?.appVersion || '--'}</p>
-        </div>
-        <div>
-          <p className="text-[11px] text-slate-400">Electron / Chrome</p>
-          <p className="mt-1 font-mono">
-            {runtime ? `${runtime.versions.electron} / ${runtime.versions.chrome}` : '--'}
-          </p>
-        </div>
-        <div>
-          <p className="text-[11px] text-slate-400">Node / 架构</p>
-          <p className="mt-1 font-mono">
-            {runtime ? `${runtime.versions.node} / ${runtime.arch}` : '--'}
-          </p>
-        </div>
-        <div className="md:col-span-3">
-          <p className="text-[11px] text-slate-400">许可证</p>
-          <p className="mt-1">MIT License · 构建日期 {new Date().toLocaleDateString('zh-CN')}</p>
-        </div>
-      </CardContent>
-    </Card>
+  const advancedPanel = (
+    <AdvancedSettingsPanel
+      developerToolsActive={page.persisted.advanced.developerTools}
+      logStats={page.logStats}
+      onChange={(value) => page.setDraft(value)}
+      onClearLogs={() =>
+        void run('logs', async () => {
+          await window.api!.settings.clearLogArchives()
+          await page.refreshStats()
+          toast.success('旧日志已清理')
+        })
+      }
+      onOpenDeveloperTools={() => void window.api!.settings.openDeveloperTools().catch(page.report)}
+      onOpenLogs={() => void window.api!.settings.openLogs().catch(page.report)}
+      settings={page.draft}
+    />
   )
 
   return (
-    <div className="h-full overflow-auto p-3">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50/70">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5">
+        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
+          <Settings2 />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold text-slate-900">系统设置</div>
+          <div className="truncate text-[11px] text-slate-500">
+            管理应用行为、本地数据和开发环境
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span
+            className={
+              page.dirty
+                ? 'mr-1 flex items-center gap-1.5 text-[11px] text-amber-600'
+                : 'mr-1 flex items-center gap-1.5 text-[11px] text-slate-500'
+            }
+          >
+            <span
+              className={
+                page.dirty
+                  ? 'size-1.5 rounded-full bg-amber-500'
+                  : 'size-1.5 rounded-full bg-emerald-500'
+              }
+            />
+            {page.dirty ? '有未保存的修改' : '设置已同步'}
+          </span>
+          <Button disabled={!page.dirty || Boolean(pending)} onClick={page.discard} variant="ghost">
+            <Undo2 />
+            撤销
+          </Button>
+          <ConfirmAction
+            description="恢复桌面行为和高级设置的默认值，不会删除业务数据。"
+            onConfirm={() => page.reset()}
+            title="恢复默认设置？"
+          >
+            <Button disabled={Boolean(pending)} variant="secondary">
+              <RotateCcw />
+              重置
+            </Button>
+          </ConfirmAction>
+          <Button
+            disabled={!page.dirty || Boolean(pending)}
+            onClick={() => void run('save', page.save)}
+            variant="success"
+          >
+            {pending === 'save' ? <Spinner /> : <Save />}保存
+          </Button>
+        </div>
+      </div>
+      {page.errors.operation && (
+        <Alert className="m-3 mb-0 shrink-0" variant="destructive">
+          <AlertDescription>{page.errors.operation}</AlertDescription>
+        </Alert>
+      )}
       <Tabs
-        className="h-full"
+        className="min-h-0 flex-1 gap-0"
+        contentClassName="dashboard-scroll bg-slate-50/70 px-6 py-5"
+        fill
         items={[
-          { value: 'general', label: '通用', content: general },
-          { value: 'data', label: '数据', content: data },
-          { value: 'advanced', label: '高级', content: advanced },
+          {
+            value: 'general',
+            label: '通用设置',
+            icon: <SlidersHorizontal />,
+            content: (
+              <SettingsPane description="设置开发工坊启动和关闭时的默认行为。" title="通用设置">
+                <GeneralSettingsPanel
+                  onChange={(value) => page.setDraft(value)}
+                  settings={page.draft}
+                />
+              </SettingsPane>
+            )
+          },
+          {
+            value: 'data',
+            label: '数据管理',
+            icon: <Database />,
+            content: (
+              <SettingsPane description="查看存储占用，管理数据位置与备份。" title="数据管理">
+                {dataPanel}
+              </SettingsPane>
+            )
+          },
+          {
+            value: 'advanced',
+            label: '高级设置',
+            icon: <SlidersHorizontal />,
+            content: (
+              <SettingsPane description="管理诊断日志和本地调试能力。" title="高级设置">
+                {advancedPanel}
+              </SettingsPane>
+            )
+          },
           {
             value: 'environment',
             label: '环境检测',
-            content: <EnvironmentCheckPanel report={report} />
+            icon: <Activity />,
+            content: (
+              <SettingsPane
+                className="max-w-5xl"
+                description="按技术栈检查本机开发工具的安装和运行状态。"
+                title="环境检测"
+              >
+                <EnvironmentCheckPanel report={page.report} />
+              </SettingsPane>
+            )
           },
-          { value: 'about', label: '关于', content: about }
+          {
+            value: 'about',
+            label: '关于',
+            icon: <Info />,
+            content: (
+              <SettingsPane description="查看应用版本、运行时与构建信息。" title="关于开发工坊">
+                <AboutPanel error={page.errors.runtime} runtime={page.runtime} />
+              </SettingsPane>
+            )
+          }
         ]}
-        value={activeTab}
+        listClassName="h-11 shrink-0 gap-1 bg-white px-5"
         onValueChange={setActiveTab}
-        orientation="vertical"
+        triggerClassName="h-11 gap-2 px-3 text-xs"
+        value={activeTab}
       />
     </div>
   )

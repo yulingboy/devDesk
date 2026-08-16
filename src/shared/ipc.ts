@@ -109,12 +109,18 @@ export const IPC_CHANNELS = {
     changeDataDirectory: 'settings:change-data-directory',
     clearBusinessData: 'settings:clear-business-data',
     environmentCheck: 'settings:environment-check',
+    environmentCheckSnapshot: 'settings:environment-check-snapshot',
+    environmentCheckTool: 'settings:environment-check-tool',
     environmentCheckUpdated: 'settings:environment-check-updated',
     stopEnvironmentCheck: 'settings:stop-environment-check',
     openEnvironmentGuide: 'settings:open-environment-guide',
     environmentTools: 'settings:environment-tools',
     installEnvironmentTool: 'settings:install-environment-tool',
     dataStats: 'settings:data-stats',
+    logStats: 'settings:log-stats',
+    openLogs: 'settings:open-logs',
+    clearLogArchives: 'settings:clear-log-archives',
+    dataChanged: 'settings:data-changed',
     openDeveloperTools: 'settings:open-developer-tools'
   }
 } as const

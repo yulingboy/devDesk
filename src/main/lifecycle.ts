@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { registerApplicationIpc } from '@main/ipc-handlers'
-import { initializeLogger, log } from '@main/infrastructure/logger'
+import { initializeLogger, log, setLogLevel } from '@main/infrastructure/logger'
 import { initializeAppPaths } from '@main/infrastructure/paths'
 import { initializeStore } from '@main/infrastructure/store'
 import { createMainWindow } from '@main/window'
@@ -29,7 +29,10 @@ export function registerAppLifecycle(): void {
     registerApplicationIpc()
     const mainWindow = windowPool.open('main', createMainWindow)
     void getSettings()
-      .then((settings) => setMinimizeToTray(settings.general.minimizeToTray))
+      .then((settings) => {
+        setMinimizeToTray(settings.general.minimizeToTray)
+        setLogLevel(settings.advanced.logLevel)
+      })
       .catch(() => undefined)
     createAppTray(mainWindow)
     startOverviewSampler((snapshot) => {
