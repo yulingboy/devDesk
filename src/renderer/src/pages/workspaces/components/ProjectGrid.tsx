@@ -38,7 +38,7 @@ export function ProjectGrid({
 }: ProjectGridProps): React.JSX.Element {
   if (scanning) {
     return (
-      <div className="divide-y divide-slate-100 bg-white">
+      <div className="min-w-0 flex-1 divide-y divide-slate-100 overflow-hidden rounded-md border border-slate-100 bg-white">
         {Array.from({ length: 9 }, (_, index) => (
           <div className="flex h-14 items-center justify-between px-5" key={index}>
             <div className="space-y-1.5">
@@ -57,7 +57,7 @@ export function ProjectGrid({
 
   if (!projects.length) {
     return (
-      <Empty className="min-h-56 border-y border-slate-200 bg-white">
+      <Empty className="min-h-56 min-w-0 flex-1 rounded-md border border-slate-100 bg-white">
         <EmptyTitle>{query ? '没有匹配的项目' : '工作区中还没有项目'}</EmptyTitle>
         <EmptyDescription>
           {query ? '修改项目名称、备注或子项目搜索条件。' : '扫描工作区，或手动纳入一个项目目录。'}
@@ -67,7 +67,7 @@ export function ProjectGrid({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-white">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-100 bg-white">
       <Table className="table-fixed" containerClassName="shrink-0 overflow-hidden">
         <ProjectColumns />
         <TableHeader>
@@ -93,7 +93,7 @@ export function ProjectGrid({
                     variant="link"
                   >
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="max-w-[34rem] truncate text-[13px] font-semibold text-slate-800">
+                      <span className="max-w-[34rem] truncate text-[13px] font-normal text-slate-800">
                         {project.name}
                       </span>
                       {project.source === 'manual' && (

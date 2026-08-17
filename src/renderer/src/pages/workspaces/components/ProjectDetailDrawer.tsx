@@ -1,6 +1,22 @@
-import { FolderKanban, FolderOpen, FolderTree, GitBranch, KeyRound, Trash2 } from 'lucide-react'
+import {
+  FolderKanban,
+  FolderOpen,
+  FolderTree,
+  GitBranch,
+  KeyRound,
+  Pencil,
+  Plus,
+  Trash2
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { GitIdentity, Project, ProjectEditorId, SSHKey, Workspace } from '@shared/domain'
+import type {
+  GitIdentity,
+  Project,
+  ProjectEditorId,
+  SSHKey,
+  Workspace,
+  WorkspaceSubproject
+} from '@shared/domain'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,7 +36,9 @@ interface ProjectDetailDrawerProps {
   open: boolean
   removing: boolean
   onClose: () => void
+  onCreateSubproject: (project: Project) => void
   onEditRemark: (project: Project) => void
+  onEditSubprojectRemark: (subproject: WorkspaceSubproject) => void
   onOpenEditor: (path: string, editor: ProjectEditorId) => void
   onOpenFolder: (path: string) => void
   onRemove: () => Promise<void>
@@ -38,7 +56,9 @@ export function ProjectDetailDrawer({
   open,
   removing,
   onClose,
+  onCreateSubproject,
   onEditRemark,
+  onEditSubprojectRemark,
   onOpenEditor,
   onOpenFolder,
   onRemove
@@ -72,9 +92,6 @@ export function ProjectDetailDrawer({
               <FolderOpen />
               打开目录
             </Button>
-            <Button onClick={() => onEditRemark(project)} variant="outline">
-              编辑备注
-            </Button>
             <ProjectEditorMenu
               labeled
               disabled={!directoryAvailable}
@@ -99,13 +116,23 @@ export function ProjectDetailDrawer({
           )}
 
           <section aria-labelledby="project-location-title">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="text-xs font-semibold text-slate-700" id="project-location-title">
                 项目位置
               </h3>
-              <Badge variant={project.source === 'manual' ? 'secondary' : 'outline'}>
-                {project.source === 'manual' ? '手动纳入' : '扫描发现'}
-              </Badge>
+              <div className="flex items-center gap-1">
+                <Badge variant={project.source === 'manual' ? 'secondary' : 'outline'}>
+                  {project.source === 'manual' ? '手动纳入' : '扫描发现'}
+                </Badge>
+                <TooltipButton
+                  onClick={() => onEditRemark(project)}
+                  size="icon"
+                  tooltip="编辑项目备注"
+                  variant="ghost"
+                >
+                  <Pencil size={14} />
+                </TooltipButton>
+              </div>
             </div>
             <Item>
               <FolderKanban className="shrink-0 text-slate-400" />
@@ -148,9 +175,15 @@ export function ProjectDetailDrawer({
               <h3 className="text-xs font-semibold text-slate-700" id="project-subprojects-title">
                 子项目
               </h3>
-              <span className="text-[11px] text-slate-400">
-                {project.subprojects?.length ?? 0} 个
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-400">
+                  {project.subprojects?.length ?? 0} 个
+                </span>
+                <Button onClick={() => onCreateSubproject(project)} size="sm" variant="ghost">
+                  <Plus />
+                  创建子项目
+                </Button>
+              </div>
             </div>
             {project.subprojects?.length ? (
               <div className="space-y-1.5">
@@ -159,11 +192,19 @@ export function ProjectDetailDrawer({
                     <FolderTree className="shrink-0 text-slate-400" size={15} />
                     <ItemContent>
                       <ItemTitle className="truncate">{subproject.name}</ItemTitle>
-                      <ItemDescription title={subproject.path}>
-                        {formatRelativePath(subproject.path, project.path)}
+                      <ItemDescription title={subproject.remark || subproject.path}>
+                        {subproject.remark || formatRelativePath(subproject.path, project.path)}
                       </ItemDescription>
                     </ItemContent>
                     <ItemActions>
+                      <TooltipButton
+                        onClick={() => onEditSubprojectRemark(subproject)}
+                        size="icon"
+                        tooltip="编辑子项目备注"
+                        variant="ghost"
+                      >
+                        <Pencil size={14} />
+                      </TooltipButton>
                       <ProjectEditorMenu
                         disabled={subproject.directoryExists === false}
                         onOpen={onOpenEditor}

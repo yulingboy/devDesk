@@ -566,7 +566,9 @@ function parseProjectCreateOptions(value: unknown): ProjectCreateOptions {
   return {
     templateId: text(input.templateId, '模板 ID')!,
     workspaceId: text(input.workspaceId, '工作区 ID')!,
-    projectName: text(input.projectName, '项目名称')!
+    projectName: text(input.projectName, '项目名称')!,
+    parentProjectId: text(input.parentProjectId, '父项目 ID', true),
+    remark: text(input.remark, '项目备注', true)
   }
 }
 

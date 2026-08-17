@@ -73,6 +73,10 @@ export interface WorkspaceSubproject {
   id: string
   name: string
   path: string
+  /** 模板创建的子项目即使没有语言标记文件，后续扫描也需保留。 */
+  source?: 'scanned' | 'created'
+  /** 子项目备注与一级项目一样属于用户数据。 */
+  remark?: string
   directoryExists?: boolean
   lastScannedAt?: string
 }
@@ -452,6 +456,9 @@ export interface ProjectCreateOptions {
   templateId: string
   workspaceId: string
   projectName: string
+  /** 传入一级项目 ID 时，新目录创建在该项目下并收纳为子项目。 */
+  parentProjectId?: string
+  remark?: string
 }
 
 export interface NodeInstallOptions {

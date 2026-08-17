@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Rocket } from 'lucide-react'
+import { FolderKanban, FolderTree, Rocket } from 'lucide-react'
 import type { ProjectTemplate, Workspace } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Field, FormMessage } from '@/components/ui/form'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
@@ -13,10 +14,12 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 interface ProjectCreateDrawerProps {
   defaultTemplateId?: string
   defaultWorkspaceId?: string
+  defaultParentProjectId?: string
   onClose: () => void
   onCreated: (workspaces: Workspace[]) => void
   onError: (error: unknown) => void
@@ -29,6 +32,7 @@ interface ProjectCreateDrawerProps {
 export function ProjectCreateDrawer({
   defaultTemplateId,
   defaultWorkspaceId,
+  defaultParentProjectId,
   onClose,
   onCreated,
   onError,
@@ -39,17 +43,32 @@ export function ProjectCreateDrawer({
   const [templateId, setTemplateId] = useState('')
   const [workspaceId, setWorkspaceId] = useState('')
   const [projectName, setProjectName] = useState('')
+  const [remark, setRemark] = useState('')
+  const [createMode, setCreateMode] = useState<'project' | 'subproject'>('project')
+  const [parentProjectId, setParentProjectId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const fixedTemplate = templates.find((item) => item.id === defaultTemplateId)
   const fixedWorkspace = workspaces.find((item) => item.id === defaultWorkspaceId)
   const selectedTemplateId = templateId || defaultTemplateId || templates[0]?.id || ''
   const selectedWorkspaceId = workspaceId || defaultWorkspaceId || workspaces[0]?.id || ''
+  const selectedWorkspace = workspaces.find((item) => item.id === selectedWorkspaceId)
+  const fixedParentProject = selectedWorkspace?.projects.find(
+    (item) => item.id === defaultParentProjectId
+  )
+  const effectiveMode = defaultParentProjectId ? 'subproject' : createMode
+  const selectedParentProjectId =
+    parentProjectId && selectedWorkspace?.projects.some((item) => item.id === parentProjectId)
+      ? parentProjectId
+      : (fixedParentProject?.id ?? selectedWorkspace?.projects[0]?.id ?? '')
 
   const close = (): void => {
     setTemplateId('')
     setWorkspaceId('')
     setProjectName('')
+    setRemark('')
+    setCreateMode('project')
+    setParentProjectId('')
     setSubmitting(false)
     setErrorMessage('')
     onClose()
@@ -62,6 +81,7 @@ export function ProjectCreateDrawer({
     }
     if (!selectedTemplateId) return reject('请选择项目模板')
     if (!selectedWorkspaceId) return reject('请选择目标工作区')
+    if (effectiveMode === 'subproject' && !selectedParentProjectId) return reject('请选择父项目')
     const name = projectName.trim()
     if (!name) return reject('请输入项目名称')
     if (/[/\\:*?"<>|]/.test(name)) return reject('项目名称不能包含路径特殊字符')
@@ -72,7 +92,9 @@ export function ProjectCreateDrawer({
       .createProject({
         templateId: selectedTemplateId,
         workspaceId: selectedWorkspaceId,
-        projectName: name
+        projectName: name,
+        parentProjectId: effectiveMode === 'subproject' ? selectedParentProjectId : undefined,
+        remark
       })
       .then((value) => {
         onCreated(value)
@@ -87,7 +109,7 @@ export function ProjectCreateDrawer({
 
   return (
     <Drawer
-      description="项目会创建在工作区根目录下；目标已存在时不会覆盖。"
+      description="从模板创建一级项目或子项目；目标已存在时不会覆盖。"
       footer={
         <>
           <Button disabled={submitting} onClick={close} variant="secondary">
@@ -134,7 +156,11 @@ export function ProjectCreateDrawer({
           )}
         </Field>
         <Field
-          description="项目将作为工作区根目录下的一级目录。"
+          description={
+            effectiveMode === 'subproject'
+              ? '用于确定子项目所属的工作区。'
+              : '项目将作为工作区根目录下的一级目录。'
+          }
           htmlFor="create-project-workspace"
           label="目标工作区"
         >
@@ -148,7 +174,10 @@ export function ProjectCreateDrawer({
           ) : (
             <Select
               disabled={submitting}
-              onValueChange={setWorkspaceId}
+              onValueChange={(value) => {
+                setWorkspaceId(value)
+                setParentProjectId('')
+              }}
               value={selectedWorkspaceId || undefined}
             >
               <SelectTrigger id="create-project-workspace">
@@ -164,6 +193,63 @@ export function ProjectCreateDrawer({
             </Select>
           )}
         </Field>
+        <Field label="创建类型">
+          {fixedParentProject ? (
+            <Item className="bg-slate-50">
+              <FolderTree className="shrink-0 text-slate-400" size={15} />
+              <ItemContent>
+                <ItemTitle>子项目</ItemTitle>
+                <ItemDescription>父项目：{fixedParentProject.name}</ItemDescription>
+              </ItemContent>
+            </Item>
+          ) : (
+            <ToggleGroup
+              className="grid grid-cols-2"
+              disabled={submitting}
+              onValueChange={(value) => {
+                if (value === 'project' || value === 'subproject') setCreateMode(value)
+              }}
+              type="single"
+              value={effectiveMode}
+            >
+              <ToggleGroupItem className="justify-center" value="project">
+                <FolderKanban />
+                一级项目
+              </ToggleGroupItem>
+              <ToggleGroupItem className="justify-center" value="subproject">
+                <FolderTree />
+                子项目
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
+        </Field>
+        {effectiveMode === 'subproject' && !fixedParentProject && (
+          <Field
+            description="子项目将创建在所选一级项目目录下。"
+            htmlFor="create-parent-project"
+            label="父项目"
+          >
+            <Select
+              disabled={submitting || !selectedWorkspace?.projects.length}
+              onValueChange={setParentProjectId}
+              value={selectedParentProjectId || undefined}
+            >
+              <SelectTrigger id="create-parent-project">
+                <SelectValue placeholder="请选择父项目" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectedWorkspace?.projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!selectedWorkspace?.projects.length && (
+              <FormMessage>当前工作区还没有一级项目</FormMessage>
+            )}
+          </Field>
+        )}
         <Field htmlFor="create-project-name" label="项目名称">
           <Input
             autoFocus
@@ -175,6 +261,22 @@ export function ProjectCreateDrawer({
             }}
             placeholder="例如 my-app"
             value={projectName}
+          />
+        </Field>
+        <Field
+          htmlFor="create-project-remark"
+          label="项目备注"
+          labelExtra={
+            <span className="text-[10px] tabular-nums text-slate-400">{remark.length}/200</span>
+          }
+        >
+          <Textarea
+            disabled={submitting}
+            id="create-project-remark"
+            maxLength={200}
+            onChange={(event) => setRemark(event.target.value)}
+            placeholder="例如：后台服务或个人实验项目"
+            value={remark}
           />
         </Field>
         {errorMessage && <FormMessage>{errorMessage}</FormMessage>}

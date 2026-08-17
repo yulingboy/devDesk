@@ -351,19 +351,32 @@ function findPreviousSubproject(
     : undefined
 }
 
-function buildSubprojects(paths: string[], previousProjects: Project[]): WorkspaceSubproject[] {
+async function buildSubprojects(
+  paths: string[],
+  previousProjects: Project[],
+  previousParent?: Project
+): Promise<WorkspaceSubproject[]> {
   const scannedAt = new Date().toISOString()
-  return paths.map((path) => {
-    const previous = findPreviousSubproject(path, previousProjects)
-    return {
-      ...previous,
-      id: previous?.id ?? createId('subproject'),
-      name: basename(path),
-      path,
-      directoryExists: true,
-      lastScannedAt: scannedAt
-    }
-  })
+  const pathSet = new Set(paths.map((path) => resolve(path)))
+  // 模板创建的子项目可能不含语言标记文件，不能在下次扫描时被丢弃。
+  for (const subproject of previousParent?.subprojects ?? []) {
+    if (subproject.source === 'created') pathSet.add(resolve(subproject.path))
+  }
+  return Promise.all(
+    [...pathSet].map(async (path) => {
+      const previous = findPreviousSubproject(path, previousProjects)
+      const metadata = await lstat(path).catch(() => undefined)
+      return {
+        ...previous,
+        id: previous?.id ?? createId('subproject'),
+        name: basename(path),
+        path,
+        source: previous?.source ?? 'scanned',
+        directoryExists: Boolean(metadata?.isDirectory()),
+        lastScannedAt: scannedAt
+      }
+    })
+  )
 }
 
 async function scanDiscoveredProject(
@@ -377,7 +390,7 @@ async function scanDiscoveredProject(
     ...project,
     name: basename(discovered.path),
     path: discovered.path,
-    subprojects: buildSubprojects(discovered.subprojectPaths, previousProjects)
+    subprojects: await buildSubprojects(discovered.subprojectPaths, previousProjects, previous)
   }
 }
 
@@ -396,7 +409,7 @@ async function scanProjectWithSubprojects(
   const discovery = await discoverProjectSubprojectPaths(project.path)
   return {
     ...scanned,
-    subprojects: buildSubprojects(discovery.paths, previousProjects)
+    subprojects: await buildSubprojects(discovery.paths, previousProjects, project)
   }
 }
 
@@ -774,16 +787,31 @@ export async function saveProjectRemark(
   projectId: string,
   remarkInput: string
 ): Promise<Workspace[]> {
-  const { workspace, project } = await findProject(workspaceId, projectId)
+  const workspaceKey = requiredText(workspaceId, '工作区 ID', 120)
+  const projectKey = requiredText(projectId, '项目 ID', 120)
   const remark = remarkInput.trim().slice(0, 200)
   const workspaces = await store.workspaces.read()
+  const workspace = workspaces.find((item) => item.id === workspaceKey)
+  if (!workspace) throw new Error('工作区不存在')
+  const projectExists = workspace.projects.some(
+    (project) =>
+      project.id === projectKey || project.subprojects?.some((item) => item.id === projectKey)
+  )
+  if (!projectExists) throw new Error('项目不存在，请先扫描工作区')
   await store.workspaces.write(
     workspaces.map((item) =>
       item.id === workspace.id
         ? {
             ...item,
             projects: item.projects.map((candidate) =>
-              candidate.id === project.id ? { ...candidate, remark } : candidate
+              candidate.id === projectKey
+                ? { ...candidate, remark }
+                : {
+                    ...candidate,
+                    subprojects: candidate.subprojects?.map((subproject) =>
+                      subproject.id === projectKey ? { ...subproject, remark } : subproject
+                    )
+                  }
             )
           }
         : item

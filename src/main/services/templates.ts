@@ -67,9 +67,19 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
   const workspace = workspaces.find((item) => item.id === options.workspaceId)
   if (!workspace) throw new Error('工作区不存在')
   const projectName = validateProjectName(options.projectName)
-  const rootPath = resolve(workspace.rootPath)
-  const target = resolve(rootPath, projectName)
-  const relativeTarget = relative(rootPath, target)
+  const parentProject = options.parentProjectId
+    ? workspace.projects.find((item) => item.id === options.parentProjectId)
+    : undefined
+  if (options.parentProjectId && !parentProject) throw new Error('父项目不存在')
+  if (parentProject?.directoryExists === false) throw new Error('父项目目录不存在，无法创建子项目')
+  const targetRoot = resolve(parentProject?.path ?? workspace.rootPath)
+  const targetRootAvailable = await access(targetRoot)
+    .then(() => true)
+    .catch(() => false)
+  if (!targetRootAvailable)
+    throw new Error(parentProject ? '父项目目录不存在，无法创建子项目' : '工作区目录不存在')
+  const target = resolve(targetRoot, projectName)
+  const relativeTarget = relative(targetRoot, target)
   if (
     !relativeTarget ||
     relativeTarget === '..' ||
@@ -104,5 +114,47 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
         : '复制本地模板失败，请检查模板路径和目录权限'
     )
   }
-  return scanWorkspace(workspace.id)
+  const scannedWorkspaces = await scanWorkspace(workspace.id)
+  const remark = (options.remark ?? '').trim().slice(0, 200)
+  const updatedWorkspaces = scannedWorkspaces.map((item) => {
+    if (item.id !== workspace.id) return item
+    if (!parentProject) {
+      return {
+        ...item,
+        projects: item.projects.map((project) =>
+          resolve(project.path) === target ? { ...project, remark } : project
+        )
+      }
+    }
+    return {
+      ...item,
+      projects: item.projects.map((project) => {
+        if (project.id !== parentProject.id) return project
+        const existing = project.subprojects?.find(
+          (subproject) => resolve(subproject.path) === target
+        )
+        const createdSubproject = {
+          ...existing,
+          id: existing?.id ?? createId('subproject'),
+          name: projectName,
+          path: target,
+          source: 'created' as const,
+          remark,
+          directoryExists: true,
+          lastScannedAt: new Date().toISOString()
+        }
+        return {
+          ...project,
+          subprojects: [
+            ...(project.subprojects ?? []).filter(
+              (subproject) => resolve(subproject.path) !== target
+            ),
+            createdSubproject
+          ].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+        }
+      })
+    }
+  })
+  await store.workspaces.write(updatedWorkspaces)
+  return updatedWorkspaces
 }

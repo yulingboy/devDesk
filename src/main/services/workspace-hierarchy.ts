@@ -22,6 +22,8 @@ function toSubproject(project: Project): WorkspaceSubproject {
     id: project.id,
     name: project.name,
     path: project.path,
+    source: project.source === 'scanned' ? 'scanned' : undefined,
+    remark: project.remark,
     directoryExists: project.directoryExists,
     lastScannedAt: project.lastScannedAt
   }

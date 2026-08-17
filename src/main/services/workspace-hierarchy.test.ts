@@ -17,7 +17,10 @@ describe('工作区项目层级兼容', () => {
       description: '',
       projects: [
         createProject('workspace-1', 'legacy-demo', join(rootPath, '项目/demo')),
-        createProject('workspace-1', 'legacy-auth', join(rootPath, '项目/认证中心')),
+        {
+          ...createProject('workspace-1', 'legacy-auth', join(rootPath, '项目/认证中心')),
+          remark: '用户认证服务'
+        },
         createProject('workspace-1', 'direct-tool', join(rootPath, '工具箱'))
       ]
     }
@@ -29,7 +32,11 @@ describe('工作区项目层级兼容', () => {
     expect(result.workspace.projects.find((item) => item.name === '项目')?.subprojects).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'legacy-demo', name: 'demo' }),
-        expect.objectContaining({ id: 'legacy-auth', name: '认证中心' })
+        expect.objectContaining({
+          id: 'legacy-auth',
+          name: '认证中心',
+          remark: '用户认证服务'
+        })
       ])
     )
     expect(result.workspace.projects.find((item) => item.name === '工具箱')?.id).toBe('direct-tool')
