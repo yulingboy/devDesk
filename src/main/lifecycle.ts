@@ -12,6 +12,7 @@ import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } fro
 import { getSettings } from '@main/services/settings'
 import { stopAllProjectTasks } from '@main/services/workspaces'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
+import appIcon from '../../resources/icon.png?asset'
 
 const windowPool = new WindowPool()
 
@@ -22,6 +23,8 @@ export function registerAppLifecycle(): void {
     await initializeStore(paths)
     initializeLogger(paths)
     electronApp.setAppUserModelId('com.devdesk.app')
+    // 开发模式运行的是 Electron 外壳，macOS 不会自动读取构建阶段的 ICNS。
+    if (process.platform === 'darwin') app.dock?.setIcon(appIcon)
     log.info('应用开始启动', { version: app.getVersion(), paths })
 
     // 仅在开发环境启用 Electron Toolkit 提供的调试快捷键。
