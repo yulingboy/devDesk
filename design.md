@@ -1,4 +1,4 @@
-# 开发工坊项目设计文档
+# DevDesk 项目设计文档
 
 > 文档性质：V1.0 产品与技术设计基线。
 >
@@ -10,7 +10,7 @@
 
 本文档用于回答三个问题：
 
-1. 开发工坊解决什么问题，以及面向哪些用户。
+1. DevDesk 解决什么问题，以及面向哪些用户。
 2. V1.0 需要提供哪些业务能力和交互规则。
 3. 各模块如何通过 Electron 主进程、预加载层、渲染层和本地数据协作。
 
@@ -20,7 +20,7 @@
 
 ### 2.1 产品定位
 
-开发工坊是面向开发者的本机环境管理工具箱。它把开发过程中分散在系统文件、命令行工具、Git 配置、SSH 密钥、Node 版本管理和项目目录中的操作，收敛到一个跨平台桌面应用中。
+DevDesk 是面向开发者的本机环境管理工具箱。它把开发过程中分散在系统文件、命令行工具、Git 配置、SSH 密钥、Node 版本管理和项目目录中的操作，收敛到一个跨平台桌面应用中。
 
 ### 2.2 目标用户
 
@@ -116,7 +116,7 @@
 | `Workspace`         | `id`, `name`, `rootPath`, `description`, `gitConfigId`                            | 工作区名称和根路径要求唯一                      |
 | `Project`           | `id`, `workspaceId`, `name`, `path`                                               | 项目由扫描或模板创建产生                        |
 | `ProjectTemplate`   | `id`, `name`, `description`, `type`, `source`                                     | `type` 为 `git` 或 `local`                      |
-| `HostRecord`        | `id`, `ip`, `domain`, `enabled`, `remark`                                         | 界面与主进程均校验 IPv4 和域名格式            |
+| `HostRecord`        | `id`, `ip`, `domain`, `enabled`, `remark`                                         | 界面与主进程均校验 IPv4 和域名格式              |
 | `NodeManagerState`  | `config`, `installs`, `tasks`, `releaseCache`                                     | Node 安装记录、任务和版本索引缓存               |
 | `StoredAppSettings` | `general`, `data`, `advanced`, `node`                                             | 只保存用户配置，不保存运行时统计                |
 

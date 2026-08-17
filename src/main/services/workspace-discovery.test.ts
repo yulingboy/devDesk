@@ -7,7 +7,7 @@ import { discoverWorkspaceProjectPaths } from './workspace-discovery'
 const temporaryDirectories: string[] = []
 
 async function createWorkspace(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), 'env-tool-workspace-'))
+  const path = await mkdtemp(join(tmpdir(), 'devdesk-workspace-'))
   temporaryDirectories.push(path)
   return path
 }

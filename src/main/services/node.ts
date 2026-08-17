@@ -770,7 +770,7 @@ export async function useNodeInTerminal(versionInput: string): Promise<void> {
     '-e',
     `tell application "Terminal" to do script ${JSON.stringify(command)}`
   ]).catch(() => {
-    throw new Error('无法启动 Terminal，请确认系统允许开发工坊自动化控制 Terminal')
+    throw new Error('无法启动 Terminal，请确认系统允许 DevDesk 自动化控制 Terminal')
   })
 }
 

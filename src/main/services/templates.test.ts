@@ -37,7 +37,7 @@ import { createProject } from './templates'
 let temporaryDirectory = ''
 
 beforeEach(async () => {
-  temporaryDirectory = await mkdtemp(join(tmpdir(), 'env-tool-template-'))
+  temporaryDirectory = await mkdtemp(join(tmpdir(), 'devdesk-template-'))
   const templatePath = join(temporaryDirectory, 'template')
   const workspacePath = join(temporaryDirectory, 'workspace')
   const parentPath = join(workspacePath, 'platform')

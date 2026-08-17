@@ -40,7 +40,7 @@ export function SshPage(): React.JSX.Element {
   const [draft, setDraft] = useState<SSHKeyDraft>(emptyDraft)
   const [query, setQuery] = useState('')
   const [generateOptions, setGenerateOptions] = useState<SSHKeyGenerateOptions>({
-    name: 'id_ed25519_env_tool',
+    name: 'id_ed25519_devdesk',
     algorithm: 'ed25519',
     comment: '',
     passphrase: ''

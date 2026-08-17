@@ -122,8 +122,8 @@ export function exportSettings(): Promise<DataExport> {
 
 export async function exportSettingsFile(): Promise<DialogOperationResult> {
   const result = await dialog.showSaveDialog({
-    title: '导出开发工坊数据',
-    defaultPath: 'env-tool-backup.json',
+    title: '导出 DevDesk 数据',
+    defaultPath: 'devdesk-backup.json',
     filters: [{ name: 'JSON 文件', extensions: ['json'] }]
   })
   if (result.canceled || !result.filePath) return { cancelled: true }
@@ -142,7 +142,7 @@ export async function importSettings(data: DataExport): Promise<AppSettings> {
 
 export async function importSettingsFile(): Promise<DialogOperationResult<AppSettings>> {
   const result = await dialog.showOpenDialog({
-    title: '导入开发工坊数据',
+    title: '导入 DevDesk 数据',
     properties: ['openFile'],
     filters: [{ name: 'JSON 文件', extensions: ['json'] }]
   })
@@ -216,7 +216,7 @@ export async function changeDataDirectory(): Promise<DialogOperationResult<AppSe
       throw new Error(`目标目录已包含工作台数据：${conflicts.slice(0, 3).join('、')}`)
     }
 
-    const staging = join(target, `.env-tool-migration-${Date.now()}-${process.pid}`)
+    const staging = join(target, `.devdesk-migration-${Date.now()}-${process.pid}`)
     const moved: string[] = []
     try {
       await mkdir(staging, { recursive: true })

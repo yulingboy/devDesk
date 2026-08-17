@@ -1,5 +1,5 @@
 {
-  "name": "env-tool",
+  "name": "devdesk",
   "version": "1.0.0",
   "description": "A local development environment manager built with Electron",
   "main": "./out/main/index.js",

@@ -8,8 +8,8 @@ import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidDomain, isValidIp, optionalText, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
-const startMarker = '# >>> env-tool managed hosts >>>'
-const endMarker = '# <<< env-tool managed hosts <<<'
+const startMarker = '# >>> devdesk managed hosts >>>'
+const endMarker = '# <<< devdesk managed hosts <<<'
 
 function hostsPath(): string {
   if (process.platform === 'win32')
@@ -55,8 +55,8 @@ function parseManaged(raw: string): HostRecord[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const disabled = line.startsWith('# env-tool-disabled ')
-      const content = line.replace(/^# env-tool-disabled\s+/, '')
+      const disabled = line.startsWith('# devdesk-disabled ')
+      const content = line.replace(/^# devdesk-disabled\s+/, '')
       const [ip, domain, ...remarkParts] = content.split(/\s+/)
       return {
         id: createId('host'),
@@ -131,7 +131,7 @@ export async function saveHosts(input: HostRecord[]): Promise<HostRecord[]> {
     startMarker,
     ...records.map(
       (record) =>
-        `${record.enabled ? '' : '# env-tool-disabled '}${record.ip} ${record.domain}${record.remark ? ` # ${record.remark}` : ''}`
+        `${record.enabled ? '' : '# devdesk-disabled '}${record.ip} ${record.domain}${record.remark ? ` # ${record.remark}` : ''}`
     ),
     endMarker
   ].join('\n')

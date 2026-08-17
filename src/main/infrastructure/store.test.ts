@@ -50,7 +50,7 @@ describe('数据存储', () => {
   })
 
   it('跨文件变更期间会阻止普通业务写入切入', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     const order: string[] = []
@@ -83,7 +83,7 @@ describe('数据存储', () => {
   })
 
   it('会先完成已经提交的普通写入再开始跨文件变更', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     let observedVersion = ''
@@ -98,7 +98,7 @@ describe('数据存储', () => {
   })
 
   it('会串行写入同一状态文件并保留有效 JSON', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
 
@@ -113,7 +113,7 @@ describe('数据存储', () => {
   })
 
   it('会隔离损坏的 JSON 并以默认数据继续读取', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     await writeFile(join(directory, 'hosts.json'), '{损坏的数据', 'utf8')
@@ -125,7 +125,7 @@ describe('数据存储', () => {
   })
 
   it('会拒绝不完整备份且不覆盖现有业务数据', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     await store.hosts.write([
@@ -139,7 +139,7 @@ describe('数据存储', () => {
   })
 
   it('会拒绝业务字段类型错误的备份', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     const backup = await store.exportData()
@@ -150,7 +150,7 @@ describe('数据存储', () => {
   })
 
   it('会导出并恢复最近一次环境检测快照', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     const checkedAt = new Date().toISOString()
@@ -174,7 +174,7 @@ describe('数据存储', () => {
   })
 
   it('导入不含可选 Node 状态的旧备份时会清除残留状态', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     await store.node.write(state('22.0.0'))
@@ -187,7 +187,7 @@ describe('数据存储', () => {
   })
 
   it('读取旧设置时会补齐 Node 默认配置', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'env-tool-store-'))
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)
     await initializeStore({ userData: directory, data: directory, logs: directory })
     await writeFile(

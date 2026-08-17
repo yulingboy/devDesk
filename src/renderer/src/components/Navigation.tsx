@@ -25,7 +25,7 @@ export function Navigation({ appVersion }: { appVersion: string }): React.JSX.El
             <MonitorCog aria-hidden="true" size={15} />
           </div>
           <span className="truncate text-xs font-semibold text-slate-700" data-sidebar="label">
-            开发工坊
+            DevDesk
           </span>
         </div>
         <SidebarTrigger />

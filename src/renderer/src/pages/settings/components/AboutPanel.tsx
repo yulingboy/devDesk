@@ -18,7 +18,7 @@ export function AboutPanel({
         </Alert>
       )}
       <Card className="overflow-hidden">
-        <SettingsSection description="开发工坊本地开发环境管理工具" title="应用信息">
+        <SettingsSection description="DevDesk 本地开发环境管理工具" title="应用信息">
           <dl className="grid gap-x-6 gap-y-3 border-t border-slate-100 pt-3 text-xs sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <dt className="text-[11px] text-slate-400">应用版本</dt>

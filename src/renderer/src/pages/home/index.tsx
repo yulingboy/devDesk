@@ -85,7 +85,7 @@ export function HomePage(): React.JSX.Element {
             <div className="min-w-0">
               <Badge className="mb-1.5 gap-1.5" variant="success">
                 <span className="size-1.5 rounded-full bg-[var(--accent)]" />
-                开发工作台
+                DevDesk
               </Badge>
               <h1 className="text-base font-semibold text-slate-800">
                 {greeting}，{snapshot?.username ?? '开发者'}，开始工作

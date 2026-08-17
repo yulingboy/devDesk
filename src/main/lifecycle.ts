@@ -21,7 +21,7 @@ export function registerAppLifecycle(): void {
     const paths = initializeAppPaths()
     await initializeStore(paths)
     initializeLogger(paths)
-    electronApp.setAppUserModelId('com.envtool.app')
+    electronApp.setAppUserModelId('com.devdesk.app')
     log.info('应用开始启动', { version: app.getVersion(), paths })
 
     // 仅在开发环境启用 Electron Toolkit 提供的调试快捷键。

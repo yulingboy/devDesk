@@ -1,4 +1,4 @@
-# 开发工坊
+# DevDesk
 
 基于 Electron、electron-vite、React 19 和 Tailwind CSS v4 的本机开发环境管理工具。
 

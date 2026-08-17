@@ -10,13 +10,13 @@ export function createAppTray(window: BrowserWindow): void {
   mainWindow = window
   tray?.destroy()
   tray = new Tray(icon)
-  tray.setToolTip('开发工坊')
+  tray.setToolTip('DevDesk')
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '显示窗口', click: () => showMainWindow() },
       { type: 'separator' },
       {
-        label: '退出开发工坊',
+        label: '退出 DevDesk',
         click: () => {
           quitting = true
           app.quit()

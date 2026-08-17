@@ -21,8 +21,8 @@ export function setUserNodeBinOverride(path?: string): void {
 export async function getUserShellEnvironment(): Promise<NodeJS.ProcessEnv> {
   if (process.platform === 'win32') return { ...process.env }
   shellEnvironmentPromise ??= (async () => {
-    const pathMarker = '__ENV_TOOL_PATH__='
-    const nodeMarker = '__ENV_TOOL_NODE__='
+    const pathMarker = '__DEVDESK_PATH__='
+    const nodeMarker = '__DEVDESK_NODE__='
     try {
       const { stdout } = await execFileAsync(
         process.env.SHELL || '/bin/zsh',

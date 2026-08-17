@@ -195,7 +195,7 @@ export function SettingsPage(): React.JSX.Element {
             label: '通用设置',
             icon: <SlidersHorizontal />,
             content: (
-              <SettingsPane description="设置开发工坊启动和关闭时的默认行为。" title="通用设置">
+              <SettingsPane description="设置 DevDesk 启动和关闭时的默认行为。" title="通用设置">
                 <GeneralSettingsPanel
                   onChange={(value) => page.setDraft(value)}
                   settings={page.draft}
@@ -242,7 +242,7 @@ export function SettingsPage(): React.JSX.Element {
             label: '关于',
             icon: <Info />,
             content: (
-              <SettingsPane description="查看应用版本、运行时与构建信息。" title="关于开发工坊">
+              <SettingsPane description="查看应用版本、运行时与构建信息。" title="关于 DevDesk">
                 <AboutPanel error={page.errors.runtime} runtime={page.runtime} />
               </SettingsPane>
             )

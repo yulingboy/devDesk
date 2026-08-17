@@ -23,7 +23,7 @@ describe('通用文本与路径处理', () => {
   })
 
   it('只接受根目录自身或真实子路径', () => {
-    const root = resolve('/tmp/env-tool/workspaces')
+    const root = resolve('/tmp/devdesk/workspaces')
     expect(isPathWithin(root, root)).toBe(true)
     expect(isPathWithin(root, join(root, 'project'))).toBe(true)
     expect(isPathWithin(root, resolve(root, '..', 'workspaces-backup'))).toBe(false)

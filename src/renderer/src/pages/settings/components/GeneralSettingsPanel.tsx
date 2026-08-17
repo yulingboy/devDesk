@@ -24,7 +24,7 @@ export function GeneralSettingsPanel({
               <span className="min-w-0">
                 <span className="block text-[13px] font-medium text-slate-800">开机自启</span>
                 <span className="mt-0.5 block text-xs text-slate-500">
-                  登录系统后自动启动开发工坊
+                  登录系统后自动启动 DevDesk
                 </span>
               </span>
             </span>

@@ -306,7 +306,7 @@ function validateDataExport(value: unknown): asserts value is DataExport {
     throw new Error('备份文件版本不受支持')
   const arrayFields = ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates'] as const
   if (!isRecord(value.settings) || arrayFields.some((field) => !Array.isArray(value[field]))) {
-    throw new Error('备份文件结构无效，请选择由开发工坊导出的 JSON 文件')
+    throw new Error('备份文件结构无效，请选择由 DevDesk 导出的 JSON 文件')
   }
   for (const field of arrayFields) {
     const items = value[field]
