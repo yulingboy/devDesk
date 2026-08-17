@@ -2,11 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { FolderKanban, Plus, Save } from 'lucide-react'
 import type {
-  GitIdentity,
-  ProjectTemplate,
   ProjectEditorId,
   Project,
-  SSHKey,
   Workspace,
   WorkspaceSubproject,
   WorkspaceScanResult
@@ -15,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
 import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
@@ -34,25 +30,19 @@ import { ProjectDetailDrawer } from './components/ProjectDetailDrawer'
 import { ProjectRemarkDrawer } from './components/ProjectRemarkDrawer'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
 import { WorkspaceDetailDrawer } from './components/WorkspaceDetailDrawer'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useWorkspaceResources } from './hooks/useWorkspaceResources'
 
 const emptyWorkspace: Workspace = { id: '', name: '', rootPath: '', description: '', projects: [] }
 
 export function WorkspacesPage(): React.JSX.Element {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [draft, setDraft] = useState<Workspace>(emptyWorkspace)
-  const [identities, setIdentities] = useState<GitIdentity[]>([])
-  const [sshKeys, setSshKeys] = useState<SSHKey[]>([])
-  const [templates, setTemplates] = useState<ProjectTemplate[]>([])
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
   const [drawerMode, setDrawerMode] = useState<'workspace' | 'workspace-detail' | 'project' | null>(
     null
   )
   const [createWorkspaceId, setCreateWorkspaceId] = useState<string>()
   const [createParentProjectId, setCreateParentProjectId] = useState<string>()
-  const [loading, setLoading] = useState(true)
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>()
-  const [selectedProjectId, setSelectedProjectId] = useState<string>()
   const [removingProject, setRemovingProject] = useState(false)
   const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
   const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
@@ -64,67 +54,20 @@ export function WorkspacesPage(): React.JSX.Element {
   }>()
   const [savingRemark, setSavingRemark] = useState(false)
   const deepLinkHandled = useRef(false)
-  // 刷新可能由用户连续触发；只允许最后一次请求提交结果，避免旧响应覆盖新数据。
-  const loadRequestId = useRef(0)
-  const report = (error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
-    toast.error(message)
-    rendererLogger.error('工作区操作失败', { error: message })
-  }
-  const load = (): void => {
-    const requestId = ++loadRequestId.current
-    void Promise.allSettled([
-      Promise.resolve(window.api?.workspaces.list()),
-      Promise.resolve(window.api?.git.getState()),
-      Promise.resolve(window.api?.ssh.list()),
-      Promise.resolve(window.api?.templates.list())
-    ])
-      .then(([workspaceResult, gitResult, sshResult, templateResult]) => {
-        if (requestId !== loadRequestId.current) return
-        if (workspaceResult.status === 'rejected') {
-          report(workspaceResult.reason)
-        } else if (workspaceResult.value) {
-          const nextWorkspaces = workspaceResult.value
-          setWorkspaces(nextWorkspaces)
-          setSelectedWorkspaceId((current) =>
-            current && nextWorkspaces.some((item) => item.id === current)
-              ? current
-              : nextWorkspaces[0]?.id
-          )
-          setSelectedProjectId((current) => {
-            if (!current) return undefined
-            return nextWorkspaces.some((workspace) =>
-              workspace.projects.some((item) => item.id === current)
-            )
-              ? current
-              : undefined
-          })
-        }
-        const optionalResults = [
-          ['Git 身份', gitResult],
-          ['SSH 密钥', sshResult],
-          ['项目模板', templateResult]
-        ] as const
-        for (const [label, result] of optionalResults) {
-          if (result.status === 'rejected') {
-            const message =
-              result.reason instanceof Error ? result.reason.message : String(result.reason)
-            toast.warning(`${label}加载失败：${message}`)
-            rendererLogger.warn(`${label}加载失败`, { error: message })
-          }
-        }
-        if (gitResult.status === 'fulfilled' && gitResult.value)
-          setIdentities(gitResult.value.identities)
-        if (sshResult.status === 'fulfilled' && sshResult.value) setSshKeys(sshResult.value)
-        if (templateResult.status === 'fulfilled' && templateResult.value)
-          setTemplates(templateResult.value)
-      })
-      .finally(() => {
-        if (requestId === loadRequestId.current) setLoading(false)
-      })
-  }
-  useEffect(load, [])
+  const { status, report, clearError } = usePageFeedback('工作区操作失败')
+  const {
+    workspaces,
+    setWorkspaces,
+    identities,
+    sshKeys,
+    templates,
+    loading,
+    selectedWorkspaceId,
+    setSelectedWorkspaceId,
+    selectedProjectId,
+    setSelectedProjectId,
+    reload: load
+  } = useWorkspaceResources(report)
   useEffect(() => {
     if (!workspaces.length || deepLinkHandled.current) return
     deepLinkHandled.current = true
@@ -142,7 +85,7 @@ export function WorkspacesPage(): React.JSX.Element {
       if (linkedProject) setSelectedProjectId(linkedProject.id)
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [workspaces])
+  }, [setSelectedProjectId, setSelectedWorkspaceId, workspaces])
   const save = (): void => {
     void window.api?.workspaces
       .save(draft)
@@ -150,7 +93,7 @@ export function WorkspacesPage(): React.JSX.Element {
         setWorkspaces(value)
         setDraft(emptyWorkspace)
         setDrawerMode(null)
-        setStatus('')
+        clearError()
         toast.success('工作区已保存')
       })
       .catch(report)

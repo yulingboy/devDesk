@@ -5,6 +5,7 @@ import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { rendererLogger } from '@/lib/logger'
+import { toErrorMessage } from '@/lib/errors'
 import { ResourceTrendChart } from './components/ResourceTrendChart'
 
 const encouragements = [
@@ -48,7 +49,7 @@ export function HomePage(): React.JSX.Element {
       })
       .catch((error: unknown) => {
         rendererLogger.error('首页系统信息读取失败', {
-          error: error instanceof Error ? error.message : String(error)
+          error: toErrorMessage(error)
         })
       })
       .finally(() => setLoading(false))

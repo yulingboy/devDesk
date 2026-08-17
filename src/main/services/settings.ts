@@ -13,7 +13,7 @@ import {
   writeFile
 } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import type {
@@ -27,6 +27,7 @@ import type {
   LogStats,
   ThemeName
 } from '@shared/domain'
+import { isPathWithin } from './common'
 import { getAppPaths } from '@main/infrastructure/paths'
 import {
   getStoreDirectory,
@@ -40,7 +41,7 @@ import {
   getUserShellEnvironment,
   resetUserShellEnvironment
 } from '@main/infrastructure/shell-environment'
-import { removeGitRuleInclude, syncGitRules } from '@main/services/git'
+import { removeGitRuleInclude, syncGitRules } from '@main/services/git-rules'
 import { listSshKeys } from '@main/services/ssh'
 
 const execFileAsync = promisify(execFile)
@@ -172,12 +173,10 @@ export async function changeDataDirectory(): Promise<DialogOperationResult<AppSe
   const source = resolve(getStoreDirectory())
   const target = resolve(result.filePaths[0])
   if (target === source) return { cancelled: true }
-  const targetFromSource = relative(source, target)
-  if (targetFromSource && !targetFromSource.startsWith('..') && !isAbsolute(targetFromSource)) {
+  if (isPathWithin(source, target)) {
     throw new Error('新数据目录不能位于当前数据目录内部')
   }
-  const sourceFromTarget = relative(target, source)
-  if (sourceFromTarget && !sourceFromTarget.startsWith('..') && !isAbsolute(sourceFromTarget)) {
+  if (isPathWithin(target, source)) {
     throw new Error('新数据目录不能包含当前数据目录')
   }
   const businessFiles = [

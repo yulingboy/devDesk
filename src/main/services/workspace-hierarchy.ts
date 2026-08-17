@@ -1,17 +1,12 @@
-import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, relative, resolve, sep } from 'node:path'
 import type { Project, Workspace, WorkspaceSubproject } from '@shared/domain'
-import { createId } from './common'
+import { createId, isPathWithin } from './common'
 
 /** 返回项目在工作区中的一级目录；外部项目保持自身路径。 */
 export function getTopLevelProjectPath(rootPath: string, projectPath: string): string {
   const normalizedProjectPath = resolve(projectPath)
   const relativePath = relative(resolve(rootPath), normalizedProjectPath)
-  if (
-    !relativePath ||
-    relativePath === '..' ||
-    relativePath.startsWith(`..${sep}`) ||
-    isAbsolute(relativePath)
-  ) {
+  if (!relativePath || !isPathWithin(rootPath, normalizedProjectPath)) {
     return normalizedProjectPath
   }
   return resolve(rootPath, relativePath.split(sep)[0])

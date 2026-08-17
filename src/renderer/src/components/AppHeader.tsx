@@ -4,6 +4,7 @@ import type { SystemOverviewSnapshot } from '@shared/domain'
 import type { WindowState } from '@shared/types'
 import { TooltipButton } from '@/components/TooltipButton'
 import { rendererLogger } from '@/lib/logger'
+import { toErrorMessage } from '@/lib/errors'
 
 const defaultWindowState: WindowState = {
   isMaximized: false,
@@ -138,6 +139,6 @@ function WindowButton({
 
 function logWindowError(error: unknown): void {
   rendererLogger.error('窗口操作失败', {
-    error: error instanceof Error ? error.message : String(error)
+    error: toErrorMessage(error)
   })
 }

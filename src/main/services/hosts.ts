@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { shell } from 'electron'
 import type { HostRecord } from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
-import { createId, isValidDomain, isValidIp, requiredText } from './common'
+import { createId, isValidDomain, isValidIp, optionalText, requiredText } from './common'
 
 const execFileAsync = promisify(execFile)
 const startMarker = '# >>> env-tool managed hosts >>>'
@@ -117,7 +117,7 @@ function validateRecords(records: HostRecord[]): HostRecord[] {
       ip,
       domain,
       enabled: Boolean(record.enabled),
-      remark: (record.remark ?? '').trim().slice(0, 120)
+      remark: optionalText(record.remark, 120)
     }
   })
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { Copy, FileText, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import type {
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/form'
-import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import {
@@ -41,6 +40,8 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useInitialLoad } from '@/hooks/useInitialLoad'
 
 const emptyIdentity: GitIdentity = { id: '', name: '', username: '', email: '' }
 
@@ -49,18 +50,12 @@ export function GitPage(): React.JSX.Element {
   const [keys, setKeys] = useState<SSHKey[]>([])
   const [global, setGlobal] = useState({ username: '', email: '' })
   const [identity, setIdentity] = useState<GitIdentity>(emptyIdentity)
-  const [status, setStatus] = useState('')
   const [files, setFiles] = useState<GitFileSnapshot[]>([])
   const [drawerMode, setDrawerMode] = useState<'global' | 'identity' | 'detail' | null>(null)
   const [detail, setDetail] = useState<GitIdentityDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const report = (error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
-    toast.error(message)
-    rendererLogger.error('Git 操作失败', { error: message })
-  }
-  const load = (): void => {
+  const { status, report, clearError } = usePageFeedback('Git 操作失败')
+  const load = useCallback((): void => {
     void Promise.all([window.api?.git.getState(), window.api?.ssh.list(), window.api?.git.files()])
       .then(([gitState, sshKeys, fileValue]) => {
         if (gitState) {
@@ -72,8 +67,8 @@ export function GitPage(): React.JSX.Element {
       })
       .catch(report)
       .finally(() => setLoading(false))
-  }
-  useEffect(load, [])
+  }, [report])
+  useInitialLoad(load)
   const saveGlobal = (): void => {
     void window.api?.git
       .saveGlobal(global)
@@ -90,7 +85,7 @@ export function GitPage(): React.JSX.Element {
       .then((value) => {
         setState(value)
         setIdentity(emptyIdentity)
-        setStatus('')
+        clearError()
         setDrawerMode(null)
         toast.success('Git 身份已保存并生成 profile')
       })

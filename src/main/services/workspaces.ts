@@ -18,8 +18,8 @@ import type {
 } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
-import { createId, requiredText } from './common'
-import { syncGitRules } from './git'
+import { createId, optionalText, requiredText } from './common'
+import { syncGitRules } from './git-rules'
 import { isNodeRequirementSatisfied, parseProjectPackageManager } from './project-environment'
 import {
   discoverProjectSubprojectPaths,
@@ -641,7 +641,7 @@ export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
     id: input.id || createId('workspace'),
     name,
     rootPath,
-    description: (input.description ?? '').trim().slice(0, 200),
+    description: optionalText(input.description, 200),
     // 项目清单只能由扫描流程刷新；编辑工作区元数据不能覆盖既有扫描结果。
     projects: existing.find((item) => item.id === input.id)?.projects ?? []
   }
@@ -789,7 +789,7 @@ export async function saveProjectRemark(
 ): Promise<Workspace[]> {
   const workspaceKey = requiredText(workspaceId, '工作区 ID', 120)
   const projectKey = requiredText(projectId, '项目 ID', 120)
-  const remark = remarkInput.trim().slice(0, 200)
+  const remark = optionalText(remarkInput, 200)
   const workspaces = await store.workspaces.read()
   const workspace = workspaces.find((item) => item.id === workspaceKey)
   if (!workspace) throw new Error('工作区不存在')

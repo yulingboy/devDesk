@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import type { AppSettings, DataStats, LogStats } from '@shared/domain'
 import type { RuntimeInfo } from '@shared/types'
 import { rendererLogger } from '@/lib/logger'
+import { toErrorMessage } from '@/lib/errors'
 
 type ResourceErrors = Partial<
   Record<'settings' | 'data' | 'runtime' | 'logs' | 'operation', string>
@@ -37,7 +38,7 @@ export function useSettingsPage(): {
   const requestId = useRef(0)
 
   const report = useCallback((error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = toErrorMessage(error)
     setErrors((current) => ({ ...current, operation: message }))
     toast.error(message)
     rendererLogger.error('设置操作失败', { error: message })

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { isIP } from 'node:net'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 export function createId(prefix: string): string {
   return `${prefix}_${randomUUID()}`
@@ -11,6 +12,17 @@ export function requiredText(value: unknown, label: string, maxLength = 200): st
   if (!result) throw new Error(`${label}不能为空`)
   if (result.length > maxLength) throw new Error(`${label}不能超过${maxLength}个字符`)
   return result
+}
+
+/** 清理可选文本并限制持久化长度，避免各服务重复 trim/slice。 */
+export function optionalText(value: string | null | undefined, maxLength = 200): string {
+  return (value ?? '').trim().slice(0, maxLength)
+}
+
+/** 判断目标路径是否位于根路径内；根路径自身也视为范围内。 */
+export function isPathWithin(rootPath: string, targetPath: string): boolean {
+  const value = relative(resolve(rootPath), resolve(targetPath))
+  return !value || (value !== '..' && !value.startsWith(`..${sep}`) && !isAbsolute(value))
 }
 
 export function isValidEmail(value: string): boolean {

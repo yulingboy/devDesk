@@ -15,6 +15,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { toErrorMessage } from '@/lib/errors'
 
 interface ProjectCreateDrawerProps {
   defaultTemplateId?: string
@@ -101,7 +102,7 @@ export function ProjectCreateDrawer({
         close()
       })
       .catch((error: unknown) => {
-        setErrorMessage(error instanceof Error ? error.message : '创建项目失败')
+        setErrorMessage(toErrorMessage(error, '创建项目失败'))
         onError(error)
       })
       .finally(() => setSubmitting(false))

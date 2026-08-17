@@ -1,11 +1,11 @@
 import { access, cp, rm } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ProjectCreateOptions, ProjectTemplate, Workspace } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
-import { createId, requiredText } from './common'
+import { createId, isPathWithin, optionalText, requiredText } from './common'
 import { scanWorkspace } from './workspaces'
 
 const execFileAsync = promisify(execFile)
@@ -28,7 +28,7 @@ export async function saveTemplate(input: ProjectTemplate): Promise<ProjectTempl
     id: input.id || createId('template'),
     name,
     source,
-    description: (input.description ?? '').trim().slice(0, 200)
+    description: optionalText(input.description, 200)
   }
   await store.templates.write([...existing.filter((item) => item.id !== template.id), template])
   return listTemplates()
@@ -79,13 +79,7 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
   if (!targetRootAvailable)
     throw new Error(parentProject ? '父项目目录不存在，无法创建子项目' : '工作区目录不存在')
   const target = resolve(targetRoot, projectName)
-  const relativeTarget = relative(targetRoot, target)
-  if (
-    !relativeTarget ||
-    relativeTarget === '..' ||
-    relativeTarget.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ||
-    isAbsolute(relativeTarget)
-  )
+  if (target === targetRoot || !isPathWithin(targetRoot, target))
     throw new Error('项目目标路径无效')
   if (
     await access(target)
@@ -115,7 +109,7 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
     )
   }
   const scannedWorkspaces = await scanWorkspace(workspace.id)
-  const remark = (options.remark ?? '').trim().slice(0, 200)
+  const remark = optionalText(options.remark, 200)
   const updatedWorkspaces = scannedWorkspaces.map((item) => {
     if (item.id !== workspace.id) return item
     if (!parentProject) {

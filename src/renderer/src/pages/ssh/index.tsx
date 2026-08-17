@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Copy, KeyRound, Pencil, Plus, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
 import type { SSHDeleteImpact, SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/ui/form'
-import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { SearchInput } from '@/components/SearchInput'
@@ -31,6 +29,9 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { ResourcePanel } from '@/components/ResourcePanel'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useInitialLoad } from '@/hooks/useInitialLoad'
 
 const emptyDraft: SSHKeyDraft = { name: '', publicKey: '', source: 'manual' }
 
@@ -38,7 +39,6 @@ export function SshPage(): React.JSX.Element {
   const [keys, setKeys] = useState<SSHKey[]>([])
   const [draft, setDraft] = useState<SSHKeyDraft>(emptyDraft)
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
   const [generateOptions, setGenerateOptions] = useState<SSHKeyGenerateOptions>({
     name: 'id_ed25519_env_tool',
     algorithm: 'ed25519',
@@ -49,20 +49,15 @@ export function SshPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [deleteImpact, setDeleteImpact] = useState<SSHDeleteImpact | null>(null)
 
-  const report = (error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
-    toast.error(message)
-    rendererLogger.error('SSH 操作失败', { error: message })
-  }
-  const load = (): void => {
+  const { status, report, clearError } = usePageFeedback('SSH 操作失败')
+  const load = useCallback((): void => {
     void window.api?.ssh
       .list()
       .then(setKeys)
       .catch(report)
       .finally(() => setLoading(false))
-  }
-  useEffect(load, [])
+  }, [report])
+  useInitialLoad(load)
   const filtered = useMemo(
     () =>
       keys.filter((key) =>
@@ -79,7 +74,7 @@ export function SshPage(): React.JSX.Element {
         setKeys(value)
         setDraft(emptyDraft)
         setDrawerMode(null)
-        setStatus('')
+        clearError()
         toast.success('SSH 公钥已保存')
       })
       .catch(report)
@@ -98,12 +93,8 @@ export function SshPage(): React.JSX.Element {
   if (loading) return <PageLoadingSkeleton />
   return (
     <div className="h-full space-y-2.5 overflow-auto p-3">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
-          <div>
-            <CardTitle>SSH 密钥</CardTitle>
-            <CardDescription>只读取和保存公钥、指纹与私钥路径，不会保存私钥内容。</CardDescription>
-          </div>
+      <ResourcePanel
+        actions={
           <div className="flex items-center gap-1">
             <Button
               onClick={() => {
@@ -123,103 +114,104 @@ export function SshPage(): React.JSX.Element {
               <RefreshCw size={15} />
             </TooltipButton>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-5">
-          <SearchInput onValueChange={setQuery} placeholder="搜索名称、指纹或公钥" value={query} />
-          <div className="space-y-2">
-            {filtered.map((key) => (
-              <Item key={key.id}>
-                <ItemMedia>
-                  <KeyRound />
-                </ItemMedia>
-                <ItemContent>
-                  <div className="flex items-center gap-2">
-                    <ItemTitle>{key.name}</ItemTitle>
-                    <Badge variant="secondary">{key.algorithm}</Badge>
-                    {key.privateKeyPath && (
-                      <Badge variant={key.privateKeyExists ? 'success' : 'outline'}>
-                        {key.privateKeyExists ? '私钥可用' : '私钥缺失'}
-                      </Badge>
-                    )}
-                  </div>
-                  <ItemDescription className="font-mono">{key.fingerprint}</ItemDescription>
-                </ItemContent>
-                <ItemActions>
-                  <TooltipButton
-                    onClick={() => {
-                      setDraft({
-                        id: key.id,
-                        name: key.name,
-                        publicKey: key.publicKey,
-                        privateKeyPath: key.privateKeyPath,
-                        source: key.source
-                      })
-                      setDrawerMode('edit')
-                    }}
-                    size="icon"
-                    tooltip="编辑公钥"
-                    variant="ghost"
-                  >
-                    <Pencil size={15} />
-                  </TooltipButton>
-                  <TooltipButton
-                    onClick={() =>
-                      void navigator.clipboard
-                        .writeText(key.publicKey)
-                        .then(() => toast.success('公钥已复制'))
-                    }
-                    size="icon"
-                    tooltip="复制公钥"
-                    variant="ghost"
-                  >
-                    <Copy size={15} />
-                  </TooltipButton>
-                  <ConfirmAction
-                    description={
-                      deleteImpact?.key.id === key.id ? (
-                        <span>
-                          将删除密钥元数据“{key.name}”，磁盘上的密钥文件不会删除。{' '}
-                          {deleteImpact.identities.length
-                            ? `会解除 ${deleteImpact.identities.map((item) => item.name).join('、')} 的绑定。`
-                            : '当前没有 Git 身份绑定此密钥。'}
-                        </span>
-                      ) : (
-                        `正在读取密钥“${key.name}”的关联影响。`
-                      )
-                    }
-                    onConfirm={() =>
-                      void window.api?.ssh.remove(key.id).then(setKeys).catch(report)
-                    }
-                    onOpenChange={(open) => {
-                      if (open)
-                        void window.api?.ssh
-                          .getDeleteImpact(key.id)
-                          .then(setDeleteImpact)
-                          .catch(report)
-                    }}
-                    title="删除 SSH 密钥元数据？"
-                    triggerTooltip="删除密钥"
-                  >
-                    <Button aria-label="删除密钥" size="icon" variant="ghost">
-                      <Trash2 size={15} />
-                    </Button>
-                  </ConfirmAction>
-                </ItemActions>
-              </Item>
-            ))}
-            {!filtered.length && (
-              <Empty>
-                <EmptyTitle>{query ? '没有匹配的 SSH 密钥' : '尚未发现 SSH 公钥'}</EmptyTitle>
-                <EmptyDescription>
-                  {query
-                    ? '尝试修改搜索条件，或清空搜索框查看全部密钥。'
-                    : '可手动录入已有公钥，或直接生成新密钥。'}
-                </EmptyDescription>
-              </Empty>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        }
+        contentClassName="space-y-4 pt-5"
+        description="只读取和保存公钥、指纹与私钥路径，不会保存私钥内容。"
+        headerClassName="border-b border-slate-100"
+        title="SSH 密钥"
+      >
+        <SearchInput onValueChange={setQuery} placeholder="搜索名称、指纹或公钥" value={query} />
+        <div className="space-y-2">
+          {filtered.map((key) => (
+            <Item key={key.id}>
+              <ItemMedia>
+                <KeyRound />
+              </ItemMedia>
+              <ItemContent>
+                <div className="flex items-center gap-2">
+                  <ItemTitle>{key.name}</ItemTitle>
+                  <Badge variant="secondary">{key.algorithm}</Badge>
+                  {key.privateKeyPath && (
+                    <Badge variant={key.privateKeyExists ? 'success' : 'outline'}>
+                      {key.privateKeyExists ? '私钥可用' : '私钥缺失'}
+                    </Badge>
+                  )}
+                </div>
+                <ItemDescription className="font-mono">{key.fingerprint}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <TooltipButton
+                  onClick={() => {
+                    setDraft({
+                      id: key.id,
+                      name: key.name,
+                      publicKey: key.publicKey,
+                      privateKeyPath: key.privateKeyPath,
+                      source: key.source
+                    })
+                    setDrawerMode('edit')
+                  }}
+                  size="icon"
+                  tooltip="编辑公钥"
+                  variant="ghost"
+                >
+                  <Pencil size={15} />
+                </TooltipButton>
+                <TooltipButton
+                  onClick={() =>
+                    void navigator.clipboard
+                      .writeText(key.publicKey)
+                      .then(() => toast.success('公钥已复制'))
+                  }
+                  size="icon"
+                  tooltip="复制公钥"
+                  variant="ghost"
+                >
+                  <Copy size={15} />
+                </TooltipButton>
+                <ConfirmAction
+                  description={
+                    deleteImpact?.key.id === key.id ? (
+                      <span>
+                        将删除密钥元数据“{key.name}”，磁盘上的密钥文件不会删除。{' '}
+                        {deleteImpact.identities.length
+                          ? `会解除 ${deleteImpact.identities.map((item) => item.name).join('、')} 的绑定。`
+                          : '当前没有 Git 身份绑定此密钥。'}
+                      </span>
+                    ) : (
+                      `正在读取密钥“${key.name}”的关联影响。`
+                    )
+                  }
+                  onConfirm={() => void window.api?.ssh.remove(key.id).then(setKeys).catch(report)}
+                  onOpenChange={(open) => {
+                    if (open)
+                      void window.api?.ssh
+                        .getDeleteImpact(key.id)
+                        .then(setDeleteImpact)
+                        .catch(report)
+                  }}
+                  title="删除 SSH 密钥元数据？"
+                  triggerTooltip="删除密钥"
+                >
+                  <Button aria-label="删除密钥" size="icon" variant="ghost">
+                    <Trash2 size={15} />
+                  </Button>
+                </ConfirmAction>
+              </ItemActions>
+            </Item>
+          ))}
+          {!filtered.length && (
+            <Empty>
+              <EmptyTitle>{query ? '没有匹配的 SSH 密钥' : '尚未发现 SSH 公钥'}</EmptyTitle>
+              <EmptyDescription>
+                {query
+                  ? '尝试修改搜索条件，或清空搜索框查看全部密钥。'
+                  : '可手动录入已有公钥，或直接生成新密钥。'}
+              </EmptyDescription>
+            </Empty>
+          )}
+        </div>
+      </ResourcePanel>
       <Drawer
         description={
           drawerMode === 'generate'

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   Copy,
@@ -13,10 +13,8 @@ import {
 } from 'lucide-react'
 import type { HostRecord } from '@shared/domain'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { rendererLogger } from '@/lib/logger'
 import { Drawer } from '@/components/ui/drawer'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
@@ -43,6 +41,9 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ResourcePanel } from '@/components/ResourcePanel'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useInitialLoad } from '@/hooks/useInitialLoad'
 
 const emptyRecord: HostRecord = { id: '', ip: '', domain: '', enabled: true, remark: '' }
 
@@ -50,16 +51,10 @@ export function HostsPage(): React.JSX.Element {
   const [records, setRecords] = useState<HostRecord[]>([])
   const [draft, setDraft] = useState<HostRecord>(emptyRecord)
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  const showError = useCallback((error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(message)
-    toast.error(message)
-    rendererLogger.error('Hosts 操作失败', { error: message })
-  }, [])
+  const { status, report: showError, clearError } = usePageFeedback('Hosts 操作失败')
   const load = useCallback((): void => {
     void window.api?.hosts
       .list()
@@ -67,7 +62,7 @@ export function HostsPage(): React.JSX.Element {
       .catch(showError)
       .finally(() => setLoading(false))
   }, [showError])
-  useEffect(() => load(), [load])
+  useInitialLoad(load)
   const { isPending, run } = useAsyncAction(showError)
 
   const filtered = useMemo(
@@ -79,8 +74,7 @@ export function HostsPage(): React.JSX.Element {
   )
   const save = async (): Promise<void> => {
     if (!draft.ip || !draft.domain) {
-      setStatus('请填写 IP 地址和域名')
-      toast.error('请填写 IP 地址和域名')
+      showError('请填写 IP 地址和域名')
       return
     }
     const next = draft.id
@@ -95,7 +89,7 @@ export function HostsPage(): React.JSX.Element {
       setRecords(value)
       setDraft(emptyRecord)
       setDrawerOpen(false)
-      setStatus('')
+      clearError()
       toast.success('Hosts 记录已保存')
     }
   }
@@ -129,12 +123,8 @@ export function HostsPage(): React.JSX.Element {
   if (loading) return <PageLoadingSkeleton />
   return (
     <div className="h-full space-y-2.5 overflow-auto p-3">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between border-b border-slate-100">
-          <div>
-            <CardTitle>Hosts 记录</CardTitle>
-            <CardDescription>应用只维护受管区块，不覆盖其他系统内容。</CardDescription>
-          </div>
+      <ResourcePanel
+        actions={
           <div className="flex gap-2">
             <Button
               onClick={() => {
@@ -185,110 +175,113 @@ export function HostsPage(): React.JSX.Element {
               恢复备份
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-5">
-          <div className="flex items-center gap-1.5">
-            <SearchInput
-              className="flex-1"
-              onValueChange={setQuery}
-              placeholder="搜索 IP、域名或备注"
-              value={query}
-            />
-            <TooltipButton onClick={load} size="icon" tooltip="重新读取" variant="ghost">
-              <RefreshCw size={16} />
-            </TooltipButton>
-          </div>
-          <div className="rounded-md border border-slate-100">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>状态</TableHead>
-                  <TableHead>IP</TableHead>
-                  <TableHead>域名</TableHead>
-                  <TableHead>备注</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell>
+        }
+        contentClassName="space-y-4 pt-5"
+        description="应用只维护受管区块，不覆盖其他系统内容。"
+        headerClassName="border-b border-slate-100"
+        title="Hosts 记录"
+      >
+        <div className="flex items-center gap-1.5">
+          <SearchInput
+            className="flex-1"
+            onValueChange={setQuery}
+            placeholder="搜索 IP、域名或备注"
+            value={query}
+          />
+          <TooltipButton onClick={load} size="icon" tooltip="重新读取" variant="ghost">
+            <RefreshCw size={16} />
+          </TooltipButton>
+        </div>
+        <div className="rounded-md border border-slate-100">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>状态</TableHead>
+                <TableHead>IP</TableHead>
+                <TableHead>域名</TableHead>
+                <TableHead>备注</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((record) => (
+                <TableRow key={record.id}>
+                  <TableCell>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Switch
+                          aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
+                          checked={record.enabled}
+                          disabled={isPending('hosts-save')}
+                          onCheckedChange={() => void toggleEnabled(record.id)}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>{record.enabled ? '点击禁用' : '点击启用'}</TooltipContent>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell className="font-mono">{record.ip}</TableCell>
+                  <TableCell>{record.domain}</TableCell>
+                  <TableCell className="text-slate-500">{record.remark || '--'}</TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
                       <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Switch
-                            aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
-                            checked={record.enabled}
-                            disabled={isPending('hosts-save')}
-                            onCheckedChange={() => void toggleEnabled(record.id)}
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent>{record.enabled ? '点击禁用' : '点击启用'}</TooltipContent>
+                        <DropdownMenuTrigger asChild>
+                          <TooltipTrigger asChild>
+                            <Button aria-label="更多操作" size="icon" variant="ghost">
+                              <MoreHorizontal size={14} />
+                            </Button>
+                          </TooltipTrigger>
+                        </DropdownMenuTrigger>
+                        <TooltipContent>更多操作</TooltipContent>
                       </Tooltip>
-                    </TableCell>
-                    <TableCell className="font-mono">{record.ip}</TableCell>
-                    <TableCell>{record.domain}</TableCell>
-                    <TableCell className="text-slate-500">{record.remark || '--'}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <Tooltip>
-                          <DropdownMenuTrigger asChild>
-                            <TooltipTrigger asChild>
-                              <Button aria-label="更多操作" size="icon" variant="ghost">
-                                <MoreHorizontal size={14} />
-                              </Button>
-                            </TooltipTrigger>
-                          </DropdownMenuTrigger>
-                          <TooltipContent>更多操作</TooltipContent>
-                        </Tooltip>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => copy(`${record.ip} ${record.domain}`)}>
-                            <Copy size={14} />
-                            复制映射
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              void window.api?.hosts.openDomain(record.domain).catch(showError)
-                            }
-                          >
-                            <ExternalLink size={14} />
-                            访问域名
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setDraft(record)
-                              setDrawerOpen(true)
-                            }}
-                          >
-                            <Save size={14} />
-                            编辑记录
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <ConfirmAction
-                        description={`将从受管 Hosts 区块删除 ${record.domain}，保存后立即影响本机解析。`}
-                        onConfirm={() => remove(record.id)}
-                        title="删除 Hosts 记录？"
-                        triggerTooltip="删除"
-                      >
-                        <Button aria-label="删除" size="icon" variant="ghost">
-                          <Trash2 size={14} />
-                        </Button>
-                      </ConfirmAction>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!filtered.length && (
-                  <TableRow>
-                    <TableCell className="py-10 text-center text-slate-400" colSpan={5}>
-                      {query ? '没有匹配记录' : '暂无受管 Hosts 记录'}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => copy(`${record.ip} ${record.domain}`)}>
+                          <Copy size={14} />
+                          复制映射
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            void window.api?.hosts.openDomain(record.domain).catch(showError)
+                          }
+                        >
+                          <ExternalLink size={14} />
+                          访问域名
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setDraft(record)
+                            setDrawerOpen(true)
+                          }}
+                        >
+                          <Save size={14} />
+                          编辑记录
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <ConfirmAction
+                      description={`将从受管 Hosts 区块删除 ${record.domain}，保存后立即影响本机解析。`}
+                      onConfirm={() => remove(record.id)}
+                      title="删除 Hosts 记录？"
+                      triggerTooltip="删除"
+                    >
+                      <Button aria-label="删除" size="icon" variant="ghost">
+                        <Trash2 size={14} />
+                      </Button>
+                    </ConfirmAction>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {!filtered.length && (
+                <TableRow>
+                  <TableCell className="py-10 text-center text-slate-400" colSpan={5}>
+                    {query ? '没有匹配记录' : '暂无受管 Hosts 记录'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </ResourcePanel>
       <Drawer
         description="首次写入前会自动备份原始 Hosts 文件；保存失败时会保留当前输入。"
         footer={

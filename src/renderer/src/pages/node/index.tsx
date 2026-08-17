@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
@@ -13,7 +13,7 @@ import {
   Terminal,
   Trash2
 } from 'lucide-react'
-import type { NodeEnvironmentPath, NodeRelease, NodeState, NodeTask } from '@shared/domain'
+import type { NodeState, NodeTask } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,7 +25,6 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tabs } from '@/components/ui/tabs'
-import { rendererLogger } from '@/lib/logger'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { SearchInput } from '@/components/SearchInput'
 import {
@@ -45,30 +44,42 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/co
 import { CachePanel } from './components/CachePanel'
 import { PackagePanel } from './components/PackagePanel'
 import { RegistryPanel } from './components/RegistryPanel'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useNodeEnvironmentPaths } from './hooks/useNodeEnvironmentPaths'
+import { useNodeReleases } from './hooks/useNodeReleases'
 
 export function NodePage(): React.JSX.Element {
   const [state, setState] = useState<NodeState | null>(null)
-  const [releases, setReleases] = useState<NodeRelease[]>([])
-  const [keyword, setKeyword] = useState('')
-  const [channel, setChannel] = useState<'all' | 'lts' | 'current'>('all')
-  const [releasePage, setReleasePage] = useState(1)
-  const [environmentPaths, setEnvironmentPaths] = useState<NodeEnvironmentPath[]>([])
   const [tasks, setTasks] = useState<NodeTask[]>([])
-  const [releasesLoading, setReleasesLoading] = useState(true)
-  const [environmentLoading, setEnvironmentLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('available')
   const [activeEnvironmentTab, setActiveEnvironmentTab] = useState('paths')
   const [cacheLoading, setCacheLoading] = useState(false)
   const [versionAction, setVersionAction] = useState('')
   const cacheScanRequested = useRef(false)
   const initialLoadRequested = useRef(false)
-  const environmentPathsRequested = useRef(false)
   const [loading, setLoading] = useState(true)
-  const report = useCallback((error: unknown): void => {
-    const message = error instanceof Error ? error.message : String(error)
-    toast.error(message)
-    rendererLogger.error('Node 操作失败', { error: message })
-  }, [])
+  const { report } = usePageFeedback('Node 操作失败', { keepStatus: false })
+  const {
+    keyword,
+    setKeyword,
+    channel,
+    setChannel,
+    page: releasePage,
+    setPage: setReleasePage,
+    pageCount: releasePageCount,
+    total: releaseTotal,
+    visibleReleases,
+    loading: releasesLoading,
+    refresh: refreshReleases
+  } = useNodeReleases(report)
+  const {
+    paths: environmentPaths,
+    loading: environmentLoading,
+    refresh: loadEnvironmentPaths
+  } = useNodeEnvironmentPaths(
+    activeTab === 'environment' && activeEnvironmentTab === 'paths',
+    report
+  )
   const load = useCallback((): void => {
     setLoading(true)
     void window.api?.node
@@ -80,24 +91,10 @@ export function NodePage(): React.JSX.Element {
       .catch(report)
       .finally(() => setLoading(false))
   }, [report])
-  const loadEnvironmentPaths = useCallback((): void => {
-    environmentPathsRequested.current = true
-    setEnvironmentLoading(true)
-    void window.api?.node
-      .environmentPaths()
-      .then(setEnvironmentPaths)
-      .catch(report)
-      .finally(() => setEnvironmentLoading(false))
-  }, [report])
   useEffect(() => {
     if (initialLoadRequested.current) return
     initialLoadRequested.current = true
     load()
-    void window.api?.node
-      .releases({ channel: 'all' })
-      .then(setReleases)
-      .catch(report)
-      .finally(() => setReleasesLoading(false))
   }, [load, report])
   useEffect(() => {
     return window.api?.node.onTaskUpdated((value) => {
@@ -105,42 +102,6 @@ export function NodePage(): React.JSX.Element {
       setTasks(value.tasks)
     })
   }, [])
-  useEffect(() => {
-    if (
-      activeTab === 'environment' &&
-      activeEnvironmentTab === 'paths' &&
-      !environmentPathsRequested.current
-    ) {
-      void Promise.resolve().then(loadEnvironmentPaths)
-    }
-  }, [activeEnvironmentTab, activeTab, loadEnvironmentPaths])
-  const refreshReleases = (): void => {
-    setReleasesLoading(true)
-    void window.api?.node
-      .releases({ channel: 'all', refresh: true })
-      .then(setReleases)
-      .catch(report)
-      .finally(() => setReleasesLoading(false))
-  }
-  const filteredReleases = useMemo(() => {
-    const normalized = keyword.trim().toLowerCase()
-    return releases.filter((release) => {
-      const matchesChannel =
-        channel === 'all' || (channel === 'lts' ? Boolean(release.lts) : release.lts === false)
-      const matchesKeyword =
-        !normalized ||
-        release.version.toLowerCase().includes(normalized) ||
-        release.lts?.toString().toLowerCase().includes(normalized) ||
-        release.npm?.toLowerCase().includes(normalized)
-      return matchesChannel && matchesKeyword
-    })
-  }, [channel, keyword, releases])
-  const releasePageSize = 25
-  const releasePageCount = Math.max(1, Math.ceil(filteredReleases.length / releasePageSize))
-  const visibleReleases = filteredReleases.slice(
-    (Math.min(releasePage, releasePageCount) - 1) * releasePageSize,
-    Math.min(releasePage, releasePageCount) * releasePageSize
-  )
   /** 缓存目录统计可能耗时较长，仅在用户打开缓存页签后按需执行。 */
   const scanCaches = useCallback((): void => {
     setCacheLoading(true)
@@ -332,12 +293,13 @@ export function NodePage(): React.JSX.Element {
             </SelectContent>
           </Select>
           <TooltipButton
+            disabled={releasesLoading}
             onClick={refreshReleases}
             size="icon"
             tooltip="刷新版本"
             variant="secondary"
           >
-            <RefreshCw size={14} />
+            {releasesLoading ? <Spinner /> : <RefreshCw size={14} />}
           </TooltipButton>
         </div>
         <ScrollArea className="min-h-0 flex-1 pr-2">
@@ -398,9 +360,7 @@ export function NodePage(): React.JSX.Element {
         </ScrollArea>
         <div className="flex shrink-0 items-center justify-between text-xs text-slate-500">
           <span>
-            {releasesLoading
-              ? '正在读取 Node 官方版本索引'
-              : `共 ${filteredReleases.length} 个版本`}
+            {releasesLoading ? '正在读取 Node 官方版本索引' : `共 ${releaseTotal} 个版本`}
           </span>
           <div className="flex items-center gap-1">
             <TooltipButton
