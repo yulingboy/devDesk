@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, ExternalLink, Play, RefreshCw, Square, XCircle } from 'lucide-react'
 import type { EnvironmentCheck, EnvironmentTool } from '@shared/domain'
+import { CheckCircle2, ExternalLink, Play, RefreshCw, Square, XCircle } from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
@@ -13,6 +12,7 @@ import { Card } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ConfirmAction } from '@/components/ConfirmAction'
+import { useEnvironmentChecks } from '../hooks/useEnvironmentChecks'
 
 const groups: Array<{ id: EnvironmentTool['group']; label: string }> = [
   { id: 'base', label: '基础' },
@@ -39,76 +39,19 @@ export function EnvironmentCheckPanel({
 }: {
   report: (error: unknown) => void
 }): React.JSX.Element {
-  const [checks, setChecks] = useState<EnvironmentCheck[]>([])
-  const [tools, setTools] = useState<EnvironmentTool[]>([])
-  const [checkedAt, setCheckedAt] = useState<string>()
-  const [running, setRunning] = useState(false)
-  const [stopping, setStopping] = useState(false)
-  const [pendingTool, setPendingTool] = useState<string>()
-
-  useEffect(() => {
-    void Promise.allSettled([
-      window.api!.settings.environmentTools(),
-      window.api!.settings.environmentCheckSnapshot()
-    ]).then(([toolsResult, snapshotResult]) => {
-      if (toolsResult.status === 'fulfilled') setTools(toolsResult.value)
-      else report(toolsResult.reason)
-      if (snapshotResult.status === 'fulfilled' && snapshotResult.value) {
-        setChecks(snapshotResult.value.checks)
-        setCheckedAt(snapshotResult.value.checkedAt)
-      }
-    })
-    return window.api!.settings.onEnvironmentCheckUpdated(setChecks)
-  }, [report])
-
-  const checkMap = useMemo(() => new Map(checks.map((item) => [item.id, item])), [checks])
-  const summary = useMemo(() => {
-    const passed = checks.filter((item) => item.status === 'passed').length
-    return {
-      passed,
-      issues: checks.length - passed,
-      unchecked: Math.max(tools.length - checks.length, 0)
-    }
-  }, [checks, tools.length])
-  const replaceCheck = (result: EnvironmentCheck): void => {
-    setChecks((current) => {
-      const index = current.findIndex((item) => item.id === result.id)
-      if (index < 0) return [...current, result]
-      const next = [...current]
-      next[index] = result
-      return next
-    })
-    setCheckedAt(result.checkedAt)
-  }
-  const run = (): void => {
-    setRunning(true)
-    void window
-      .api!.settings.environmentCheck()
-      .then((value) => {
-        setChecks(value)
-        setCheckedAt(new Date().toISOString())
-      })
-      .catch(report)
-      .finally(() => {
-        setRunning(false)
-        setStopping(false)
-      })
-  }
-  const retry = (id: string): void => {
-    setPendingTool(id)
-    void window
-      .api!.settings.environmentCheckTool(id)
-      .then(replaceCheck)
-      .catch(report)
-      .finally(() => setPendingTool(undefined))
-  }
-  const stop = (): void => {
-    setStopping(true)
-    void window.api!.settings.stopEnvironmentCheck().catch((error) => {
-      setStopping(false)
-      report(error)
-    })
-  }
+  const {
+    tools,
+    checkedAt,
+    running,
+    stopping,
+    pendingTool,
+    checkMap,
+    summary,
+    run,
+    retry,
+    stop,
+    install
+  } = useEnvironmentChecks(report)
 
   const renderGroup = (group: EnvironmentTool['group']): React.JSX.Element => {
     const groupTools = tools.filter((tool) => tool.group === group)
@@ -167,14 +110,7 @@ export function EnvironmentCheckPanel({
                     {failed && tool.installable ? (
                       <ConfirmAction
                         description={`将执行：${tool.installCommand}${tool.prerequisite ? `。${tool.prerequisite}` : ''}`}
-                        onConfirm={async () => {
-                          setPendingTool(tool.id)
-                          await window
-                            .api!.settings.installEnvironmentTool(tool.id)
-                            .then(replaceCheck)
-                            .catch(report)
-                            .finally(() => setPendingTool(undefined))
-                        }}
+                        onConfirm={() => install(tool.id)}
                         title={`安装 ${tool.name}？`}
                       >
                         <Button disabled={Boolean(pendingTool)} size="sm" variant="outline">

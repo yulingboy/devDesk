@@ -430,6 +430,12 @@ const autoInstallCommands: Record<string, { command: string; args: string[] }> =
   yarn: { command: 'corepack', args: ['prepare', 'yarn@stable', '--activate'] }
 }
 
+function findEnvironmentCommand(id: string): EnvironmentCommand {
+  const tool = environmentCommands.find((item) => item.id === id)
+  if (!tool) throw new Error('未知的环境工具')
+  return tool
+}
+
 /** 工具能力由主进程定义，渲染层不能自行拼接任意安装命令。 */
 export function listEnvironmentTools(): EnvironmentTool[] {
   return environmentCommands.map((item) => ({
@@ -456,9 +462,8 @@ export async function openEnvironmentGuide(id: string): Promise<void> {
 
 /** 仅允许执行审查过的本地安装命令，其他工具必须走官方安装说明。 */
 export async function installEnvironmentTool(id: string): Promise<EnvironmentCheck> {
-  const tool = environmentCommands.find((item) => item.id === id)
+  const tool = findEnvironmentCommand(id)
   const installer = autoInstallCommands[id]
-  if (!tool) throw new Error('未知的环境工具')
   if (!installer) throw new Error(`${tool.name} 不支持自动安装，请使用官方安装指引`)
   try {
     const env = await getUserShellEnvironment()
@@ -596,8 +601,7 @@ export function getEnvironmentCheckSnapshot(): Promise<EnvironmentCheckSnapshot 
 }
 
 export async function checkEnvironmentTool(id: string): Promise<EnvironmentCheck> {
-  const tool = environmentCommands.find((item) => item.id === id)
-  if (!tool) throw new Error('未知的环境工具')
+  const tool = findEnvironmentCommand(id)
   const [result] = await runEnvironmentCheck(() => false, undefined, undefined, [tool], false)
   if (!result) throw new Error('环境检测没有返回结果')
   await persistEnvironmentCheck(result)

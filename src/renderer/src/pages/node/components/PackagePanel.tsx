@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   ArrowRightLeft,
   Download,
@@ -9,7 +9,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { GlobalPackage, NodePackageManagerStatus, NodeState } from '@shared/domain'
+import type { NodePackageManagerStatus, NodeState } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,6 +38,7 @@ import {
   ItemTitle
 } from '@/components/ui/item'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { useGlobalPackages } from '../hooks/useGlobalPackages'
 
 interface PackagePanelProps {
   state: NodeState | null
@@ -52,41 +53,16 @@ export function PackagePanel({
   onState,
   section = 'all'
 }: PackagePanelProps): React.JSX.Element {
-  const [packages, setPackages] = useState<GlobalPackage[]>([])
-  const [keyword, setKeyword] = useState('')
   const [packageName, setPackageName] = useState('')
   const [drawerMode, setDrawerMode] = useState<'package' | 'registry' | 'sync' | null>(null)
   const [editingManager, setEditingManager] = useState<NodePackageManagerStatus | null>(null)
   const [registry, setRegistry] = useState('')
   const [sourceVersion, setSourceVersion] = useState('')
   const [syncing, setSyncing] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [checking, setChecking] = useState(false)
-  const autoLoadKey = useRef('')
+  const { packages, setPackages, keyword, setKeyword, loading, checking, load, checkOutdated } =
+    useGlobalPackages(state, report)
 
   const syncSources = state?.installed.filter((item) => item.version !== state.currentVersion) ?? []
-
-  const load = (): void => {
-    setLoading(true)
-    void window.api?.node
-      .packages(keyword)
-      .then(setPackages)
-      .catch(report)
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => {
-    if (!state?.packageManagerVersion) return
-    const key = `${state.currentVersion}:${state.packageManager}:${state.packageManagerVersion}`
-    if (autoLoadKey.current === key) return
-    autoLoadKey.current = key
-    setPackages([])
-    setLoading(true)
-    void window.api?.node
-      .packages('')
-      .then(setPackages)
-      .catch(report)
-      .finally(() => setLoading(false))
-  }, [report, state?.currentVersion, state?.packageManager, state?.packageManagerVersion])
 
   return (
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -218,14 +194,7 @@ export function PackagePanel({
               </TooltipButton>
               <TooltipButton
                 disabled={checking || loading}
-                onClick={() => {
-                  setChecking(true)
-                  void window.api?.node
-                    .checkOutdated()
-                    .then(setPackages)
-                    .catch(report)
-                    .finally(() => setChecking(false))
-                }}
+                onClick={checkOutdated}
                 size="icon"
                 tooltip="检查过期包"
                 variant="secondary"
