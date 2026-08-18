@@ -53,6 +53,8 @@ export function WorkspacesPage(): React.JSX.Element {
     remark: string
   }>()
   const [savingRemark, setSavingRemark] = useState(false)
+  const [savingWorkspace, setSavingWorkspace] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const deepLinkHandled = useRef(false)
   const { status, report, clearError } = usePageFeedback('工作区操作失败')
   const {
@@ -86,17 +88,32 @@ export function WorkspacesPage(): React.JSX.Element {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [setSelectedProjectId, setSelectedWorkspaceId, workspaces])
-  const save = (): void => {
-    void window.api?.workspaces
-      .save(draft)
-      .then((value) => {
-        setWorkspaces(value)
-        setDraft(emptyWorkspace)
-        setDrawerMode(null)
-        clearError()
-        toast.success('工作区已保存')
-      })
-      .catch(report)
+  const save = async (): Promise<void> => {
+    if (savingWorkspace) return
+    setSavingWorkspace(true)
+    try {
+      const value = await window.api?.workspaces.save(draft)
+      if (!value) throw new Error('当前页面未连接桌面服务，无法保存工作区。')
+      setWorkspaces(value)
+      setDraft(emptyWorkspace)
+      setDrawerMode(null)
+      clearError()
+      toast.success('工作区已保存')
+    } catch (error) {
+      report(error)
+    } finally {
+      setSavingWorkspace(false)
+    }
+  }
+  const refresh = async (): Promise<void> => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await load()
+      toast.success('工作区数据已刷新')
+    } finally {
+      setRefreshing(false)
+    }
   }
   const scan = async (id: string): Promise<void> => {
     if (scanningWorkspaceId) return
@@ -251,7 +268,7 @@ export function WorkspacesPage(): React.JSX.Element {
             }}
             onOpen={() => void window.api?.workspaces.open(visibleWorkspace.id).catch(report)}
             onQueryChange={setQuery}
-            onRefresh={load}
+            onRefresh={() => void refresh()}
             onScan={() => void scan(visibleWorkspace.id)}
             onSelectWorkspace={(id) => {
               setSelectedWorkspaceId(id)
@@ -260,6 +277,7 @@ export function WorkspacesPage(): React.JSX.Element {
             }}
             onViewDetails={() => setDrawerMode('workspace-detail')}
             query={query}
+            refreshing={refreshing}
             scanResult={scanResult}
             scanning={scanningWorkspaceId === visibleWorkspace.id}
             templatesAvailable={templates.length > 0}
@@ -314,7 +332,12 @@ export function WorkspacesPage(): React.JSX.Element {
             <Button onClick={() => setDrawerMode(null)} variant="secondary">
               取消
             </Button>
-            <Button onClick={save} variant="success">
+            <Button
+              loading={savingWorkspace}
+              loadingText="保存中"
+              onClick={() => void save()}
+              variant="success"
+            >
               <Save size={15} />
               保存
             </Button>

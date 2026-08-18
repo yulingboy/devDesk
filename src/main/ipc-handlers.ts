@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog } from 'electron'
-import type { ChildProcess } from 'node:child_process'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type { RendererErrorReport, RendererLogEntry, RuntimeInfo, WindowState } from '@shared/types'
 import type {
@@ -30,12 +29,6 @@ import {
   changeDataDirectory,
   clearBusinessData,
   getDataStats,
-  runEnvironmentCheck,
-  openEnvironmentGuide,
-  installEnvironmentTool,
-  listEnvironmentTools,
-  getEnvironmentCheckSnapshot,
-  checkEnvironmentTool,
   getLogStats,
   openLogDirectory,
   clearLogArchives
@@ -360,55 +353,6 @@ export function registerApplicationIpc(): void {
     const result = await clearBusinessData()
     broadcastDataChanged()
     return result
-  })
-  const stoppedEnvironmentChecks = new Set<number>()
-  const activeEnvironmentChecks = new Map<number, ChildProcess>()
-  const runningEnvironmentChecks = new Set<number>()
-  registerIpcHandler(IPC_CHANNELS.settings.environmentCheck, (event) => {
-    if (runningEnvironmentChecks.has(event.sender.id)) {
-      throw new Error('环境检测正在运行，请等待完成或先停止当前检测')
-    }
-    runningEnvironmentChecks.add(event.sender.id)
-    stoppedEnvironmentChecks.delete(event.sender.id)
-    return runEnvironmentCheck(
-      () => stoppedEnvironmentChecks.has(event.sender.id) || event.sender.isDestroyed(),
-      (checks) => {
-        if (!event.sender.isDestroyed())
-          event.sender.send(IPC_CHANNELS.settings.environmentCheckUpdated, checks)
-      },
-      (child) => {
-        if (child) activeEnvironmentChecks.set(event.sender.id, child)
-        else activeEnvironmentChecks.delete(event.sender.id)
-      }
-    ).finally(() => {
-      stoppedEnvironmentChecks.delete(event.sender.id)
-      activeEnvironmentChecks.delete(event.sender.id)
-      runningEnvironmentChecks.delete(event.sender.id)
-    })
-  })
-  registerIpcHandler<void>(IPC_CHANNELS.settings.stopEnvironmentCheck, (event) => {
-    stoppedEnvironmentChecks.add(event.sender.id)
-    activeEnvironmentChecks.get(event.sender.id)?.kill()
-  })
-  registerIpcHandler(IPC_CHANNELS.settings.openEnvironmentGuide, (_, id) =>
-    openEnvironmentGuide(String(id))
-  )
-  registerIpcHandler(IPC_CHANNELS.settings.environmentTools, () => listEnvironmentTools())
-  registerIpcHandler(IPC_CHANNELS.settings.environmentCheckSnapshot, () =>
-    getEnvironmentCheckSnapshot()
-  )
-  registerIpcHandler(IPC_CHANNELS.settings.environmentCheckTool, (event, id) => {
-    if (runningEnvironmentChecks.has(event.sender.id)) throw new Error('环境检测正在运行')
-    return checkEnvironmentTool(String(id))
-  })
-  registerIpcHandler(IPC_CHANNELS.settings.installEnvironmentTool, async (event, id) => {
-    if (runningEnvironmentChecks.has(event.sender.id)) throw new Error('环境操作正在运行')
-    runningEnvironmentChecks.add(event.sender.id)
-    try {
-      return await installEnvironmentTool(String(id))
-    } finally {
-      runningEnvironmentChecks.delete(event.sender.id)
-    }
   })
   registerIpcHandler(IPC_CHANNELS.settings.dataStats, () => getDataStats())
   registerIpcHandler(IPC_CHANNELS.settings.logStats, () => getLogStats())

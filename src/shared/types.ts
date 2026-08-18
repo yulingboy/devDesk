@@ -67,18 +67,15 @@ import type {
   SSHKeyGenerateOptions,
   SystemOverviewSnapshot,
   Workspace,
-  EnvironmentCheck,
   GlobalPackage,
   NodeRegistry,
   DataStats,
-  EnvironmentTool,
   GitIdentityDetail,
   NodeEnvironmentPath,
   NodeTask,
   SSHDeleteImpact,
   WorkspaceScanResult,
   DialogOperationResult,
-  EnvironmentCheckSnapshot,
   LogStats
 } from './domain'
 
@@ -203,14 +200,6 @@ export interface AppApi {
     openData: () => Promise<void>
     changeDataDirectory: () => Promise<DialogOperationResult<AppSettings>>
     clearBusinessData: () => Promise<AppSettings>
-    environmentCheck: () => Promise<EnvironmentCheck[]>
-    environmentCheckSnapshot: () => Promise<EnvironmentCheckSnapshot | null>
-    environmentCheckTool: (id: string) => Promise<EnvironmentCheck>
-    stopEnvironmentCheck: () => Promise<void>
-    openEnvironmentGuide: (id: string) => Promise<void>
-    environmentTools: () => Promise<EnvironmentTool[]>
-    installEnvironmentTool: (id: string) => Promise<EnvironmentCheck>
-    onEnvironmentCheckUpdated: (listener: (checks: EnvironmentCheck[]) => void) => () => void
     dataStats: () => Promise<DataStats>
     logStats: () => Promise<LogStats>
     openLogs: () => Promise<void>

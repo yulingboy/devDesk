@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import {
   AlertTriangle,
   ArrowRightLeft,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -47,6 +48,7 @@ import { RegistryPanel } from './components/RegistryPanel'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useNodeEnvironmentPaths } from './hooks/useNodeEnvironmentPaths'
 import { useNodeReleases } from './hooks/useNodeReleases'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 export function NodePage(): React.JSX.Element {
   const [state, setState] = useState<NodeState | null>(null)
@@ -59,6 +61,7 @@ export function NodePage(): React.JSX.Element {
   const initialLoadRequested = useRef(false)
   const [loading, setLoading] = useState(true)
   const { report } = usePageFeedback('Node 操作失败', { keepStatus: false })
+  const { isPending, run } = useAsyncAction(report)
   const {
     keyword,
     setKeyword,
@@ -80,17 +83,21 @@ export function NodePage(): React.JSX.Element {
     activeTab === 'environment' && activeEnvironmentTab === 'paths',
     report
   )
-  const load = useCallback((): void => {
-    setLoading(true)
-    void window.api?.node
-      .getState()
-      .then((value) => {
-        setState(value)
-        setTasks(value.tasks)
-      })
-      .catch(report)
-      .finally(() => setLoading(false))
-  }, [report])
+  const load = useCallback(
+    (notify = false): void => {
+      setLoading(true)
+      void window.api?.node
+        .getState()
+        .then((value) => {
+          setState(value)
+          setTasks(value.tasks)
+          if (notify) toast.success('Node 状态已刷新')
+        })
+        .catch(report)
+        .finally(() => setLoading(false))
+    },
+    [report]
+  )
   useEffect(() => {
     if (initialLoadRequested.current) return
     initialLoadRequested.current = true
@@ -103,17 +110,23 @@ export function NodePage(): React.JSX.Element {
     })
   }, [])
   /** 缓存目录统计可能耗时较长，仅在用户打开缓存页签后按需执行。 */
-  const scanCaches = useCallback((): void => {
-    setCacheLoading(true)
-    void window.api?.node
-      .scanCaches()
-      .then(setState)
-      .catch(report)
-      .finally(() => {
-        cacheScanRequested.current = false
-        setCacheLoading(false)
-      })
-  }, [report])
+  const scanCaches = useCallback(
+    (notify = false): void => {
+      setCacheLoading(true)
+      void window.api?.node
+        .scanCaches()
+        .then((value) => {
+          setState(value)
+          if (notify) toast.success('缓存占用已重新统计')
+        })
+        .catch(report)
+        .finally(() => {
+          cacheScanRequested.current = false
+          setCacheLoading(false)
+        })
+    },
+    [report]
+  )
   useEffect(() => {
     if (
       activeTab === 'environment' &&
@@ -123,10 +136,12 @@ export function NodePage(): React.JSX.Element {
       !cacheScanRequested.current
     ) {
       cacheScanRequested.current = true
-      void Promise.resolve().then(scanCaches)
+      void Promise.resolve().then(() => scanCaches())
     }
   }, [activeEnvironmentTab, activeTab, cacheLoading, scanCaches, state?.caches.length])
   const install = (version: string): void => {
+    if (versionAction) return
+    setVersionAction(`install:${version}`)
     toast.info(`正在安装 Node ${version}...`)
     void window.api?.node
       .install({ version })
@@ -136,6 +151,7 @@ export function NodePage(): React.JSX.Element {
         toast.success('Node 安装任务已完成')
       })
       .catch(report)
+      .finally(() => setVersionAction(''))
   }
 
   /** 切换和设置默认都需要回写完整状态，避免按钮成功后徽标仍停留在旧快照。 */
@@ -165,7 +181,13 @@ export function NodePage(): React.JSX.Element {
             切换会更新工作台后续命令的 Node 环境；设置默认会影响新终端会话。
           </CardDescription>
         </div>
-        <TooltipButton onClick={load} size="icon" tooltip="刷新状态" variant="ghost">
+        <TooltipButton
+          loading={loading}
+          onClick={() => load(true)}
+          size="icon"
+          tooltip="刷新状态"
+          variant="ghost"
+        >
           <RefreshCw size={15} />
         </TooltipButton>
       </CardHeader>
@@ -183,21 +205,19 @@ export function NodePage(): React.JSX.Element {
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
-                  <Button
+                  <TooltipButton
                     disabled={
                       item.isCurrent || !state?.capabilities?.canSwitch || Boolean(versionAction)
                     }
+                    loading={versionAction === `switch:${item.version}`}
+                    loadingText="切换中"
                     onClick={() => changeVersion(item.version, false)}
-                    size="sm"
-                    variant="secondary"
+                    size="icon"
+                    tooltip="切换 Node 版本"
+                    variant="ghost"
                   >
-                    {versionAction === `switch:${item.version}` ? (
-                      <Spinner />
-                    ) : (
-                      <ArrowRightLeft size={13} />
-                    )}
-                    切换
-                  </Button>
+                    <ArrowRightLeft size={13} />
+                  </TooltipButton>
                   <TooltipButton
                     disabled={!state?.capabilities?.canUseInTerminal || Boolean(versionAction)}
                     onClick={() =>
@@ -212,24 +232,34 @@ export function NodePage(): React.JSX.Element {
                   >
                     <Terminal size={14} />
                   </TooltipButton>
-                  <Button
+                  <TooltipButton
                     disabled={
                       item.isDefault ||
                       !state?.capabilities?.canSetDefault ||
                       Boolean(versionAction)
                     }
+                    loading={versionAction === `default:${item.version}`}
+                    loadingText="设置中"
                     onClick={() => changeVersion(item.version, true)}
-                    size="sm"
+                    size="icon"
+                    tooltip="设为默认 Node 版本"
                     variant="ghost"
                   >
-                    {versionAction === `default:${item.version}` && <Spinner />}
-                    设为默认
-                  </Button>
+                    <CheckCircle2 size={13} />
+                  </TooltipButton>
                   <ConfirmAction
                     description={`将删除本机 nvm 管理的 Node ${item.version}。当前使用中的版本不能删除。`}
-                    onConfirm={() =>
-                      void window.api?.node.remove(item.version).then(setState).catch(report)
-                    }
+                    onConfirm={async () => {
+                      const value = await run(
+                        `node-remove:${item.version}`,
+                        () => window.api!.node.remove(item.version),
+                        { success: `Node ${item.version} 已删除` }
+                      )
+                      if (value) {
+                        setState(value)
+                        setTasks(value.tasks)
+                      }
+                    }}
                     title="删除 Node 版本？"
                     triggerTooltip="删除版本"
                   >
@@ -332,21 +362,24 @@ export function NodePage(): React.JSX.Element {
                     </ItemDescription>
                   </ItemContent>
                   <ItemActions>
-                    <Button
+                    <TooltipButton
                       disabled={
                         !release.platformSupported ||
                         !state?.capabilities?.canInstall ||
+                        Boolean(versionAction) ||
                         state?.installed.some(
                           (item) => item.version === release.version.replace(/^v/, '')
                         )
                       }
+                      loading={versionAction === `install:${release.version.replace(/^v/, '')}`}
+                      loadingText="安装中"
                       onClick={() => install(release.version.replace(/^v/, ''))}
-                      size="sm"
-                      variant="secondary"
+                      size="icon"
+                      tooltip="安装 Node 版本"
+                      variant="ghost"
                     >
                       <Download size={13} />
-                      安装
-                    </Button>
+                    </TooltipButton>
                   </ItemActions>
                 </Item>
               ))}
@@ -456,15 +489,15 @@ export function NodePage(): React.JSX.Element {
         </div>
         <ConfirmAction
           description="将清理已完成、已失败和已取消的任务记录；正在执行的安装任务会保留。"
-          onConfirm={() =>
-            void window.api?.node
-              .clearTasks()
-              .then((value) => {
-                setState(value)
-                setTasks(value.tasks)
-              })
-              .catch(report)
-          }
+          onConfirm={async () => {
+            const value = await run('tasks-clear', () => window.api!.node.clearTasks(), {
+              success: '任务历史已清理'
+            })
+            if (value) {
+              setState(value)
+              setTasks(value.tasks)
+            }
+          }}
           title="清理任务历史？"
         >
           <Button size="sm" variant="ghost">
@@ -498,40 +531,47 @@ export function NodePage(): React.JSX.Element {
                     {['waiting', 'downloading', 'extracting'].includes(task.status) && (
                       <ConfirmAction
                         description={`将终止 Node ${task.version} 的安装任务，并清除未完成的安装文件。`}
-                        onConfirm={() =>
-                          void window.api?.node
-                            .cancelTask(task.id)
-                            .then((value) => {
-                              setState(value)
-                              setTasks(value.tasks)
-                            })
-                            .catch(report)
-                        }
+                        onConfirm={async () => {
+                          const value = await run(
+                            `task-cancel:${task.id}`,
+                            () => window.api!.node.cancelTask(task.id),
+                            { success: `Node ${task.version} 安装任务已取消` }
+                          )
+                          if (value) {
+                            setState(value)
+                            setTasks(value.tasks)
+                          }
+                        }}
                         title="取消安装任务？"
+                        triggerTooltip="取消安装任务"
                       >
-                        <Button size="sm" variant="secondary">
+                        <Button aria-label="取消安装任务" size="icon" variant="ghost">
                           <Square size={13} />
-                          取消任务
                         </Button>
                       </ConfirmAction>
                     )}
                     {['failed', 'cancelled'].includes(task.status) && (
-                      <Button
+                      <TooltipButton
+                        loading={isPending(`task-retry:${task.id}`)}
+                        loadingText="重试中"
                         onClick={() =>
-                          void window.api?.node
-                            .retryTask(task.id)
-                            .then((value) => {
+                          void run(
+                            `task-retry:${task.id}`,
+                            () => window.api!.node.retryTask(task.id),
+                            { success: `Node ${task.version} 安装任务已重新启动` }
+                          ).then((value) => {
+                            if (value) {
                               setState(value)
                               setTasks(value.tasks)
-                            })
-                            .catch(report)
+                            }
+                          })
                         }
-                        size="sm"
+                        size="icon"
+                        tooltip="重试安装任务"
                         variant="secondary"
                       >
                         <RotateCcw size={13} />
-                        重试
-                      </Button>
+                      </TooltipButton>
                     )}
                   </div>
                 </AccordionContent>
@@ -565,13 +605,13 @@ export function NodePage(): React.JSX.Element {
             </p>
           </div>
           <TooltipButton
-            disabled={loading}
-            onClick={load}
+            loading={loading}
+            onClick={() => load(true)}
             size="icon"
             tooltip="刷新 Node 状态"
             variant="ghost"
           >
-            {loading ? <Spinner /> : <RefreshCw size={15} />}
+            <RefreshCw size={15} />
           </TooltipButton>
         </div>
         <div className="grid gap-2 sm:grid-cols-4">
@@ -641,7 +681,7 @@ export function NodePage(): React.JSX.Element {
                     content: (
                       <CachePanel
                         loading={cacheLoading}
-                        onScan={scanCaches}
+                        onScan={() => scanCaches(true)}
                         onState={setState}
                         report={report}
                         state={state}

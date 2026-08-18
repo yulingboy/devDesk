@@ -2,7 +2,6 @@ import { Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Field } from '@/components/ui/form'
-import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
 interface ProjectRemarkDrawerProps {
@@ -33,8 +32,8 @@ export function ProjectRemarkDrawer({
           <Button disabled={saving} onClick={onClose} variant="secondary">
             取消
           </Button>
-          <Button disabled={saving} onClick={onSave} variant="success">
-            {saving ? <Spinner /> : <Save />}
+          <Button loading={saving} loadingText="保存中" onClick={onSave} variant="success">
+            <Save />
             保存
           </Button>
         </>

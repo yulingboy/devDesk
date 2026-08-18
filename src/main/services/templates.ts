@@ -50,7 +50,7 @@ function describeCloneFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   const text = message.toLowerCase()
   if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT')
-    return 'Git 未安装，请先在环境检测中安装或配置 Git'
+    return 'Git 未安装，请先安装并配置 Git'
   if (/authentication|credential|terminal prompts disabled|could not read username/.test(text))
     return 'Git 凭据验证失败，请检查访问令牌、SSH 密钥或仓库权限'
   if (/timed out|etimedout|timeout/.test(text)) return '克隆超时，请检查网络后重试'

@@ -34,6 +34,7 @@ import {
 import { ResourcePanel } from '@/components/ResourcePanel'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useInitialLoad } from '@/hooks/useInitialLoad'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 const emptyTemplate: ProjectTemplate = {
   id: '',
@@ -52,6 +53,7 @@ export function TemplatesPage(): React.JSX.Element {
   const [drawerMode, setDrawerMode] = useState<'template' | 'project' | null>(null)
   const [loading, setLoading] = useState(true)
   const { status, report, clearError } = usePageFeedback('模板操作失败')
+  const { isPending, run } = useAsyncAction(report)
   const load = useCallback((): void => {
     void Promise.all([window.api?.templates.list(), window.api?.workspaces.list()])
       .then(([templateValue, workspaceValue]) => {
@@ -66,17 +68,16 @@ export function TemplatesPage(): React.JSX.Element {
       .finally(() => setLoading(false))
   }, [report])
   useInitialLoad(load)
-  const save = (): void => {
-    void window.api?.templates
-      .save(draft)
-      .then((value) => {
-        setTemplates(value)
-        setDraft(emptyTemplate)
-        setDrawerMode(null)
-        clearError()
-        toast.success('模板已保存')
-      })
-      .catch(report)
+  const save = async (): Promise<void> => {
+    const value = await run('template-save', () => window.api!.templates.save(draft), {
+      success: '模板已保存'
+    })
+    if (value) {
+      setTemplates(value)
+      setDraft(emptyTemplate)
+      setDrawerMode(null)
+      clearError()
+    }
   }
   const filtered = useMemo(
     () =>
@@ -100,6 +101,7 @@ export function TemplatesPage(): React.JSX.Element {
                 setCreateTemplateId(undefined)
                 setDrawerMode('project')
               }}
+              size="sm"
               variant="secondary"
             >
               <Play size={14} />
@@ -110,6 +112,7 @@ export function TemplatesPage(): React.JSX.Element {
                 setDraft(emptyTemplate)
                 setDrawerMode('template')
               }}
+              size="sm"
               variant="success"
             >
               <Plus size={14} />
@@ -145,12 +148,11 @@ export function TemplatesPage(): React.JSX.Element {
                   setCreateTemplateId(template.id)
                   setDrawerMode('project')
                 }}
-                size="sm"
+                size="icon"
                 tooltip={workspaces.length ? '使用此模板创建项目' : '请先创建工作区'}
-                variant="secondary"
+                variant="ghost"
               >
                 <Play size={14} />
-                创建项目
               </TooltipButton>
               <TooltipButton
                 onClick={() => {
@@ -165,9 +167,14 @@ export function TemplatesPage(): React.JSX.Element {
               </TooltipButton>
               <ConfirmAction
                 description={`删除模板“${template.name}”不会删除已经创建的项目，但模板记录无法恢复。`}
-                onConfirm={() =>
-                  void window.api?.templates.remove(template.id).then(setTemplates).catch(report)
-                }
+                onConfirm={async () => {
+                  const value = await run(
+                    `template-remove:${template.id}`,
+                    () => window.api!.templates.remove(template.id),
+                    { success: `模板“${template.name}”已删除` }
+                  )
+                  if (value) setTemplates(value)
+                }}
                 title="删除项目模板？"
                 triggerTooltip="删除模板"
               >
@@ -201,7 +208,12 @@ export function TemplatesPage(): React.JSX.Element {
             <Button onClick={() => setDrawerMode(null)} variant="secondary">
               取消
             </Button>
-            <Button onClick={save} variant="success">
+            <Button
+              loading={isPending('template-save')}
+              loadingText="保存中"
+              onClick={() => void save()}
+              variant="success"
+            >
               <Save size={15} />
               保存
             </Button>

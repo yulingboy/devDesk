@@ -32,6 +32,7 @@ import {
 import { ResourcePanel } from '@/components/ResourcePanel'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useInitialLoad } from '@/hooks/useInitialLoad'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 const emptyDraft: SSHKeyDraft = { name: '', publicKey: '', source: 'manual' }
 
@@ -50,6 +51,7 @@ export function SshPage(): React.JSX.Element {
   const [deleteImpact, setDeleteImpact] = useState<SSHDeleteImpact | null>(null)
 
   const { status, report, clearError } = usePageFeedback('SSH 操作失败')
+  const { isPending, run } = useAsyncAction(report)
   const load = useCallback((): void => {
     void window.api?.ssh
       .list()
@@ -67,27 +69,32 @@ export function SshPage(): React.JSX.Element {
       ),
     [keys, query]
   )
-  const save = (): void => {
-    void window.api?.ssh
-      .save(draft)
-      .then((value) => {
-        setKeys(value)
-        setDraft(emptyDraft)
-        setDrawerMode(null)
-        clearError()
-        toast.success('SSH 公钥已保存')
-      })
-      .catch(report)
+  const refresh = async (): Promise<void> => {
+    const value = await run('ssh-refresh', () => window.api!.ssh.list(), {
+      success: 'SSH 密钥已重新读取'
+    })
+    if (value) setKeys(value)
   }
-  const generate = (): void => {
-    void window.api?.ssh
-      .generate(generateOptions)
-      .then((value) => {
-        setKeys(value)
-        setDrawerMode(null)
-        toast.success('SSH 密钥已生成，私钥仅保留在系统路径中')
-      })
-      .catch(report)
+  const save = async (): Promise<void> => {
+    const value = await run('ssh-save', () => window.api!.ssh.save(draft), {
+      success: 'SSH 公钥已保存'
+    })
+    if (value) {
+      setKeys(value)
+      setDraft(emptyDraft)
+      setDrawerMode(null)
+      clearError()
+    }
+  }
+  const generate = async (): Promise<void> => {
+    const value = await run('ssh-save', () => window.api!.ssh.generate(generateOptions), {
+      success: 'SSH 密钥已生成，私钥仅保留在系统路径中'
+    })
+    if (value) {
+      setKeys(value)
+      setDrawerMode(null)
+      clearError()
+    }
   }
 
   if (loading) return <PageLoadingSkeleton />
@@ -101,18 +108,25 @@ export function SshPage(): React.JSX.Element {
                 setDraft(emptyDraft)
                 setDrawerMode('manual')
               }}
+              size="sm"
               variant="secondary"
             >
               <Plus size={14} />
               录入公钥
             </Button>
-            <Button onClick={() => setDrawerMode('generate')} variant="success">
+            <Button onClick={() => setDrawerMode('generate')} size="sm" variant="success">
               <Sparkles size={14} />
               生成密钥
             </Button>
-            <TooltipButton onClick={load} size="icon" tooltip="重新发现本机公钥" variant="ghost">
+            <Button
+              loading={isPending('ssh-refresh')}
+              onClick={() => void refresh()}
+              size="sm"
+              variant="outline"
+            >
               <RefreshCw size={15} />
-            </TooltipButton>
+              刷新
+            </Button>
           </div>
         }
         contentClassName="space-y-4 pt-5"
@@ -182,7 +196,14 @@ export function SshPage(): React.JSX.Element {
                       `正在读取密钥“${key.name}”的关联影响。`
                     )
                   }
-                  onConfirm={() => void window.api?.ssh.remove(key.id).then(setKeys).catch(report)}
+                  onConfirm={async () => {
+                    const value = await run(
+                      `ssh-remove:${key.id}`,
+                      () => window.api!.ssh.remove(key.id),
+                      { success: `SSH 密钥“${key.name}”已删除` }
+                    )
+                    if (value) setKeys(value)
+                  }}
                   onOpenChange={(open) => {
                     if (open)
                       void window.api?.ssh
@@ -223,7 +244,12 @@ export function SshPage(): React.JSX.Element {
             <Button onClick={() => setDrawerMode(null)} variant="secondary">
               取消
             </Button>
-            <Button onClick={drawerMode === 'generate' ? generate : save} variant="success">
+            <Button
+              loading={isPending('ssh-save')}
+              loadingText={drawerMode === 'generate' ? '生成中' : '保存中'}
+              onClick={() => void (drawerMode === 'generate' ? generate() : save())}
+              variant="success"
+            >
               <Save size={15} />
               保存
             </Button>

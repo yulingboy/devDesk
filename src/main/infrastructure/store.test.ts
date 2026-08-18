@@ -149,30 +149,6 @@ describe('数据存储', () => {
     await expect(store.hosts.read()).resolves.toEqual([])
   })
 
-  it('会导出并恢复最近一次环境检测快照', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
-    temporaryDirectories.push(directory)
-    await initializeStore({ userData: directory, data: directory, logs: directory })
-    const checkedAt = new Date().toISOString()
-    await store.environmentCheck.write({
-      checkedAt,
-      checks: [
-        {
-          id: 'git',
-          name: 'Git',
-          command: 'git --version',
-          status: 'passed',
-          version: 'git version 2',
-          detail: 'git version 2',
-          checkedAt
-        }
-      ]
-    })
-
-    const backup = await store.exportData()
-    expect(backup.environmentCheck?.checks[0]?.id).toBe('git')
-  })
-
   it('导入不含可选 Node 状态的旧备份时会清除残留状态', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)

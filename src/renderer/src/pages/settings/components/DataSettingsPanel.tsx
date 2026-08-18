@@ -1,4 +1,12 @@
-import { Clipboard, Database, Download, FolderOpen, Import, ShieldAlert } from 'lucide-react'
+import {
+  Clipboard,
+  Database,
+  Download,
+  FolderOpen,
+  FolderSync,
+  Import,
+  ShieldAlert
+} from 'lucide-react'
 import type { AppSettings, DataStats } from '@shared/domain'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +63,7 @@ export function DataSettingsPanel({
               打开
             </Button>
             <Button disabled={busy} onClick={onMigrate} size="sm" variant="secondary">
+              <FolderSync />
               迁移
             </Button>
           </div>

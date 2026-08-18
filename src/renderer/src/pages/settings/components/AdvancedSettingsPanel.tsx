@@ -90,12 +90,17 @@ export function AdvancedSettingsPanel({
       <SettingsSection description="仅用于本地调试，普通使用无需开启。" title="开发者工具">
         <Label className="flex max-w-xl items-center justify-between gap-4 border-y border-slate-100 py-3">
           <span className="text-xs text-slate-700">允许打开开发者工具</span>
-          <Switch
-            checked={settings.advanced.developerTools}
-            onCheckedChange={(developerTools) =>
-              onChange({ ...settings, advanced: { ...settings.advanced, developerTools } })
-            }
-          />
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="w-9 text-right text-[11px] text-slate-500">
+              {settings.advanced.developerTools ? '已开启' : '已关闭'}
+            </span>
+            <Switch
+              checked={settings.advanced.developerTools}
+              onCheckedChange={(developerTools) =>
+                onChange({ ...settings, advanced: { ...settings.advanced, developerTools } })
+              }
+            />
+          </span>
         </Label>
         <Button
           className="mt-3"

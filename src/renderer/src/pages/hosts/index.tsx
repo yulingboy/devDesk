@@ -32,7 +32,6 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { TooltipButton } from '@/components/TooltipButton'
-import { Spinner } from '@/components/ui/spinner'
 import { useAsyncAction } from '@/hooks/useAsyncAction'
 import {
   DropdownMenu,
@@ -65,6 +64,13 @@ export function HostsPage(): React.JSX.Element {
   useInitialLoad(load)
   const { isPending, run } = useAsyncAction(showError)
 
+  const refresh = async (): Promise<void> => {
+    const value = await run('hosts-refresh', () => window.api!.hosts.list(), {
+      success: 'Hosts 记录已重新读取'
+    })
+    if (value) setRecords(value)
+  }
+
   const filtered = useMemo(
     () =>
       records.filter((record) =>
@@ -94,11 +100,15 @@ export function HostsPage(): React.JSX.Element {
     }
   }
   const remove = async (id: string): Promise<void> => {
-    const value = await run('hosts-save', async () => {
-      const saved = await window.api?.hosts.save(records.filter((record) => record.id !== id))
-      if (!saved) throw new Error('当前页面未连接桌面服务，无法删除 Hosts 记录。')
-      return saved
-    })
+    const value = await run(
+      'hosts-save',
+      async () => {
+        const saved = await window.api?.hosts.save(records.filter((record) => record.id !== id))
+        if (!saved) throw new Error('当前页面未连接桌面服务，无法删除 Hosts 记录。')
+        return saved
+      },
+      { success: 'Hosts 记录已删除' }
+    )
     if (value) setRecords(value)
   }
   /** Hosts 使用整表写入语义，快速开关也经过同一串行保存通道。 */
@@ -117,7 +127,10 @@ export function HostsPage(): React.JSX.Element {
     }
   }
   const copy = (value: string): void => {
-    void navigator.clipboard.writeText(value).then(() => toast.success('已复制到剪贴板'))
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => toast.success('已复制到剪贴板'))
+      .catch(showError)
   }
 
   if (loading) return <PageLoadingSkeleton />
@@ -131,6 +144,7 @@ export function HostsPage(): React.JSX.Element {
                 setDraft(emptyRecord)
                 setDrawerOpen(true)
               }}
+              size="sm"
               variant="success"
             >
               <Plus size={14} />
@@ -145,7 +159,8 @@ export function HostsPage(): React.JSX.Element {
               打开文件
             </Button>
             <Button
-              disabled={isPending('hosts-dns')}
+              loading={isPending('hosts-dns')}
+              loadingText="刷新中"
               onClick={() =>
                 void run('hosts-dns', async () => {
                   await window.api?.hosts.flushDns()
@@ -155,11 +170,12 @@ export function HostsPage(): React.JSX.Element {
               size="sm"
               variant="secondary"
             >
-              {isPending('hosts-dns') ? <Spinner /> : <RefreshCw size={14} />}
+              <RefreshCw size={14} />
               刷新 DNS
             </Button>
             <Button
-              disabled={isPending('hosts-restore')}
+              loading={isPending('hosts-restore')}
+              loadingText="恢复中"
               onClick={() =>
                 void run('hosts-restore', async () => {
                   const value = await window.api?.hosts.restoreBackup()
@@ -171,7 +187,7 @@ export function HostsPage(): React.JSX.Element {
               size="sm"
               variant="outline"
             >
-              {isPending('hosts-restore') ? <Spinner /> : <RotateCcw size={14} />}
+              <RotateCcw size={14} />
               恢复备份
             </Button>
           </div>
@@ -188,7 +204,13 @@ export function HostsPage(): React.JSX.Element {
             placeholder="搜索 IP、域名或备注"
             value={query}
           />
-          <TooltipButton onClick={load} size="icon" tooltip="重新读取" variant="ghost">
+          <TooltipButton
+            loading={isPending('hosts-refresh')}
+            onClick={() => void refresh()}
+            size="icon"
+            tooltip="重新读取"
+            variant="ghost"
+          >
             <RefreshCw size={16} />
           </TooltipButton>
         </div>
@@ -207,17 +229,22 @@ export function HostsPage(): React.JSX.Element {
               {filtered.map((record) => (
                 <TableRow key={record.id}>
                   <TableCell>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Switch
-                          aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
-                          checked={record.enabled}
-                          disabled={isPending('hosts-save')}
-                          onCheckedChange={() => void toggleEnabled(record.id)}
-                        />
-                      </TooltipTrigger>
-                      <TooltipContent>{record.enabled ? '点击禁用' : '点击启用'}</TooltipContent>
-                    </Tooltip>
+                    <div className="flex items-center gap-2">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Switch
+                            aria-label={`${record.enabled ? '禁用' : '启用'} ${record.domain}`}
+                            checked={record.enabled}
+                            disabled={isPending('hosts-save')}
+                            onCheckedChange={() => void toggleEnabled(record.id)}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent>{record.enabled ? '点击禁用' : '点击启用'}</TooltipContent>
+                      </Tooltip>
+                      <span className={record.enabled ? 'text-emerald-600' : 'text-slate-400'}>
+                        {record.enabled ? '启用' : '停用'}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell className="font-mono">{record.ip}</TableCell>
                   <TableCell>{record.domain}</TableCell>
@@ -290,11 +317,12 @@ export function HostsPage(): React.JSX.Element {
               取消
             </Button>
             <Button
-              disabled={isPending('hosts-save')}
+              loading={isPending('hosts-save')}
+              loadingText="保存中"
               onClick={() => void save()}
               variant="success"
             >
-              {isPending('hosts-save') ? <Spinner /> : <Save size={15} />}
+              <Save size={15} />
               保存
             </Button>
           </>

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-  Activity,
   Database,
   Info,
   RotateCcw,
@@ -13,14 +12,12 @@ import {
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Spinner } from '@/components/ui/spinner'
 import { Tabs } from '@/components/ui/tabs'
 import { ConfirmAction } from '@/components/ConfirmAction'
 import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
 import { AboutPanel } from './components/AboutPanel'
 import { AdvancedSettingsPanel } from './components/AdvancedSettingsPanel'
 import { DataSettingsPanel } from './components/DataSettingsPanel'
-import { EnvironmentCheckPanel } from './components/EnvironmentCheckPanel'
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel'
 import { SettingsPane } from './components/SettingsPane'
 import { useSettingsPage } from './hooks/useSettingsPage'
@@ -39,6 +36,7 @@ export function SettingsPage(): React.JSX.Element {
           <AlertDescription className="flex items-center justify-between gap-3">
             <span>{page.errors.settings ?? '设置读取失败，请重试。'}</span>
             <Button onClick={page.retry} size="sm" variant="secondary">
+              <RotateCcw />
               重试
             </Button>
           </AlertDescription>
@@ -173,10 +171,13 @@ export function SettingsPage(): React.JSX.Element {
           </ConfirmAction>
           <Button
             disabled={!page.dirty || Boolean(pending)}
+            loading={pending === 'save'}
+            loadingText="保存中"
             onClick={() => void run('save', page.save)}
             variant="success"
           >
-            {pending === 'save' ? <Spinner /> : <Save />}保存
+            <Save />
+            保存
           </Button>
         </div>
       </div>
@@ -220,20 +221,6 @@ export function SettingsPage(): React.JSX.Element {
             content: (
               <SettingsPane description="管理诊断日志和本地调试能力。" title="高级设置">
                 {advancedPanel}
-              </SettingsPane>
-            )
-          },
-          {
-            value: 'environment',
-            label: '环境检测',
-            icon: <Activity />,
-            content: (
-              <SettingsPane
-                className="max-w-5xl"
-                description="按技术栈检查本机开发工具的安装和运行状态。"
-                title="环境检测"
-              >
-                <EnvironmentCheckPanel report={page.report} />
               </SettingsPane>
             )
           },

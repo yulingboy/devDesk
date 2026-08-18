@@ -20,7 +20,7 @@ export function useWorkspaceResources(report: (error: unknown) => void): {
   setSelectedWorkspaceId: React.Dispatch<React.SetStateAction<string | undefined>>
   selectedProjectId: string | undefined
   setSelectedProjectId: React.Dispatch<React.SetStateAction<string | undefined>>
-  reload: () => void
+  reload: () => Promise<void>
 } {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [identities, setIdentities] = useState<GitIdentity[]>([])
@@ -31,9 +31,9 @@ export function useWorkspaceResources(report: (error: unknown) => void): {
   const [selectedProjectId, setSelectedProjectId] = useState<string>()
   const requestId = useRef(0)
 
-  const reload = useCallback((): void => {
+  const reload = useCallback(async (): Promise<void> => {
     const currentRequestId = ++requestId.current
-    void Promise.allSettled([
+    await Promise.allSettled([
       Promise.resolve(window.api?.workspaces.list()),
       Promise.resolve(window.api?.git.getState()),
       Promise.resolve(window.api?.ssh.list()),

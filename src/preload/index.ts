@@ -171,22 +171,6 @@ const api: AppApi = {
     openData: () => invoke(IPC_CHANNELS.settings.openData),
     changeDataDirectory: () => invoke(IPC_CHANNELS.settings.changeDataDirectory),
     clearBusinessData: () => invoke(IPC_CHANNELS.settings.clearBusinessData),
-    environmentCheck: () => invoke(IPC_CHANNELS.settings.environmentCheck),
-    environmentCheckSnapshot: () => invoke(IPC_CHANNELS.settings.environmentCheckSnapshot),
-    environmentCheckTool: (id) => invoke(IPC_CHANNELS.settings.environmentCheckTool, id),
-    stopEnvironmentCheck: () => invoke(IPC_CHANNELS.settings.stopEnvironmentCheck),
-    openEnvironmentGuide: (id) => invoke(IPC_CHANNELS.settings.openEnvironmentGuide, id),
-    environmentTools: () => invoke(IPC_CHANNELS.settings.environmentTools),
-    installEnvironmentTool: (id) => invoke(IPC_CHANNELS.settings.installEnvironmentTool, id),
-    onEnvironmentCheckUpdated: (listener) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        checks: Parameters<typeof listener>[0]
-      ): void => listener(checks)
-      ipcRenderer.on(IPC_CHANNELS.settings.environmentCheckUpdated, handler)
-      return () =>
-        ipcRenderer.removeListener(IPC_CHANNELS.settings.environmentCheckUpdated, handler)
-    },
     dataStats: () => invoke(IPC_CHANNELS.settings.dataStats),
     logStats: () => invoke(IPC_CHANNELS.settings.logStats),
     openLogs: () => invoke(IPC_CHANNELS.settings.openLogs),

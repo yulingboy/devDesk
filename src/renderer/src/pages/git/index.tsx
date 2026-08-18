@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import { toast } from 'sonner'
 import { Copy, FileText, GitBranch, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import type {
   GitFileSnapshot,
@@ -42,6 +41,7 @@ import {
 } from '@/components/ui/select'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useInitialLoad } from '@/hooks/useInitialLoad'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 const emptyIdentity: GitIdentity = { id: '', name: '', username: '', email: '' }
 
@@ -55,6 +55,7 @@ export function GitPage(): React.JSX.Element {
   const [detail, setDetail] = useState<GitIdentityDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const { status, report, clearError } = usePageFeedback('Git 操作失败')
+  const { isPending, run } = useAsyncAction(report)
   const load = useCallback((): void => {
     void Promise.all([window.api?.git.getState(), window.api?.ssh.list(), window.api?.git.files()])
       .then(([gitState, sshKeys, fileValue]) => {
@@ -69,27 +70,38 @@ export function GitPage(): React.JSX.Element {
       .finally(() => setLoading(false))
   }, [report])
   useInitialLoad(load)
-  const saveGlobal = (): void => {
-    void window.api?.git
-      .saveGlobal(global)
-      .then((value) => {
-        setState(value)
-        setDrawerMode(null)
-        toast.success('全局 Git 配置已写入真实配置文件')
-      })
-      .catch(report)
+  const saveGlobal = async (): Promise<void> => {
+    const value = await run(
+      'git-save',
+      async () => {
+        const next = await window.api?.git.saveGlobal(global)
+        if (!next) throw new Error('当前页面未连接桌面服务，无法保存 Git 配置。')
+        return next
+      },
+      { success: '全局 Git 配置已写入真实配置文件' }
+    )
+    if (value) {
+      setState(value)
+      clearError()
+      setDrawerMode(null)
+    }
   }
-  const saveIdentity = (): void => {
-    void window.api?.git
-      .saveIdentity(identity)
-      .then((value) => {
-        setState(value)
-        setIdentity(emptyIdentity)
-        clearError()
-        setDrawerMode(null)
-        toast.success('Git 身份已保存并生成 profile')
-      })
-      .catch(report)
+  const saveIdentity = async (): Promise<void> => {
+    const value = await run(
+      'git-save',
+      async () => {
+        const next = await window.api?.git.saveIdentity(identity)
+        if (!next) throw new Error('当前页面未连接桌面服务，无法保存 Git 身份。')
+        return next
+      },
+      { success: 'Git 身份已保存并生成 profile' }
+    )
+    if (value) {
+      setState(value)
+      setIdentity(emptyIdentity)
+      clearError()
+      setDrawerMode(null)
+    }
   }
 
   if (loading) return <PageLoadingSkeleton />
@@ -180,14 +192,15 @@ export function GitPage(): React.JSX.Element {
               </ItemContent>
               <ItemActions>
                 <TooltipButton
+                  loading={isPending(`git-detail:${item.id}`)}
                   onClick={() =>
-                    void window.api?.git
-                      .getIdentityDetail(item.id)
-                      .then((value) => {
-                        setDetail(value)
-                        setDrawerMode('detail')
-                      })
-                      .catch(report)
+                    void run(`git-detail:${item.id}`, () =>
+                      window.api!.git.getIdentityDetail(item.id)
+                    ).then((value) => {
+                      if (!value) return
+                      setDetail(value)
+                      setDrawerMode('detail')
+                    })
                   }
                   size="icon"
                   tooltip="查看身份详情"
@@ -219,9 +232,14 @@ export function GitPage(): React.JSX.Element {
                 </TooltipButton>
                 <ConfirmAction
                   description={`删除身份“${item.name}”后将无法恢复；被工作区引用时操作会被拒绝。`}
-                  onConfirm={() =>
-                    void window.api?.git.removeIdentity(item.id).then(setState).catch(report)
-                  }
+                  onConfirm={async () => {
+                    const value = await run(
+                      `git-remove:${item.id}`,
+                      () => window.api!.git.removeIdentity(item.id),
+                      { success: `Git 身份“${item.name}”已删除` }
+                    )
+                    if (value) setState(value)
+                  }}
                   title="删除 Git 身份？"
                   triggerTooltip="删除身份"
                 >
@@ -250,7 +268,12 @@ export function GitPage(): React.JSX.Element {
             <Button onClick={() => setDrawerMode(null)} variant="secondary">
               取消
             </Button>
-            <Button onClick={drawerMode === 'global' ? saveGlobal : saveIdentity} variant="success">
+            <Button
+              loading={isPending('git-save')}
+              loadingText="保存中"
+              onClick={() => void (drawerMode === 'global' ? saveGlobal() : saveIdentity())}
+              variant="success"
+            >
               <Save size={15} />
               保存
             </Button>

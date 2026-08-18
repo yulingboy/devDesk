@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import {
   ArrowRightLeft,
+  CheckCircle2,
   Download,
   Pencil,
   Plus,
   RefreshCw,
+  Save,
   SearchCheck,
   Trash2
 } from 'lucide-react'
@@ -39,6 +41,7 @@ import {
 } from '@/components/ui/item'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { useGlobalPackages } from '../hooks/useGlobalPackages'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 
 interface PackagePanelProps {
   state: NodeState | null
@@ -59,6 +62,7 @@ export function PackagePanel({
   const [registry, setRegistry] = useState('')
   const [sourceVersion, setSourceVersion] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const { isPending, run } = useAsyncAction(report)
   const { packages, setPackages, keyword, setKeyword, loading, checking, load, checkOutdated } =
     useGlobalPackages(state, report)
 
@@ -136,19 +140,23 @@ export function PackagePanel({
                     </Tooltip>
                   </ItemContent>
                   <ItemActions>
-                    <Button
+                    <TooltipButton
                       disabled={!manager.available || manager.isDefault}
+                      loading={isPending(`manager-default:${manager.name}`)}
+                      loadingText="设置中"
                       onClick={() =>
-                        void window.api?.node
-                          .setPackageManager(manager.name)
-                          .then(onState)
-                          .catch(report)
+                        void run(
+                          `manager-default:${manager.name}`,
+                          () => window.api!.node.setPackageManager(manager.name),
+                          { success: `已将 ${manager.name} 设为默认包管理器` }
+                        ).then((value) => value && onState(value))
                       }
-                      size="sm"
+                      size="icon"
+                      tooltip="设为默认包管理器"
                       variant="ghost"
                     >
-                      设为默认
-                    </Button>
+                      <CheckCircle2 size={13} />
+                    </TooltipButton>
                     <TooltipButton
                       disabled={!manager.available}
                       onClick={() => {
@@ -184,22 +192,23 @@ export function PackagePanel({
                 value={keyword}
               />
               <TooltipButton
-                disabled={loading}
+                loading={loading}
                 onClick={load}
                 size="icon"
                 tooltip="刷新全局包"
                 variant="secondary"
               >
-                {loading ? <Spinner /> : <RefreshCw size={15} />}
+                <RefreshCw size={15} />
               </TooltipButton>
               <TooltipButton
                 disabled={checking || loading}
+                loading={checking}
                 onClick={checkOutdated}
                 size="icon"
                 tooltip="检查过期包"
                 variant="secondary"
               >
-                {checking ? <Spinner /> : <SearchCheck size={15} />}
+                <SearchCheck size={15} />
               </TooltipButton>
             </div>
             <ScrollArea className="min-h-0 flex-1 pr-2">
@@ -221,11 +230,13 @@ export function PackagePanel({
                     )}
                     <ItemActions>
                       <TooltipButton
+                        loading={isPending(`package-update:${item.name}`)}
                         onClick={() =>
-                          void window.api?.node
-                            .updatePackage(item.name)
-                            .then(setPackages)
-                            .catch(report)
+                          void run(
+                            `package-update:${item.name}`,
+                            () => window.api!.node.updatePackage(item.name),
+                            { success: `全局包 ${item.name} 已更新` }
+                          ).then((value) => value && setPackages(value))
                         }
                         size="icon"
                         tooltip="更新包"
@@ -235,12 +246,14 @@ export function PackagePanel({
                       </TooltipButton>
                       <ConfirmAction
                         description={`将从当前默认包管理器中卸载全局包“${item.name}”。`}
-                        onConfirm={() =>
-                          void window.api?.node
-                            .removePackage(item.name)
-                            .then(setPackages)
-                            .catch(report)
-                        }
+                        onConfirm={async () => {
+                          const value = await run(
+                            `package-remove:${item.name}`,
+                            () => window.api!.node.removePackage(item.name),
+                            { success: `全局包 ${item.name} 已卸载` }
+                          )
+                          if (value) setPackages(value)
+                        }}
                         title="卸载全局包？"
                         triggerTooltip="卸载包"
                       >
@@ -270,7 +283,9 @@ export function PackagePanel({
               取消
             </Button>
             <Button
-              disabled={!sourceVersion || syncing}
+              disabled={!sourceVersion}
+              loading={syncing}
+              loadingText="同步中"
               onClick={() => {
                 setSyncing(true)
                 void window.api?.node
@@ -285,7 +300,7 @@ export function PackagePanel({
               }}
               variant="success"
             >
-              {syncing ? <Spinner /> : <ArrowRightLeft size={15} />}
+              <ArrowRightLeft size={15} />
               同步
             </Button>
           </>
@@ -322,15 +337,17 @@ export function PackagePanel({
             </Button>
             <Button
               disabled={!packageName.trim()}
+              loading={isPending('package-install')}
+              loadingText="安装中"
               onClick={() =>
-                void window.api?.node
-                  .installPackage(packageName)
-                  .then((value) => {
-                    setPackages(value)
-                    setPackageName('')
-                    setDrawerMode(null)
-                  })
-                  .catch(report)
+                void run('package-install', () => window.api!.node.installPackage(packageName), {
+                  success: `全局包 ${packageName.trim()} 已安装`
+                }).then((value) => {
+                  if (!value) return
+                  setPackages(value)
+                  setPackageName('')
+                  setDrawerMode(null)
+                })
               }
               variant="success"
             >
@@ -361,18 +378,23 @@ export function PackagePanel({
             </Button>
             <Button
               disabled={!editingManager || !registry.trim()}
+              loading={isPending('manager-registry')}
+              loadingText="保存中"
               onClick={() => {
                 if (!editingManager) return
-                void window.api?.node
-                  .setPackageRegistry(editingManager.name, registry)
-                  .then((value) => {
-                    onState(value)
-                    setDrawerMode(null)
-                  })
-                  .catch(report)
+                void run(
+                  'manager-registry',
+                  () => window.api!.node.setPackageRegistry(editingManager.name, registry),
+                  { success: `${editingManager.name} Registry 已保存` }
+                ).then((value) => {
+                  if (!value) return
+                  onState(value)
+                  setDrawerMode(null)
+                })
               }}
               variant="success"
             >
+              <Save size={15} />
               保存
             </Button>
           </>

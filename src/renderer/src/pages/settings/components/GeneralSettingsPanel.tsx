@@ -28,15 +28,20 @@ export function GeneralSettingsPanel({
                 </span>
               </span>
             </span>
-            <Switch
-              checked={settings.general.launchAtLogin}
-              onCheckedChange={(launchAtLogin) =>
-                onChange({
-                  ...settings,
-                  general: { ...settings.general, launchAtLogin }
-                })
-              }
-            />
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="w-9 text-right text-[11px] text-slate-500">
+                {settings.general.launchAtLogin ? '已开启' : '已关闭'}
+              </span>
+              <Switch
+                checked={settings.general.launchAtLogin}
+                onCheckedChange={(launchAtLogin) =>
+                  onChange({
+                    ...settings,
+                    general: { ...settings.general, launchAtLogin }
+                  })
+                }
+              />
+            </span>
           </Label>
           <Label className="flex min-h-16 items-center justify-between gap-4 px-4 py-3.5">
             <span className="flex min-w-0 items-center gap-3">
@@ -50,15 +55,20 @@ export function GeneralSettingsPanel({
                 </span>
               </span>
             </span>
-            <Switch
-              checked={settings.general.minimizeToTray}
-              onCheckedChange={(minimizeToTray) =>
-                onChange({
-                  ...settings,
-                  general: { ...settings.general, minimizeToTray }
-                })
-              }
-            />
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="w-9 text-right text-[11px] text-slate-500">
+                {settings.general.minimizeToTray ? '已开启' : '已关闭'}
+              </span>
+              <Switch
+                checked={settings.general.minimizeToTray}
+                onCheckedChange={(minimizeToTray) =>
+                  onChange({
+                    ...settings,
+                    general: { ...settings.general, minimizeToTray }
+                  })
+                }
+              />
+            </span>
           </Label>
         </div>
       </SettingsSection>

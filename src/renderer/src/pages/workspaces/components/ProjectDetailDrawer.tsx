@@ -77,8 +77,9 @@ export function ProjectDetailDrawer({
               title="从工作区移除项目？"
               triggerTooltip="从工作区移除"
             >
-              <Button disabled={removing} size="icon" variant="ghost">
+              <Button disabled={removing} size="sm" variant="outline">
                 {removing ? <Spinner /> : <Trash2 />}
+                移除项目
               </Button>
             </ConfirmAction>
             <Button onClick={onClose} variant="secondary">

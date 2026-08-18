@@ -320,38 +320,6 @@ export interface NodeEnvironmentPath {
   exists: boolean
 }
 
-export interface EnvironmentCheck {
-  id: string
-  name: string
-  command: string
-  status:
-    | 'passed'
-    | 'missing'
-    | 'failed'
-    | 'timeout'
-    | 'permission-denied'
-    | 'daemon-unavailable'
-    | 'cancelled'
-    | 'skipped'
-  version?: string
-  detail: string
-  checkedAt: string
-}
-
-/** 环境检测页使用的工具能力清单，安装能力必须由主进程白名单控制。 */
-export interface EnvironmentTool extends Pick<EnvironmentCheck, 'id' | 'name' | 'command'> {
-  group: 'base' | 'node' | 'java' | 'python' | 'go' | 'container'
-  installable: boolean
-  installCommand?: string
-  prerequisite?: string
-  guideUrl?: string
-}
-
-export interface EnvironmentCheckSnapshot {
-  checkedAt: string
-  checks: EnvironmentCheck[]
-}
-
 export interface DataStats {
   directory: string
   sizeBytes: number
@@ -433,7 +401,6 @@ export interface DataExport {
   nodeReleases?: NodeReleaseCache | null
   overview?: SystemOverviewSnapshot | null
   hostsBackup?: string
-  environmentCheck?: EnvironmentCheckSnapshot | null
 }
 
 export interface SSHKeyDraft {

@@ -38,7 +38,7 @@ export function WorkspaceDetailDrawer({
               <Pencil />
               编辑工作区
             </Button>
-            <Button onClick={onOpenFolder}>
+            <Button onClick={onOpenFolder} variant="success">
               <FolderOpen />
               打开目录
             </Button>

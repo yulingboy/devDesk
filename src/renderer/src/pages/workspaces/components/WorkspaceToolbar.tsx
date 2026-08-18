@@ -22,7 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -34,6 +33,7 @@ import {
 interface WorkspaceToolbarProps {
   query: string
   scanResult?: WorkspaceScanResult
+  refreshing: boolean
   scanning: boolean
   templatesAvailable: boolean
   workspace: Workspace
@@ -55,6 +55,7 @@ interface WorkspaceToolbarProps {
 export function WorkspaceToolbar({
   query,
   scanResult,
+  refreshing,
   scanning,
   templatesAvailable,
   workspace,
@@ -91,14 +92,10 @@ export function WorkspaceToolbar({
               ))}
             </SelectContent>
           </Select>
-          <TooltipButton
-            onClick={onCreateWorkspace}
-            size="icon"
-            tooltip="新增工作区"
-            variant="ghost"
-          >
+          <Button onClick={onCreateWorkspace} size="sm" variant="secondary">
             <Plus />
-          </TooltipButton>
+            新增工作区
+          </Button>
           <span className="shrink-0 tabular-nums text-[10px] text-slate-400">
             {workspace.projects.length} 个项目
           </span>
@@ -109,22 +106,34 @@ export function WorkspaceToolbar({
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <Button disabled={scanning} onClick={onScan} variant="secondary">
-            {scanning ? <Spinner /> : <ScanSearch />}
-            {scanning ? '扫描中' : '扫描项目'}
+          <Button
+            loading={scanning}
+            loadingText="扫描中"
+            onClick={onScan}
+            size="sm"
+            variant="secondary"
+          >
+            <ScanSearch />
+            扫描项目
           </Button>
-          <Button disabled={!templatesAvailable} onClick={onCreateProject} variant="success">
+          <Button
+            disabled={!templatesAvailable}
+            onClick={onCreateProject}
+            size="sm"
+            variant="success"
+          >
             <Rocket />
             从模板创建
           </Button>
-          <Button onClick={onAddProject} variant="outline">
+          <Button onClick={onAddProject} size="sm" variant="outline">
             <FolderPlus />
             纳入已有项目
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button aria-label="更多工作区操作" size="icon" variant="ghost">
+              <Button aria-label="更多工作区操作" size="sm" variant="outline">
                 <MoreHorizontal />
+                更多
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -148,10 +157,11 @@ export function WorkspaceToolbar({
               aria-label="删除工作区"
               className="text-slate-400 hover:bg-red-50 hover:text-red-600"
               disabled={scanning}
-              size="icon"
-              variant="ghost"
+              size="sm"
+              variant="outline"
             >
               <Trash2 />
+              删除
             </Button>
           </ConfirmAction>
         </div>
@@ -164,7 +174,13 @@ export function WorkspaceToolbar({
           placeholder="搜索项目名称、备注或子项目"
           value={query}
         />
-        <TooltipButton onClick={onRefresh} size="icon" tooltip="刷新工作区数据" variant="ghost">
+        <TooltipButton
+          loading={refreshing}
+          onClick={onRefresh}
+          size="icon"
+          tooltip="刷新工作区数据"
+          variant="ghost"
+        >
           <RefreshCw />
         </TooltipButton>
       </div>

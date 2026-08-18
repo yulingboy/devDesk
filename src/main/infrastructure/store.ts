@@ -13,8 +13,7 @@ import type {
   ProjectTemplate,
   SSHKey,
   SystemOverviewSnapshot,
-  Workspace,
-  EnvironmentCheckSnapshot
+  Workspace
 } from '@shared/domain'
 
 const schemaVersion = 1 as const
@@ -251,11 +250,6 @@ export const store = {
     read: (): Promise<NodeReleaseCache | null> => readJson('node-releases.json', null),
     write: (value: NodeReleaseCache): Promise<void> => writeJson('node-releases.json', value)
   },
-  environmentCheck: {
-    read: (): Promise<EnvironmentCheckSnapshot | null> => readJson('environment-check.json', null),
-    write: (value: EnvironmentCheckSnapshot): Promise<void> =>
-      writeJson('environment-check.json', value)
-  },
   async exportData(): Promise<DataExport> {
     return {
       schemaVersion,
@@ -271,8 +265,7 @@ export const store = {
       overview: await store.overview.read(),
       hostsBackup: await readFile(join(getStoreDirectory(), 'hosts.backup'), 'utf8').catch(
         () => undefined
-      ),
-      environmentCheck: await store.environmentCheck.read()
+      )
     }
   },
   async importData(value: DataExport): Promise<void> {
@@ -342,14 +335,6 @@ function validateDataExport(value: unknown): asserts value is DataExport {
   ) {
     throw new Error('备份文件包含无效的业务字段，未导入任何数据')
   }
-  if (
-    candidate.environmentCheck != null &&
-    (!isRecord(candidate.environmentCheck) ||
-      typeof candidate.environmentCheck.checkedAt !== 'string' ||
-      !Array.isArray(candidate.environmentCheck.checks))
-  ) {
-    throw new Error('备份文件中的环境检测快照无效')
-  }
 }
 
 async function writeImportedData(value: DataExport): Promise<void> {
@@ -373,8 +358,6 @@ async function writeImportedData(value: DataExport): Promise<void> {
     await mkdir(getStoreDirectory(), { recursive: true })
     await writeFile(join(getStoreDirectory(), 'hosts.backup'), value.hostsBackup, 'utf8')
   } else await removeImportedOptionalFile('hosts.backup')
-  if (value.environmentCheck) await store.environmentCheck.write(value.environmentCheck)
-  else await removeImportedOptionalFile('environment-check.json')
 }
 
 async function removeImportedOptionalFile(fileName: string): Promise<void> {

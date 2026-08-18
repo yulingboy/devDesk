@@ -6,6 +6,7 @@ import { ConfirmAction } from '@/components/ConfirmAction'
 import { TooltipButton } from '@/components/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 import {
   Item,
   ItemActions,
@@ -37,6 +38,7 @@ export function CachePanel({
   loading,
   onScan
 }: CachePanelProps): React.JSX.Element {
+  const { run } = useAsyncAction(report)
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between">
@@ -45,13 +47,13 @@ export function CachePanel({
           <CardDescription>首次进入自动读取；清理只调用各包管理器的官方命令。</CardDescription>
         </div>
         <TooltipButton
-          disabled={loading}
+          loading={loading}
           onClick={onScan}
           size="icon"
           tooltip="扫描缓存"
           variant="ghost"
         >
-          <RefreshCw className={loading ? 'animate-spin' : undefined} size={15} />
+          <RefreshCw size={15} />
         </TooltipButton>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -85,12 +87,15 @@ export function CachePanel({
               {cache.clearable && cache.id && cache.id !== 'nvm' && (
                 <ConfirmAction
                   description={`将使用 ${cache.name} 的官方命令清理缓存，不会删除全局包或已安装的 Node 版本。`}
-                  onConfirm={() =>
-                    void window.api?.node
-                      .clearCache(cache.id as 'npm' | 'pnpm' | 'yarn' | 'bun')
-                      .then(onState)
-                      .catch(report)
-                  }
+                  onConfirm={async () => {
+                    const value = await run(
+                      `cache-clear:${cache.id}`,
+                      () =>
+                        window.api!.node.clearCache(cache.id as 'npm' | 'pnpm' | 'yarn' | 'bun'),
+                      { success: `${cache.name} 缓存已清理` }
+                    )
+                    if (value) onState(value)
+                  }}
                   title={`清理 ${cache.name}？`}
                   triggerTooltip={`清理 ${cache.name}`}
                 >
@@ -114,7 +119,12 @@ export function CachePanel({
         )}
         <ConfirmAction
           description="将依次清理当前可用的 npm、pnpm、yarn 和 bun 缓存；某一项失败时会明确提示，不会删除 Node 版本。"
-          onConfirm={() => void window.api?.node.clearCaches().then(onState).catch(report)}
+          onConfirm={async () => {
+            const value = await run('caches-clear', () => window.api!.node.clearCaches(), {
+              success: '包管理器缓存已清理'
+            })
+            if (value) onState(value)
+          }}
           title="清理包管理缓存？"
         >
           <Button variant="outline">

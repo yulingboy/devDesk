@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import type { NodeRelease } from '@shared/domain'
 
 type ReleaseChannel = 'all' | 'lts' | 'current'
@@ -36,7 +37,10 @@ export function useNodeReleases(report: (error: unknown) => void): {
         .then((value) => {
           if (currentRequestId !== requestId.current) return
           setReleases(value)
-          if (refresh) setPage(1)
+          if (refresh) {
+            setPage(1)
+            toast.success(`Node 官方版本索引已刷新，共 ${value.length} 个版本`)
+          }
         })
         .catch((error: unknown) => {
           if (currentRequestId === requestId.current) report(error)
