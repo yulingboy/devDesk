@@ -12,9 +12,9 @@ import {
   Trash2
 } from 'lucide-react'
 import type { Workspace, WorkspaceScanResult } from '@shared/domain'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { SearchInput } from '@/components/SearchInput'
-import { TooltipButton } from '@/components/TooltipButton'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { SearchInput } from '@/components/common/SearchInput'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

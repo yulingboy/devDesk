@@ -12,7 +12,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { ConfirmAction } from '@/components/ConfirmAction'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
 import { SettingsSection } from './SettingsSection'
 
 const formatBytes = (value: number): string =>

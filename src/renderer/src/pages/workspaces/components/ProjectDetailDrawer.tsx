@@ -24,8 +24,8 @@ import { Drawer } from '@/components/ui/drawer'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { TooltipButton } from '@/components/TooltipButton'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { ProjectEditorMenu } from './ProjectEditorMenu'
 
 interface ProjectDetailDrawerProps {

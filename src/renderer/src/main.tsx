@@ -3,7 +3,7 @@ import './assets/main.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from '@/App'
-import { AppErrorBoundary } from '@/components/AppErrorBoundary'
+import { AppErrorBoundary } from '@/components/app/AppErrorBoundary'
 import { registerGlobalErrorLogging, rendererLogger } from '@/lib/logger'
 
 registerGlobalErrorLogging()

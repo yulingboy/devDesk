@@ -1,18 +1,18 @@
 import { app, BrowserWindow } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { registerApplicationIpc } from '@main/ipc-handlers'
+import { registerApplicationIpc } from '@main/ipc/handlers'
 import { initializeLogger, log, setLogLevel } from '@main/infrastructure/logger'
 import { initializeAppPaths } from '@main/infrastructure/paths'
 import { initializeStore } from '@main/infrastructure/store'
-import { createMainWindow } from '@main/window'
-import { WindowPool } from '@main/window-pool'
+import { createMainWindow } from '@main/windows/main-window'
+import { WindowPool } from '@main/windows/window-pool'
 import { IPC_CHANNELS } from '@shared/ipc'
 import { startOverviewSampler, stopOverviewSampler } from '@main/services/overview'
-import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } from '@main/tray'
+import { createAppTray, destroyAppTray, markAppQuitting, setMinimizeToTray } from '@main/app/tray'
 import { getSettings } from '@main/services/settings'
 import { stopAllProjectTasks } from '@main/services/workspaces'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
-import appIcon from '../../resources/icon.png?asset'
+import appIcon from '../../../resources/icon.png?asset'
 
 const windowPool = new WindowPool()
 

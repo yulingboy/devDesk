@@ -18,9 +18,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Drawer } from '@/components/ui/drawer'
 import { Field } from '@/components/ui/form'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { SearchInput } from '@/components/SearchInput'
-import { TooltipButton } from '@/components/TooltipButton'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { SearchInput } from '@/components/common/SearchInput'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {

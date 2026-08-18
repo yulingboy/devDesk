@@ -30,7 +30,7 @@ import {
   store,
   withDataMutation
 } from '@main/infrastructure/store'
-import { setMinimizeToTray } from '@main/tray'
+import { setMinimizeToTray } from '@main/app/tray'
 import { setLogLevel } from '@main/infrastructure/logger'
 import { resetUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import { removeGitRuleInclude, syncGitRules } from '@main/services/git-rules'

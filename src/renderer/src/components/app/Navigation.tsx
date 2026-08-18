@@ -11,7 +11,7 @@ import {
   SidebarTrigger
 } from '@/components/ui/sidebar'
 import { appRoutes } from '@/routes'
-import appIcon from '../../../../resources/icon.png'
+import appIcon from '../../../../../resources/icon.png'
 
 /** 左侧导航默认使用参考项目的 64px 图标模式，同时保留用户要求的展开能力。 */
 export function Navigation({ appVersion }: { appVersion: string }): React.JSX.Element {

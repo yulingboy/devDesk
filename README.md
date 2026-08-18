@@ -44,20 +44,22 @@ pnpm build:linux
 
 ## 项目结构
 
-- `src/main`：Electron 主进程
-- `src/main/lifecycle.ts`：应用生命周期和单实例恢复
-- `src/main/window.ts`：窗口创建、安全导航和状态监听
-- `src/main/window-pool.ts`：按业务名称复用和集中关闭应用窗口
-- `src/main/ipc-handlers.ts`：应用与窗口 IPC 处理器
-- `src/main/infrastructure`：日志、IPC 校验和应用目录服务
+- `src/main`：Electron 主进程入口
+- `src/main/app`：应用生命周期、托盘和运行状态
+- `src/main/ipc`：IPC 注册、来源校验和业务处理器
+- `src/main/windows`：主窗口创建、状态监听和窗口池
+- `src/main/infrastructure`：日志、数据存储、应用目录和 Shell 环境服务
+- `src/main/services`：按业务领域划分的主进程服务
+- `src/main/workers`：独立运行的后台任务
 - `src/preload`：类型安全的渲染层桥接
 - `src/renderer`：React 19 渲染层
-- `src/renderer/src/components/AppHeader.tsx`：跨平台自定义标题栏与窗口控制。macOS 保留原生红黄绿交通灯，Windows/Linux 使用右侧自定义按钮
-- `src/renderer/src/components/AppErrorBoundary.tsx`：根级渲染错误降级
+- `src/renderer/src/components/app`：应用壳、导航、标题栏和根级错误处理
+- `src/renderer/src/components/common`：跨页面复用的业务无关组件
+- `src/renderer/src/components/project`：项目创建等跨模块项目工作流组件
 - `src/renderer/src/components/ui`：基于 shadcn/ui 约定维护的本地 Button、Badge、Card、Separator 组件
 - `src/renderer/src/routes.tsx`：路由元数据与导航配置
-- `src/renderer/src/pages/<route>/index.tsx`：每个路由独立目录和页面入口
-- `src/renderer/src/pages/_components`：仅供路由页面复用的页面级组件
+- `src/renderer/src/pages/<route>`：每个路由独立维护页面入口、组件和 Hooks
+- `src/shared`：主进程、预加载与渲染层共享的领域模型和 IPC 契约
 - `electron.vite.config.ts`：electron-vite 与 Tailwind CSS v4 配置
 - `components.json`：shadcn/ui 组件生成和路径别名配置
 - `electron-builder.yml`：桌面应用打包配置

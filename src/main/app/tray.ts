@@ -1,5 +1,5 @@
 import { app, Menu, Tray, type BrowserWindow } from 'electron'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../../resources/icon.png?asset'
 
 let tray: Tray | undefined
 let mainWindow: BrowserWindow | undefined

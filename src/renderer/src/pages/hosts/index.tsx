@@ -19,8 +19,8 @@ import { Drawer } from '@/components/ui/drawer'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
 import { Field } from '@/components/ui/form'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { SearchInput } from '@/components/SearchInput'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { SearchInput } from '@/components/common/SearchInput'
 import {
   Table,
   TableBody,
@@ -30,8 +30,8 @@ import {
   TableRow
 } from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-import { TooltipButton } from '@/components/TooltipButton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { useAsyncAction } from '@/hooks/useAsyncAction'
 import {
   DropdownMenu,
@@ -40,7 +40,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { ResourcePanel } from '@/components/ResourcePanel'
+import { ResourcePanel } from '@/components/common/ResourcePanel'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useInitialLoad } from '@/hooks/useInitialLoad'
 

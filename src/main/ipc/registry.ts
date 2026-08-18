@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { log } from './logger'
+import { log } from '../infrastructure/logger'
 import type { AppError, IpcResult } from '@shared/types'
 
 type IpcHandler<T> = (event: IpcMainInvokeEvent, ...args: unknown[]) => T | Promise<T>

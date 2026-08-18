@@ -13,10 +13,10 @@ import type {
   SSHKeyGenerateOptions,
   Workspace
 } from '@shared/domain'
-import { registerIpcHandler } from '@main/infrastructure/ipc'
+import { registerIpcHandler } from '@main/ipc/registry'
 import { getAppPaths } from '@main/infrastructure/paths'
 import { writeRendererError, writeRendererLog } from '@main/infrastructure/logger'
-import { getWindowState } from '@main/window'
+import { getWindowState } from '@main/windows/main-window'
 import {
   getSettings,
   saveSettings,

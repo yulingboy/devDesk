@@ -13,11 +13,11 @@ import { Field } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Drawer } from '@/components/ui/drawer'
-import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
-import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
+import { DirectoryPickerInput } from '@/components/common/DirectoryPickerInput'
+import { ProjectCreateDrawer } from '@/components/project/ProjectCreateDrawer'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
 import {
   Select,
   SelectContent,

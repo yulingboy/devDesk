@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { ConfirmAction } from '@/components/ConfirmAction'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
 import { SettingsSection } from './SettingsSection'
 
 const formatBytes = (value: number): string =>

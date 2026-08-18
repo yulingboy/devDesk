@@ -1,10 +1,10 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { AppHeader } from '@/components/AppHeader'
-import { Navigation } from '@/components/Navigation'
+import { AppHeader } from '@/components/app/AppHeader'
+import { Navigation } from '@/components/app/Navigation'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 

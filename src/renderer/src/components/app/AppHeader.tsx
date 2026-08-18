@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Minus, PanelTop, Square, Wifi, X } from 'lucide-react'
 import type { SystemOverviewSnapshot } from '@shared/domain'
 import type { WindowState } from '@shared/types'
-import { TooltipButton } from '@/components/TooltipButton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { rendererLogger } from '@/lib/logger'
 import { toErrorMessage } from '@/lib/errors'
 

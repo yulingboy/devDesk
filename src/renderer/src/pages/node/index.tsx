@@ -26,8 +26,8 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tabs } from '@/components/ui/tabs'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { SearchInput } from '@/components/SearchInput'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { SearchInput } from '@/components/common/SearchInput'
 import {
   Accordion,
   AccordionContent,
@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/accordion'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { TooltipButton } from '@/components/TooltipButton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'

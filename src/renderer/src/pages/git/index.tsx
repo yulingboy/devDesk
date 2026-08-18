@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/form'
 import { Drawer } from '@/components/ui/drawer'
-import { ConfirmAction } from '@/components/ConfirmAction'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
 import {
   Accordion,
   AccordionContent,
@@ -21,8 +21,8 @@ import {
   AccordionTrigger
 } from '@/components/ui/accordion'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-import { TooltipButton } from '@/components/TooltipButton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Item,

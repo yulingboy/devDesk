@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { registerAppLifecycle } from './lifecycle'
+import { registerAppLifecycle } from './app/lifecycle'
 import { registerProcessErrorLogging } from './infrastructure/logger'
 
 registerProcessErrorLogging()

@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table'
-import { TooltipButton } from '@/components/TooltipButton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { ProjectEditorMenu } from './ProjectEditorMenu'
 
 interface ProjectGridProps {

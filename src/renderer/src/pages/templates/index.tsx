@@ -8,13 +8,13 @@ import { Field } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Drawer } from '@/components/ui/drawer'
-import { DirectoryPickerInput } from '@/components/DirectoryPickerInput'
-import { ProjectCreateDrawer } from '@/components/ProjectCreateDrawer'
-import { ConfirmAction } from '@/components/ConfirmAction'
-import { SearchInput } from '@/components/SearchInput'
+import { DirectoryPickerInput } from '@/components/common/DirectoryPickerInput'
+import { ProjectCreateDrawer } from '@/components/project/ProjectCreateDrawer'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { SearchInput } from '@/components/common/SearchInput'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
-import { TooltipButton } from '@/components/TooltipButton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
+import { TooltipButton } from '@/components/common/TooltipButton'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import {
   Item,
@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { ResourcePanel } from '@/components/ResourcePanel'
+import { ResourcePanel } from '@/components/common/ResourcePanel'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useInitialLoad } from '@/hooks/useInitialLoad'
 import { useAsyncAction } from '@/hooks/useAsyncAction'

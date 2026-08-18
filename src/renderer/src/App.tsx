@@ -1,6 +1,6 @@
 import { lazy } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AppShell } from '@/components/AppShell'
+import { AppShell } from '@/components/app/AppShell'
 
 const GitPage = lazy(() => import('@/pages/git').then((module) => ({ default: module.GitPage })))
 const HomePage = lazy(() => import('@/pages/home').then((module) => ({ default: module.HomePage })))

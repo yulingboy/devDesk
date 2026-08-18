@@ -4,10 +4,10 @@ import { pathToFileURL } from 'node:url'
 import { is } from '@electron-toolkit/utils'
 import type { WindowState } from '@shared/types'
 import { IPC_CHANNELS } from '@shared/ipc'
-import { registerManagedWindow } from '@main/infrastructure/ipc'
+import { registerManagedWindow } from '@main/ipc/registry'
 import { log } from '@main/infrastructure/logger'
-import icon from '../../resources/icon.png?asset'
-import { shouldMinimizeToTray } from '@main/tray'
+import icon from '../../../resources/icon.png?asset'
+import { shouldMinimizeToTray } from '@main/app/tray'
 
 /** 创建主窗口并绑定安全导航、日志和窗口状态事件。 */
 export function createMainWindow(): BrowserWindow {

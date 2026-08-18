@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import type { SystemOverviewSnapshot } from '@shared/domain'
-import { PageLoadingSkeleton } from '@/components/PageLoadingSkeleton'
+import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { rendererLogger } from '@/lib/logger'
