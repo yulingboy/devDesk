@@ -33,54 +33,52 @@ export function useWorkspaceResources(report: (error: unknown) => void): {
 
   const reload = useCallback(async (): Promise<void> => {
     const currentRequestId = ++requestId.current
-    await Promise.allSettled([
-      Promise.resolve(window.api?.workspaces.list()),
+    const workspaceRequest = Promise.resolve(window.api?.workspaces.list())
+      .then((value) => {
+        if (currentRequestId !== requestId.current || !value) return
+        setWorkspaces(value)
+        setSelectedWorkspaceId((current) =>
+          current && value.some((item) => item.id === current) ? current : value[0]?.id
+        )
+        setSelectedProjectId((current) => {
+          if (!current) return undefined
+          return value.some((workspace) => workspace.projects.some((item) => item.id === current))
+            ? current
+            : undefined
+        })
+      })
+      .catch(report)
+      .finally(() => {
+        // 工作区列表是首屏必需数据，辅助资源不再阻塞主视图展示。
+        if (currentRequestId === requestId.current) setLoading(false)
+      })
+
+    const optionalRequests = Promise.allSettled([
       Promise.resolve(window.api?.git.getState()),
       Promise.resolve(window.api?.ssh.list()),
       Promise.resolve(window.api?.templates.list())
-    ])
-      .then(([workspaceResult, gitResult, sshResult, templateResult]) => {
-        if (currentRequestId !== requestId.current) return
-        if (workspaceResult.status === 'rejected') {
-          report(workspaceResult.reason)
-        } else if (workspaceResult.value) {
-          const nextWorkspaces = workspaceResult.value
-          setWorkspaces(nextWorkspaces)
-          setSelectedWorkspaceId((current) =>
-            current && nextWorkspaces.some((item) => item.id === current)
-              ? current
-              : nextWorkspaces[0]?.id
-          )
-          setSelectedProjectId((current) => {
-            if (!current) return undefined
-            return nextWorkspaces.some((workspace) =>
-              workspace.projects.some((item) => item.id === current)
-            )
-              ? current
-              : undefined
-          })
-        }
+    ]).then(([gitResult, sshResult, templateResult]) => {
+      if (currentRequestId !== requestId.current) return
+      const optionalResults = [
+        ['Git 身份', gitResult],
+        ['SSH 密钥', sshResult],
+        ['项目模板', templateResult]
+      ] as const
+      for (const [label, result] of optionalResults) {
+        if (result.status !== 'rejected') continue
+        const message = toErrorMessage(result.reason)
+        toast.warning(`${label}加载失败：${message}`)
+        rendererLogger.warn(`${label}加载失败`, { error: message })
+      }
+      if (gitResult.status === 'fulfilled' && gitResult.value)
+        setIdentities(gitResult.value.identities)
+      if (sshResult.status === 'fulfilled' && sshResult.value) setSshKeys(sshResult.value)
+      if (templateResult.status === 'fulfilled' && templateResult.value)
+        setTemplates(templateResult.value)
+    })
 
-        const optionalResults = [
-          ['Git 身份', gitResult],
-          ['SSH 密钥', sshResult],
-          ['项目模板', templateResult]
-        ] as const
-        for (const [label, result] of optionalResults) {
-          if (result.status !== 'rejected') continue
-          const message = toErrorMessage(result.reason)
-          toast.warning(`${label}加载失败：${message}`)
-          rendererLogger.warn(`${label}加载失败`, { error: message })
-        }
-        if (gitResult.status === 'fulfilled' && gitResult.value)
-          setIdentities(gitResult.value.identities)
-        if (sshResult.status === 'fulfilled' && sshResult.value) setSshKeys(sshResult.value)
-        if (templateResult.status === 'fulfilled' && templateResult.value)
-          setTemplates(templateResult.value)
-      })
-      .finally(() => {
-        if (currentRequestId === requestId.current) setLoading(false)
-      })
+    // reload 仍等待辅助资源，手动刷新按钮可以准确反馈“全部资源已更新”。
+    await Promise.all([workspaceRequest, optionalRequests])
   }, [report])
 
   useInitialLoad(reload)

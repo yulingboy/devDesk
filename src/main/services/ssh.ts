@@ -59,21 +59,30 @@ async function withPrivateKeyStatus(key: SSHKey): Promise<SSHKey> {
 export async function listSshKeys(): Promise<SSHKey[]> {
   const saved = await store.sshKeys.read()
   const directory = join(homedir(), '.ssh')
-  const discovered: SSHKey[] = []
-  for (const file of await readdir(directory).catch(() => [])) {
-    if (!file.endsWith('.pub')) continue
-    const path = join(directory, file)
-    const raw = await readFile(path, 'utf8').catch(() => '')
-    if (!raw) continue
-    try {
-      const parsed = parsePublicKey(raw, basename(file, '.pub'), 'discovered', path.slice(0, -4))
-      if (!saved.some((item) => item.publicKey === parsed.publicKey)) {
-        discovered.push({ ...parsed, id: createDiscoveredSshKeyId(parsed.publicKey) })
-      }
-    } catch {
-      // 忽略不符合公钥格式的文件，避免单个文件阻断整个密钥列表。
-    }
-  }
+  const files = (await readdir(directory).catch(() => [])).filter((file) => file.endsWith('.pub'))
+  // 公钥文件彼此独立，批量读取避免大量 SSH 文件时串行等待磁盘 IO。
+  const discovered = (
+    await Promise.all(
+      files.map(async (file) => {
+        const path = join(directory, file)
+        const raw = await readFile(path, 'utf8').catch(() => '')
+        if (!raw) return undefined
+        try {
+          const parsed = parsePublicKey(
+            raw,
+            basename(file, '.pub'),
+            'discovered',
+            path.slice(0, -4)
+          )
+          if (saved.some((item) => item.publicKey === parsed.publicKey)) return undefined
+          return { ...parsed, id: createDiscoveredSshKeyId(parsed.publicKey) }
+        } catch {
+          // 忽略不符合公钥格式的文件，避免单个文件阻断整个密钥列表。
+          return undefined
+        }
+      })
+    )
+  ).filter((item): item is SSHKey => Boolean(item))
   const merged = [...saved, ...discovered]
   return Promise.all(merged.map(withPrivateKeyStatus))
 }
