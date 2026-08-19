@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toErrorMessage } from './errors'
+import { toErrorMessage } from '@/lib/errors'
 
 describe('渲染层错误文本', () => {
   it('优先保留 Error 和字符串中的明确信息', () => {

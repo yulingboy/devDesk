@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SSHKey } from '@shared/domain'
-import { createDiscoveredSshKeyId, materializeSshKeyBinding } from './ssh'
+import { createDiscoveredSshKeyId, materializeSshKeyBinding } from '@main/services/ssh'
 
 const discoveredKey: SSHKey = {
   id: createDiscoveredSshKeyId('ssh-ed25519 AAAATEST developer@example.com'),

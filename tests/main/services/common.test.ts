@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { isPathWithin, isValidIp, optionalText } from './common'
+import { isPathWithin, isValidIp, optionalText } from '@main/services/common'
 
 describe('IP 地址校验', () => {
   it('接受标准 IPv4 与 IPv6 地址', () => {

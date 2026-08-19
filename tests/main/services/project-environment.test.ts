@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { isNodeRequirementSatisfied, parseProjectPackageManager } from './project-environment'
+import {
+  isNodeRequirementSatisfied,
+  parseProjectPackageManager
+} from '@main/services/project-environment'
 
 describe('项目环境解析', () => {
   it('从 packageManager 字段识别受支持的包管理器', () => {

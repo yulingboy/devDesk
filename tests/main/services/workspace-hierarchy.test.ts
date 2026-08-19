@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Project, Workspace } from '@shared/domain'
-import { normalizeWorkspaceProjectHierarchy } from './workspace-hierarchy'
+import { normalizeWorkspaceProjectHierarchy } from '@main/services/workspace-hierarchy'
 
 function createProject(workspaceId: string, id: string, path: string): Project {
   return { id, workspaceId, name: path.split('/').at(-1)!, path, source: 'scanned' }

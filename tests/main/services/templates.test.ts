@@ -28,11 +28,11 @@ vi.mock('@main/infrastructure/shell-environment', () => ({
 }))
 
 // 本用例关注模板创建后的元数据回填，扫描结果使用当前工作区快照。
-vi.mock('./workspaces', () => ({
+vi.mock('@main/services/workspaces', () => ({
   scanWorkspace: async (): Promise<Workspace[]> => data.workspaces
 }))
 
-import { createProject } from './templates'
+import { createProject } from '@main/services/templates'
 
 let temporaryDirectory = ''
 
