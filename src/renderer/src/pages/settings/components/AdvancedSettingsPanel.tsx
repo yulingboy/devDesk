@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { SettingsSection } from './SettingsSection'
 
 const formatBytes = (value: number): string =>
@@ -22,19 +23,17 @@ export function AdvancedSettingsPanel({
   settings,
   logStats,
   onChange,
-  onOpenDeveloperTools,
-  onOpenLogs,
   onClearLogs,
   developerToolsActive
 }: {
   settings: AppSettings
   logStats: LogStats | null
   onChange: (value: AppSettings) => void
-  onOpenDeveloperTools: () => void
-  onOpenLogs: () => void
   onClearLogs: () => void
   developerToolsActive: boolean
 }): React.JSX.Element {
+  const { report } = usePageFeedback('设置工具操作失败', { keepStatus: false })
+
   return (
     <Card className="overflow-hidden">
       <SettingsSection description="调整写入本地诊断文件的日志阈值。" title="日志">
@@ -71,7 +70,10 @@ export function AdvancedSettingsPanel({
           </div>
         </div>
         <div className="mt-3 flex gap-1.5">
-          <Button onClick={onOpenLogs} variant="secondary">
+          <Button
+            onClick={() => void window.api?.settings.openLogs().catch(report)}
+            variant="secondary"
+          >
             <FolderOpen size={14} />
             打开日志目录
           </Button>
@@ -105,7 +107,7 @@ export function AdvancedSettingsPanel({
         <Button
           className="mt-3"
           disabled={!developerToolsActive}
-          onClick={onOpenDeveloperTools}
+          onClick={() => void window.api?.settings.openDeveloperTools().catch(report)}
           variant="secondary"
         >
           <Code2 size={14} />

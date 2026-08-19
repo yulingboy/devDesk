@@ -1,31 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { FolderKanban, Plus, Save } from 'lucide-react'
-import type {
-  ProjectEditorId,
-  Project,
-  Workspace,
-  WorkspaceSubproject,
-  WorkspaceScanResult
-} from '@shared/domain'
-import { Button } from '@/components/ui/button'
-import { Field } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Drawer } from '@/components/ui/drawer'
-import { DirectoryPickerInput } from '@/components/common/DirectoryPickerInput'
+import type { Project, Workspace, WorkspaceSubproject, WorkspaceScanResult } from '@shared/domain'
 import { ProjectCreateDrawer } from '@/components/project/ProjectCreateDrawer'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select'
 import { ProjectGrid } from './components/ProjectGrid'
+import { WorkspaceEditorDrawer } from './components/WorkspaceEditorDrawer'
+import { WorkspaceEmptyState } from './components/WorkspaceEmptyState'
 import { ProjectDetailDrawer } from './components/ProjectDetailDrawer'
 import { ProjectRemarkDrawer } from './components/ProjectRemarkDrawer'
 import { WorkspaceToolbar } from './components/WorkspaceToolbar'
@@ -88,11 +68,11 @@ export function WorkspacesPage(): React.JSX.Element {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [setSelectedProjectId, setSelectedWorkspaceId, workspaces])
-  const save = async (): Promise<void> => {
+  const save = async (valueToSave: Workspace = draft): Promise<void> => {
     if (savingWorkspace) return
     setSavingWorkspace(true)
     try {
-      const value = await window.api?.workspaces.save(draft)
+      const value = await window.api?.workspaces.save(valueToSave)
       if (!value) throw new Error('当前页面未连接桌面服务，无法保存工作区。')
       setWorkspaces(value)
       setDraft(emptyWorkspace)
@@ -165,14 +145,14 @@ export function WorkspacesPage(): React.JSX.Element {
       remark: subproject.remark ?? ''
     })
   }
-  const saveProjectRemark = async (): Promise<void> => {
+  const saveProjectRemark = async (remark = remarkDraft?.remark ?? ''): Promise<void> => {
     if (!remarkDraft || savingRemark) return
     setSavingRemark(true)
     try {
       const next = await window.api?.workspaces.saveProjectRemark(
         remarkDraft.workspaceId,
         remarkDraft.projectId,
-        remarkDraft.remark
+        remark
       )
       if (!next) throw new Error('当前页面未连接桌面服务，无法保存项目备注。')
       setWorkspaces(next)
@@ -266,7 +246,6 @@ export function WorkspacesPage(): React.JSX.Element {
               setDraft(visibleWorkspace)
               setDrawerMode('workspace')
             }}
-            onOpen={() => void window.api?.workspaces.open(visibleWorkspace.id).catch(report)}
             onQueryChange={setQuery}
             onRefresh={() => void refresh()}
             onScan={() => void scan(visibleWorkspace.id)}
@@ -288,10 +267,6 @@ export function WorkspacesPage(): React.JSX.Element {
             <ProjectGrid
               onEditRemark={editProjectRemark}
               onOpen={(project) => setSelectedProjectId(project.id)}
-              onOpenEditor={(path, editor: ProjectEditorId) =>
-                void window.api?.workspaces.openProjectEditor(path, editor).catch(report)
-              }
-              onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
               projects={visibleWorkspace.projects}
               query={query}
               scanning={scanningWorkspaceId === visibleWorkspace.id}
@@ -299,104 +274,18 @@ export function WorkspacesPage(): React.JSX.Element {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500">
-                <FolderKanban size={15} />
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-slate-800">工作区</p>
-                <p className="mt-0.5 text-[10px] text-slate-400">集中管理项目目录与 Git 身份</p>
-              </div>
-            </div>
-            <Button onClick={createWorkspace} variant="success">
-              <Plus />
-              新增工作区
-            </Button>
-          </div>
-          <Empty className="min-h-0 flex-1 rounded-none border-0 bg-white">
-            <EmptyTitle>还没有工作区</EmptyTitle>
-            <EmptyDescription>新增一个项目根目录，即可扫描其中的一级项目。</EmptyDescription>
-            <Button className="mt-3" onClick={createWorkspace} variant="outline">
-              <Plus />
-              新增工作区
-            </Button>
-          </Empty>
-        </div>
+        <WorkspaceEmptyState onCreate={createWorkspace} />
       )}
-      <Drawer
-        description="名称和规范化根目录不能与现有工作区重复，保存后会同步 Git 规则。"
-        footer={
-          <>
-            <Button onClick={() => setDrawerMode(null)} variant="secondary">
-              取消
-            </Button>
-            <Button
-              loading={savingWorkspace}
-              loadingText="保存中"
-              onClick={() => void save()}
-              variant="success"
-            >
-              <Save size={15} />
-              保存
-            </Button>
-          </>
-        }
+      <WorkspaceEditorDrawer
+        draft={draft}
+        identities={identities}
+        key={`${drawerMode}-${draft.id}`}
         onClose={() => setDrawerMode(null)}
+        onSave={(value) => void save(value)}
         open={drawerMode === 'workspace'}
-        title={draft.id ? '编辑工作区' : '新增工作区'}
-      >
-        <div className="space-y-3">
-          <Field htmlFor="workspace-name" label="名称">
-            <Input
-              id="workspace-name"
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              value={draft.name}
-            />
-          </Field>
-          <Field htmlFor="workspace-root" label="根目录">
-            <DirectoryPickerInput
-              id="workspace-root"
-              onChange={(rootPath) => setDraft({ ...draft, rootPath })}
-              placeholder="输入或选择项目根目录"
-              value={draft.rootPath}
-            />
-          </Field>
-          <Field className="md:col-span-2" htmlFor="workspace-description" label="描述">
-            <Textarea
-              id="workspace-description"
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-              value={draft.description}
-            />
-          </Field>
-          <Field className="md:col-span-2" htmlFor="workspace-identity" label="Git 身份">
-            <Select
-              value={draft.gitIdentityId ?? 'none'}
-              onValueChange={(value) =>
-                setDraft({ ...draft, gitIdentityId: value === 'none' ? undefined : value })
-              }
-            >
-              <SelectTrigger id="workspace-identity">
-                <SelectValue placeholder="不绑定" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">不绑定</SelectItem>
-                {identities.map((identity) => (
-                  <SelectItem key={identity.id} value={identity.id}>
-                    {identity.name} · {identity.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          {status && (
-            <Alert variant="destructive">
-              <AlertDescription>{status}</AlertDescription>
-            </Alert>
-          )}
-        </div>
-      </Drawer>
+        saving={savingWorkspace}
+        status={status}
+      />
       <WorkspaceDetailDrawer
         identity={selectedIdentity}
         onClose={() => setDrawerMode(null)}
@@ -404,10 +293,6 @@ export function WorkspacesPage(): React.JSX.Element {
           if (!selectedWorkspace) return
           setDraft(selectedWorkspace)
           setDrawerMode('workspace')
-        }}
-        onOpenFolder={() => {
-          if (!selectedWorkspace) return
-          void window.api?.workspaces.open(selectedWorkspace.id).catch(report)
         }}
         open={drawerMode === 'workspace-detail'}
         sshKey={selectedSshKey}
@@ -441,10 +326,6 @@ export function WorkspacesPage(): React.JSX.Element {
         onEditRemark={editProjectRemark}
         onEditSubprojectRemark={editSubprojectRemark}
         onRemove={removeProject}
-        onOpenEditor={(path, editor: ProjectEditorId) =>
-          void window.api?.workspaces.openProjectEditor(path, editor).catch(report)
-        }
-        onOpenFolder={(path) => void window.api?.workspaces.openProject(path).catch(report)}
         open={Boolean(selectedProject)}
         project={selectedProject}
         removing={removingProject}
@@ -452,12 +333,10 @@ export function WorkspacesPage(): React.JSX.Element {
         workspace={selectedWorkspace}
       />
       <ProjectRemarkDrawer
+        key={`${remarkDraft?.projectId}-${Boolean(remarkDraft)}`}
         open={Boolean(remarkDraft)}
-        onChange={(remark) =>
-          setRemarkDraft((current) => (current ? { ...current, remark } : current))
-        }
         onClose={() => !savingRemark && setRemarkDraft(undefined)}
-        onSave={() => void saveProjectRemark()}
+        onSave={(value) => void saveProjectRemark(value)}
         projectName={remarkDraft?.projectName ?? ''}
         saving={savingRemark}
         value={remarkDraft?.remark ?? ''}

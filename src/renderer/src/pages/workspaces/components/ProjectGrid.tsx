@@ -1,5 +1,5 @@
 import { FolderOpen, Info, Pencil, TriangleAlert } from 'lucide-react'
-import type { Project, ProjectEditorId } from '@shared/domain'
+import type { Project } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table'
 import { TooltipButton } from '@/components/common/TooltipButton'
 import { ProjectEditorMenu } from './ProjectEditorMenu'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface ProjectGridProps {
   projects: Project[]
@@ -22,8 +23,6 @@ interface ProjectGridProps {
   scanning: boolean
   onOpen: (project: Project) => void
   onEditRemark: (project: Project) => void
-  onOpenEditor: (path: string, editor: ProjectEditorId) => void
-  onOpenFolder: (path: string) => void
 }
 
 /** 主列表只展示一级项目，子项目以数量提示并在详情抽屉中查看。 */
@@ -32,10 +31,10 @@ export function ProjectGrid({
   query,
   scanning,
   onOpen,
-  onEditRemark,
-  onOpenEditor,
-  onOpenFolder
+  onEditRemark
 }: ProjectGridProps): React.JSX.Element {
+  const { report } = usePageFeedback('打开项目目录失败', { keepStatus: false })
+
   if (scanning) {
     return (
       <div className="min-w-0 flex-1 divide-y divide-slate-100 overflow-hidden rounded-md border border-slate-100 bg-white">
@@ -148,12 +147,13 @@ export function ProjectGrid({
                     </TooltipButton>
                     <ProjectEditorMenu
                       disabled={project.directoryExists === false}
-                      onOpen={onOpenEditor}
                       path={project.path}
                     />
                     <TooltipButton
                       disabled={project.directoryExists === false}
-                      onClick={() => onOpenFolder(project.path)}
+                      onClick={() =>
+                        void window.api?.workspaces.openProject(project.path).catch(report)
+                      }
                       size="icon"
                       tooltip="打开项目目录"
                       variant="ghost"

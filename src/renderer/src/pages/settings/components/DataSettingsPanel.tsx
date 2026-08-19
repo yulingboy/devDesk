@@ -8,11 +8,14 @@ import {
   ShieldAlert
 } from 'lucide-react'
 import type { AppSettings, DataStats } from '@shared/domain'
+import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmAction } from '@/components/common/ConfirmAction'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { useAsyncAction } from '@/hooks/useAsyncAction'
 import { SettingsSection } from './SettingsSection'
 
 const formatBytes = (value: number): string =>
@@ -23,10 +26,7 @@ export function DataSettingsPanel({
   stats,
   busy,
   error,
-  onOpen,
   onMigrate,
-  onCopy,
-  onExport,
   onImport,
   onClear
 }: {
@@ -34,13 +34,14 @@ export function DataSettingsPanel({
   stats: DataStats | null
   busy: boolean
   error?: string
-  onOpen: () => void
   onMigrate: () => void
-  onCopy: () => void
-  onExport: () => void
   onImport: () => void
   onClear: () => void
 }): React.JSX.Element {
+  const { report } = usePageFeedback('数据工具操作失败', { keepStatus: false })
+  const { isPending, run } = useAsyncAction(report)
+  const disabled = busy || isPending()
+
   return (
     <div>
       {error && (
@@ -58,11 +59,16 @@ export function DataSettingsPanel({
             >
               {settings.data.directory}
             </code>
-            <Button disabled={busy} onClick={onOpen} size="sm" variant="ghost">
+            <Button
+              disabled={disabled}
+              onClick={() => void window.api?.settings.openData().catch(report)}
+              size="sm"
+              variant="ghost"
+            >
               <FolderOpen />
               打开
             </Button>
-            <Button disabled={busy} onClick={onMigrate} size="sm" variant="secondary">
+            <Button disabled={disabled} onClick={onMigrate} size="sm" variant="secondary">
               <FolderSync />
               迁移
             </Button>
@@ -73,11 +79,31 @@ export function DataSettingsPanel({
           title="备份与恢复"
         >
           <div className="flex flex-wrap gap-1.5">
-            <Button disabled={busy} onClick={onCopy} variant="outline">
+            <Button
+              disabled={disabled}
+              onClick={() =>
+                void run('data-copy', async () => {
+                  await navigator.clipboard.writeText(
+                    JSON.stringify(await window.api!.settings.export(), null, 2)
+                  )
+                  toast.success('数据快照已复制')
+                })
+              }
+              variant="outline"
+            >
               <Clipboard />
               复制快照
             </Button>
-            <Button disabled={busy} onClick={onExport} variant="outline">
+            <Button
+              disabled={disabled}
+              onClick={() =>
+                void run('data-export', async () => {
+                  const result = await window.api!.settings.exportFile()
+                  if (!result.cancelled) toast.success('备份文件已导出')
+                })
+              }
+              variant="outline"
+            >
               <Download />
               导出文件
             </Button>
@@ -86,7 +112,7 @@ export function DataSettingsPanel({
               onConfirm={onImport}
               title="从备份恢复数据？"
             >
-              <Button disabled={busy} variant="outline">
+              <Button disabled={disabled} variant="outline">
                 <Import />
                 导入文件
               </Button>
@@ -124,7 +150,7 @@ export function DataSettingsPanel({
             onConfirm={onClear}
             title="清空工作台数据？"
           >
-            <Button disabled={busy} variant="destructive">
+            <Button disabled={disabled} variant="destructive">
               <ShieldAlert />
               清空工作台数据
             </Button>

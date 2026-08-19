@@ -9,14 +9,7 @@ import {
   Trash2
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type {
-  GitIdentity,
-  Project,
-  ProjectEditorId,
-  SSHKey,
-  Workspace,
-  WorkspaceSubproject
-} from '@shared/domain'
+import type { GitIdentity, Project, SSHKey, Workspace, WorkspaceSubproject } from '@shared/domain'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,6 +20,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { ConfirmAction } from '@/components/common/ConfirmAction'
 import { TooltipButton } from '@/components/common/TooltipButton'
 import { ProjectEditorMenu } from './ProjectEditorMenu'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface ProjectDetailDrawerProps {
   identity?: GitIdentity
@@ -39,8 +33,6 @@ interface ProjectDetailDrawerProps {
   onCreateSubproject: (project: Project) => void
   onEditRemark: (project: Project) => void
   onEditSubprojectRemark: (subproject: WorkspaceSubproject) => void
-  onOpenEditor: (path: string, editor: ProjectEditorId) => void
-  onOpenFolder: (path: string) => void
   onRemove: () => Promise<void>
 }
 
@@ -59,11 +51,10 @@ export function ProjectDetailDrawer({
   onCreateSubproject,
   onEditRemark,
   onEditSubprojectRemark,
-  onOpenEditor,
-  onOpenFolder,
   onRemove
 }: ProjectDetailDrawerProps): React.JSX.Element {
   const directoryAvailable = project?.directoryExists !== false
+  const { report } = usePageFeedback('打开项目目录失败', { keepStatus: false })
   return (
     <Drawer
       className="sm:max-w-lg"
@@ -87,18 +78,13 @@ export function ProjectDetailDrawer({
             </Button>
             <Button
               disabled={!directoryAvailable}
-              onClick={() => onOpenFolder(project.path)}
+              onClick={() => void window.api?.workspaces.openProject(project.path).catch(report)}
               variant="outline"
             >
               <FolderOpen />
               打开目录
             </Button>
-            <ProjectEditorMenu
-              labeled
-              disabled={!directoryAvailable}
-              onOpen={onOpenEditor}
-              path={project.path}
-            />
+            <ProjectEditorMenu labeled disabled={!directoryAvailable} path={project.path} />
           </>
         ) : undefined
       }
@@ -208,12 +194,13 @@ export function ProjectDetailDrawer({
                       </TooltipButton>
                       <ProjectEditorMenu
                         disabled={subproject.directoryExists === false}
-                        onOpen={onOpenEditor}
                         path={subproject.path}
                       />
                       <TooltipButton
                         disabled={subproject.directoryExists === false}
-                        onClick={() => onOpenFolder(subproject.path)}
+                        onClick={() =>
+                          void window.api?.workspaces.openProject(subproject.path).catch(report)
+                        }
                         size="icon"
                         tooltip="打开子项目目录"
                         variant="ghost"

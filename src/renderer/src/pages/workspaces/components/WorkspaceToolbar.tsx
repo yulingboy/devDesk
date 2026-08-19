@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface WorkspaceToolbarProps {
   query: string
@@ -43,7 +44,6 @@ interface WorkspaceToolbarProps {
   onCreateWorkspace: () => void
   onDelete: () => Promise<void>
   onEdit: () => void
-  onOpen: () => void
   onQueryChange: (value: string) => void
   onRefresh: () => void
   onScan: () => void
@@ -65,13 +65,14 @@ export function WorkspaceToolbar({
   onCreateWorkspace,
   onDelete,
   onEdit,
-  onOpen,
   onQueryChange,
   onRefresh,
   onScan,
   onSelectWorkspace,
   onViewDetails
 }: WorkspaceToolbarProps): React.JSX.Element {
+  const { report } = usePageFeedback('打开工作区目录失败', { keepStatus: false })
+
   return (
     <section className="shrink-0 bg-white">
       <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
@@ -141,7 +142,9 @@ export function WorkspaceToolbar({
                 <Pencil />
                 编辑工作区
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onOpen}>
+              <DropdownMenuItem
+                onSelect={() => void window.api?.workspaces.open(workspace.id).catch(report)}
+              >
                 <FolderOpen />
                 打开工作区目录
               </DropdownMenuItem>

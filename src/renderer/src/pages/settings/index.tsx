@@ -1,25 +1,16 @@
 import { useState } from 'react'
-import {
-  Database,
-  Info,
-  RotateCcw,
-  Save,
-  Settings2,
-  ShieldAlert,
-  SlidersHorizontal,
-  Undo2
-} from 'lucide-react'
+import { Database, Info, RotateCcw, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Tabs } from '@/components/ui/tabs'
-import { ConfirmAction } from '@/components/common/ConfirmAction'
 import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
 import { AboutPanel } from './components/AboutPanel'
 import { AdvancedSettingsPanel } from './components/AdvancedSettingsPanel'
 import { DataSettingsPanel } from './components/DataSettingsPanel'
 import { GeneralSettingsPanel } from './components/GeneralSettingsPanel'
 import { SettingsPane } from './components/SettingsPane'
+import { SettingsToolbar } from './components/SettingsToolbar'
 import { useSettingsPage } from './hooks/useSettingsPage'
 
 export function SettingsPage(): React.JSX.Element {
@@ -68,20 +59,6 @@ export function SettingsPage(): React.JSX.Element {
           toast.success('工作台数据已清空')
         })
       }
-      onCopy={() =>
-        void run('data', async () => {
-          await navigator.clipboard.writeText(
-            JSON.stringify(await window.api!.settings.export(), null, 2)
-          )
-          toast.success('数据快照已复制')
-        })
-      }
-      onExport={() =>
-        void run('data', async () => {
-          const result = await window.api!.settings.exportFile()
-          if (!result.cancelled) toast.success('备份文件已导出')
-        })
-      }
       onImport={() =>
         void run('data', async () => {
           const result = await window.api!.settings.importFile()
@@ -102,7 +79,6 @@ export function SettingsPage(): React.JSX.Element {
           }
         })
       }
-      onOpen={() => void run('data', () => window.api!.settings.openData())}
       settings={page.draft}
       stats={page.dataStats}
     />
@@ -120,67 +96,19 @@ export function SettingsPage(): React.JSX.Element {
           toast.success('旧日志已清理')
         })
       }
-      onOpenDeveloperTools={() => void window.api!.settings.openDeveloperTools().catch(page.report)}
-      onOpenLogs={() => void window.api!.settings.openLogs().catch(page.report)}
       settings={page.draft}
     />
   )
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-50/70">
-      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-5">
-        <div className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--theme-lighter)] text-[var(--accent)]">
-          <Settings2 />
-        </div>
-        <div className="min-w-0">
-          <div className="text-[13px] font-semibold text-slate-900">系统设置</div>
-          <div className="truncate text-[11px] text-slate-500">
-            管理应用行为、本地数据和开发环境
-          </div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <span
-            className={
-              page.dirty
-                ? 'mr-1 flex items-center gap-1.5 text-[11px] text-amber-600'
-                : 'mr-1 flex items-center gap-1.5 text-[11px] text-slate-500'
-            }
-          >
-            <span
-              className={
-                page.dirty
-                  ? 'size-1.5 rounded-full bg-amber-500'
-                  : 'size-1.5 rounded-full bg-emerald-500'
-              }
-            />
-            {page.dirty ? '有未保存的修改' : '设置已同步'}
-          </span>
-          <Button disabled={!page.dirty || Boolean(pending)} onClick={page.discard} variant="ghost">
-            <Undo2 />
-            撤销
-          </Button>
-          <ConfirmAction
-            description="恢复桌面行为和高级设置的默认值，不会删除业务数据。"
-            onConfirm={() => page.reset()}
-            title="恢复默认设置？"
-          >
-            <Button disabled={Boolean(pending)} variant="secondary">
-              <RotateCcw />
-              重置
-            </Button>
-          </ConfirmAction>
-          <Button
-            disabled={!page.dirty || Boolean(pending)}
-            loading={pending === 'save'}
-            loadingText="保存中"
-            onClick={() => void run('save', page.save)}
-            variant="success"
-          >
-            <Save />
-            保存
-          </Button>
-        </div>
-      </div>
+      <SettingsToolbar
+        dirty={page.dirty}
+        onDiscard={page.discard}
+        onReset={() => page.reset()}
+        onSave={() => void run('save', page.save)}
+        pending={Boolean(pending)}
+      />
       {page.errors.operation && (
         <Alert className="m-3 mb-0 shrink-0" variant="destructive">
           <AlertDescription>{page.errors.operation}</AlertDescription>

@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import { Separator } from '@/components/ui/separator'
+import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface WorkspaceDetailDrawerProps {
   identity?: GitIdentity
   onClose: () => void
   onEdit: () => void
-  onOpenFolder: () => void
   open: boolean
   sshKey?: SSHKey
   workspace?: Workspace
@@ -20,11 +20,12 @@ export function WorkspaceDetailDrawer({
   identity,
   onClose,
   onEdit,
-  onOpenFolder,
   open,
   sshKey,
   workspace
 }: WorkspaceDetailDrawerProps): React.JSX.Element {
+  const { report } = usePageFeedback('打开工作区目录失败', { keepStatus: false })
+
   return (
     <Drawer
       description="查看工作区目录、备注与当前绑定的 Git / SSH 身份。"
@@ -38,7 +39,10 @@ export function WorkspaceDetailDrawer({
               <Pencil />
               编辑工作区
             </Button>
-            <Button onClick={onOpenFolder} variant="success">
+            <Button
+              onClick={() => void window.api?.workspaces.open(workspace.id).catch(report)}
+              variant="success"
+            >
               <FolderOpen />
               打开目录
             </Button>
