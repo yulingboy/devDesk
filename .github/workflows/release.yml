@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     name: 构建 ${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -37,7 +37,39 @@ jobs:
         run: npm install --global pnpm@11.19.0
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
-      - name: 构建并发布
-        run: pnpm exec electron-builder --${{ matrix.platform }} ${{ matrix.args }} --publish always
+      - name: 构建安装包
+        run: pnpm exec electron-builder --${{ matrix.platform }} ${{ matrix.args }} --publish never
+      - name: 保存安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest*.yml
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.snap
+            dist/*.deb
+          if-no-files-found: error
+
+  publish:
+    name: 发布 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: 获取标签
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: 下载所有安装包
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: 发布 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" release-artifacts/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "DevDesk $GITHUB_REF_NAME" --generate-notes
