@@ -4,6 +4,13 @@ export const IPC_CHANNELS = {
     reportError: 'app:report-error',
     writeLog: 'app:write-log'
   },
+  update: {
+    getState: 'update:get-state',
+    check: 'update:check',
+    download: 'update:download',
+    install: 'update:install',
+    stateChanged: 'update:state-changed'
+  },
   dialog: {
     selectDirectory: 'dialog:select-directory'
   },

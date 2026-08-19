@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc'
 import type {
   AppApi,
+  AppUpdateState,
   IpcResult,
   RendererErrorReport,
   RendererLogEntry,
@@ -28,6 +29,18 @@ const api: AppApi = {
     getRuntimeInfo: () => invoke<RuntimeInfo>(IPC_CHANNELS.app.getRuntimeInfo),
     writeLog: (entry: RendererLogEntry) => invoke<void>(IPC_CHANNELS.app.writeLog, entry),
     reportError: (report: RendererErrorReport) => invoke<void>(IPC_CHANNELS.app.reportError, report)
+  },
+  update: {
+    getState: () => invoke<AppUpdateState>(IPC_CHANNELS.update.getState),
+    check: () => invoke<AppUpdateState>(IPC_CHANNELS.update.check),
+    download: () => invoke<AppUpdateState>(IPC_CHANNELS.update.download),
+    install: () => invoke<void>(IPC_CHANNELS.update.install),
+    onStateChanged: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: AppUpdateState): void =>
+        listener(state)
+      ipcRenderer.on(IPC_CHANNELS.update.stateChanged, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.update.stateChanged, handler)
+    }
   },
   dialog: {
     selectDirectory: (defaultPath) => invoke(IPC_CHANNELS.dialog.selectDirectory, defaultPath)

@@ -13,6 +13,7 @@ import { getSettings } from '@main/services/settings'
 import { stopAllProjectTasks } from '@main/services/workspaces'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import appIcon from '../../../resources/icon.png?asset'
+import { checkForAppUpdate, initializeUpdateService } from '@main/services/app-updater'
 
 const windowPool = new WindowPool()
 
@@ -32,6 +33,9 @@ export function registerAppLifecycle(): void {
 
     registerApplicationIpc()
     const mainWindow = windowPool.open('main', createMainWindow)
+    initializeUpdateService()
+    // 启动后延迟检查，避免更新网络请求影响首屏；开发模式会自动跳过。
+    setTimeout(() => void checkForAppUpdate().catch(() => undefined), 8_000)
     // Finder/Dock 启动时后台预热登录 Shell，避免首次打开开发工具页面才支付 PATH 探测耗时。
     void getUserShellEnvironment()
     void getSettings()

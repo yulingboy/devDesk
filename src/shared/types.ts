@@ -46,6 +46,27 @@ export interface AppError {
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: AppError }
 
+/** 自动更新在主进程与渲染层之间传递的最小状态。 */
+export type AppUpdateStatus =
+  | 'disabled'
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface AppUpdateState {
+  status: AppUpdateStatus
+  currentVersion: string
+  version?: string
+  releaseDate?: string
+  releaseNotes?: string
+  progress?: number
+  message?: string
+}
+
 import type {
   AppSettings,
   DataExport,
@@ -85,6 +106,13 @@ export interface AppApi {
     getRuntimeInfo: () => Promise<RuntimeInfo>
     writeLog: (entry: RendererLogEntry) => Promise<void>
     reportError: (report: RendererErrorReport) => Promise<void>
+  }
+  update: {
+    getState: () => Promise<AppUpdateState>
+    check: () => Promise<AppUpdateState>
+    download: () => Promise<AppUpdateState>
+    install: () => Promise<void>
+    onStateChanged: (listener: (state: AppUpdateState) => void) => () => void
   }
   dialog: {
     selectDirectory: (defaultPath?: string) => Promise<string | null>

@@ -42,6 +42,24 @@ pnpm build:win
 pnpm build:linux
 ```
 
+## GitHub 发布与自动更新
+
+仓库已配置 GitHub Actions。推送符合 `v*.*.*` 的版本标签后，Actions 会在 macOS、Windows 和 Linux 上分别打包，并将安装包与更新描述文件发布到 `yulingboy/devDesk` 的 GitHub Release：
+
+```bash
+pnpm version patch --no-git-tag-version
+git add package.json pnpm-lock.yaml
+git commit -m "chore: 发布 v1.0.1"
+git tag v1.0.1
+git push origin main --tags
+```
+
+应用打包后会在启动约 8 秒后后台检查 GitHub Release。检查、下载和安装都可在“设置 > 关于 > 应用更新”中手动操作；下载完成后点击“重启并安装”才会退出应用。
+
+发布前请确认仓库默认分支可正常使用 `GITHUB_TOKEN` 写入 Release。当前 macOS 配置允许生成未签名测试包，但正式自动更新建议在 GitHub Actions 中配置 `CSC_LINK`、`CSC_KEY_PASSWORD` 和 Apple notarization 所需凭据，否则 macOS 可能因 Gatekeeper 或签名校验阻止安装。
+
+开发模式不会请求 GitHub，也不会显示可用更新。
+
 ## 项目结构
 
 - `src/main`：Electron 主进程入口

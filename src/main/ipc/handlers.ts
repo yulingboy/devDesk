@@ -114,6 +114,12 @@ import {
 } from '@main/services/node'
 import type { NodeRegistryDraft } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
+import {
+  checkForAppUpdate,
+  downloadAppUpdate,
+  getUpdateState,
+  installAppUpdate
+} from '@main/services/app-updater'
 
 /** 集中注册应用信息、日志和窗口控制相关 IPC。 */
 export function registerApplicationIpc(): void {
@@ -143,6 +149,11 @@ export function registerApplicationIpc(): void {
   registerIpcHandler<void>(IPC_CHANNELS.app.reportError, (_, report) => {
     writeRendererError(parseRendererErrorReport(report))
   })
+
+  registerIpcHandler(IPC_CHANNELS.update.getState, () => getUpdateState())
+  registerIpcHandler(IPC_CHANNELS.update.check, () => checkForAppUpdate())
+  registerIpcHandler(IPC_CHANNELS.update.download, () => downloadAppUpdate())
+  registerIpcHandler<void>(IPC_CHANNELS.update.install, () => installAppUpdate())
 
   registerIpcHandler<string | null>(
     IPC_CHANNELS.dialog.selectDirectory,
