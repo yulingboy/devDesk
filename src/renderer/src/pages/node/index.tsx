@@ -10,6 +10,7 @@ import { EnvironmentPathsPanel } from './components/EnvironmentPathsPanel'
 import { InstalledVersionsPanel } from './components/InstalledVersionsPanel'
 import { NodeSummaryHeader } from './components/NodeSummaryHeader'
 import { NodeTaskPanel } from './components/NodeTaskPanel'
+import { NodeDownloadSourceDrawer } from './components/NodeDownloadSourceDrawer'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 import { useNodeEnvironmentPaths } from './hooks/useNodeEnvironmentPaths'
 import { useNodeReleases } from './hooks/useNodeReleases'
@@ -22,6 +23,7 @@ export function NodePage(): React.JSX.Element {
   const [activeEnvironmentTab, setActiveEnvironmentTab] = useState('paths')
   const [cacheLoading, setCacheLoading] = useState(false)
   const [versionAction, setVersionAction] = useState('')
+  const [downloadSourceOpen, setDownloadSourceOpen] = useState(false)
   const cacheScanRequested = useRef(false)
   const initialLoadRequested = useRef(false)
   const [loading, setLoading] = useState(true)
@@ -157,6 +159,7 @@ export function NodePage(): React.JSX.Element {
                   setReleasePage(1)
                 }}
                 onInstall={install}
+                onConfigureSource={() => setDownloadSourceOpen(true)}
                 onKeywordChange={(value) => {
                   setKeyword(value)
                   setReleasePage(1)
@@ -273,6 +276,13 @@ export function NodePage(): React.JSX.Element {
         onValueChange={setActiveTab}
         value={activeTab}
       />
+      {downloadSourceOpen && (
+        <NodeDownloadSourceDrawer
+          onClose={() => setDownloadSourceOpen(false)}
+          onSaved={refreshReleases}
+          open
+        />
+      )}
     </div>
   )
 }

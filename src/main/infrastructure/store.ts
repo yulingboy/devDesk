@@ -15,6 +15,7 @@ import type {
   SystemOverviewSnapshot,
   Workspace
 } from '@shared/domain'
+import { DEFAULT_NODE_DOWNLOAD_SETTINGS } from '@shared/node-download-sources'
 
 const schemaVersion = 1 as const
 let storeDirectory: string | undefined
@@ -30,8 +31,7 @@ const emptySettings = (dataDirectory: string): AppSettings => ({
   data: { directory: dataDirectory },
   advanced: { logLevel: 'info', developerTools: false },
   node: {
-    indexUrl: 'https://nodejs.org/dist/index.json',
-    downloadSource: 'https://nodejs.org/dist',
+    ...DEFAULT_NODE_DOWNLOAD_SETTINGS,
     packageManager: 'pnpm',
     registry: 'https://registry.npmjs.org'
   }

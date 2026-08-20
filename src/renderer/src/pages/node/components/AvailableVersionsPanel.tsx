@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RefreshCw, Settings2 } from 'lucide-react'
 import type { NodeRelease, NodeState } from '@shared/domain'
 import { TooltipButton } from '@/components/common/TooltipButton'
 import { SearchInput } from '@/components/common/SearchInput'
@@ -32,6 +32,7 @@ interface AvailableVersionsPanelProps {
   onKeywordChange: (value: string) => void
   onChannelChange: (value: ReleaseChannel) => void
   onRefresh: () => void
+  onConfigureSource: () => void
   onPageChange: (page: number | ((page: number) => number)) => void
   onInstall: (version: string) => void
 }
@@ -50,6 +51,7 @@ export function AvailableVersionsPanel({
   onKeywordChange,
   onChannelChange,
   onRefresh,
+  onConfigureSource,
   onPageChange,
   onInstall
 }: AvailableVersionsPanelProps): React.JSX.Element {
@@ -57,7 +59,7 @@ export function AvailableVersionsPanel({
     <Card className="flex h-full min-h-0 flex-col overflow-hidden">
       <CardHeader className="shrink-0">
         <CardTitle>可安装版本</CardTitle>
-        <CardDescription>版本索引来自 Node.js 官方源，支持 LTS 和 Current 筛选。</CardDescription>
+        <CardDescription>从已配置的版本索引读取，支持 LTS 和 Current 筛选。</CardDescription>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex shrink-0 gap-2">
@@ -85,6 +87,14 @@ export function AvailableVersionsPanel({
             variant="secondary"
           >
             {releasesLoading ? <Spinner /> : <RefreshCw size={14} />}
+          </TooltipButton>
+          <TooltipButton
+            onClick={onConfigureSource}
+            size="icon"
+            tooltip="配置 Node 下载源"
+            variant="secondary"
+          >
+            <Settings2 size={14} />
           </TooltipButton>
         </div>
         <ScrollArea className="min-h-0 flex-1 pr-2">
@@ -147,9 +157,7 @@ export function AvailableVersionsPanel({
           </div>
         </ScrollArea>
         <div className="flex shrink-0 items-center justify-between text-xs text-slate-500">
-          <span>
-            {releasesLoading ? '正在读取 Node 官方版本索引' : `共 ${releaseTotal} 个版本`}
-          </span>
+          <span>{releasesLoading ? '正在读取 Node 版本索引' : `共 ${releaseTotal} 个版本`}</span>
           <div className="flex items-center gap-1">
             <TooltipButton
               disabled={releasePage <= 1}

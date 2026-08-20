@@ -175,5 +175,6 @@ describe('数据存储', () => {
     const settings = await store.settings.read()
     expect(settings.general.launchAtLogin).toBe(true)
     expect(settings.node.indexUrl).toBe('https://nodejs.org/dist/index.json')
+    expect(settings.node.downloadSource).toBe('https://nodejs.org/dist')
   })
 })

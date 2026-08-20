@@ -344,6 +344,15 @@ export interface LogStats {
   fileCount: number
 }
 
+export interface NodeDownloadSettings {
+  /** 返回 Node.js 版本数组的 JSON 地址，例如官方 dist/index.json。 */
+  indexUrl: string
+  /** 包含 v<version> 目录的安装包根地址。 */
+  downloadSource: string
+  packageManager: string
+  registry: string
+}
+
 export interface AppSettings {
   schemaVersion: 1
   general: {
@@ -353,7 +362,7 @@ export interface AppSettings {
   }
   data: { directory: string }
   advanced: { logLevel: 'debug' | 'info' | 'warn' | 'error'; developerTools: boolean }
-  node: { indexUrl: string; downloadSource: string; packageManager: string; registry: string }
+  node: NodeDownloadSettings
 }
 
 export interface SystemOverviewSnapshot {
@@ -386,6 +395,8 @@ export interface NodeRelease {
 export interface NodeReleaseCache {
   fetchedAt: string
   items: NodeRelease[]
+  /** 旧缓存可能缺少来源；读取时只允许它回退到历史默认官方地址。 */
+  sourceUrl?: string
 }
 
 export interface DataExport {

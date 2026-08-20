@@ -17,6 +17,7 @@ import type {
   NodeState,
   NodeTask
 } from '@shared/domain'
+import { DEFAULT_NODE_DOWNLOAD_SETTINGS } from '@shared/node-download-sources'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
 import {
   getUserShellEnvironment,
@@ -451,18 +452,31 @@ export async function listNodeReleases(filter?: {
 }): Promise<NodeRelease[]> {
   const settings = await store.settings.read()
   const cached = await store.nodeReleases.read()
+  const normalizeSourceUrl = (value: string): string => value.trim().replace(/\/+$/, '')
+  const currentSourceUrl = normalizeSourceUrl(settings.node.indexUrl)
+  const cachedSourceUrl = cached?.sourceUrl
+    ? normalizeSourceUrl(cached.sourceUrl)
+    : normalizeSourceUrl(DEFAULT_NODE_DOWNLOAD_SETTINGS.indexUrl)
+  const cacheMatchesSource = cachedSourceUrl === currentSourceUrl
   const cacheValid =
-    cached && Date.now() - Date.parse(cached.fetchedAt) < 60 * 60 * 1_000 && cached.items.length > 0
+    cached &&
+    cacheMatchesSource &&
+    Date.now() - Date.parse(cached.fetchedAt) < 60 * 60 * 1_000 &&
+    cached.items.length > 0
   let releases: NodeRelease[]
   if (!filter?.refresh && cacheValid) {
     releases = cached.items
   } else {
     try {
       releases = await fetchNodeReleaseIndex(settings.node.indexUrl)
-      await store.nodeReleases.write({ fetchedAt: new Date().toISOString(), items: releases })
+      await store.nodeReleases.write({
+        fetchedAt: new Date().toISOString(),
+        items: releases,
+        sourceUrl: settings.node.indexUrl
+      })
     } catch (error) {
       // 网络短暂不可用时保留上次完整解析结果，安装流程仍会重新校验目标版本。
-      if (cached?.items.length) releases = cached.items
+      if (cacheMatchesSource && cached?.items.length) releases = cached.items
       else throw error
     }
   }
