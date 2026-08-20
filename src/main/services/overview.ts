@@ -2,7 +2,7 @@ import os from 'node:os'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { app } from 'electron'
-import type { SystemOverviewSnapshot } from '@shared/domain'
+import type { SystemOverviewHistory, SystemOverviewSnapshot } from '@shared/domain'
 import { getAppPaths } from '@main/infrastructure/paths'
 import { store } from '@main/infrastructure/store'
 
@@ -91,8 +91,22 @@ export async function sampleSystemOverview(): Promise<SystemOverviewSnapshot> {
     electronVersion: process.versions.electron,
     paths: getAppPaths()
   }
-  await store.overview.write(snapshot)
+  const history = await store.overviewHistory.read()
+  await Promise.all([
+    store.overview.write(snapshot),
+    store.overviewHistory.write({
+      items: [
+        ...history.items.filter((item) => item.sampledAt !== snapshot.sampledAt),
+        snapshot
+      ].slice(-48)
+    })
+  ])
   return snapshot
+}
+
+export async function getOverviewHistory(): Promise<SystemOverviewHistory> {
+  const history = await store.overviewHistory.read()
+  return { items: history.items.slice(-48) }
 }
 
 export function startOverviewSampler(onSnapshot: (snapshot: SystemOverviewSnapshot) => void): void {

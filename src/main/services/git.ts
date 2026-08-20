@@ -1,6 +1,13 @@
 import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { GitFileSnapshot, GitIdentity, GitIdentityDetail, GitState } from '@shared/domain'
+import type {
+  GitEffectiveValue,
+  GitFileSnapshot,
+  GitIdentity,
+  GitIdentityDetail,
+  GitState,
+  GitWorkspaceVerification
+} from '@shared/domain'
 import { getStoreDirectory, store } from '@main/infrastructure/store'
 import { createId, isValidEmail } from './common'
 import { ensureSshKeyPersisted } from './ssh'
@@ -88,6 +95,87 @@ export async function getGitIdentityDetail(id: string): Promise<GitIdentityDetai
     workspaces,
     profilePath: join(getStoreDirectory(), 'git-rules', `${identity.id}.profile`),
     files: await getGitFiles()
+  }
+}
+
+function parseEffectiveConfig(output: string): { actual?: string; source?: string } {
+  if (!output) return {}
+  const separator = output.indexOf('\t')
+  if (separator < 0) return { actual: output.trim() || undefined }
+  return {
+    source:
+      output
+        .slice(0, separator)
+        .replace(/^file:/, '')
+        .trim() || undefined,
+    actual: output.slice(separator + 1).trim() || undefined
+  }
+}
+
+function effectiveValue(expected: string | undefined, output: string): GitEffectiveValue {
+  const value = parseEffectiveConfig(output)
+  return { expected, ...value, matches: Boolean(expected && value.actual === expected) }
+}
+
+/** 选取工作区内真实 Git 仓库，读取 Git 合并全部配置后的最终值和来源文件。 */
+export async function verifyWorkspaceGitIdentity(
+  workspaceId: string
+): Promise<GitWorkspaceVerification> {
+  const workspace = (await store.workspaces.read()).find((item) => item.id === workspaceId)
+  if (!workspace) throw new Error('工作区不存在')
+  const identity = workspace.gitIdentityId
+    ? (await store.gitIdentities.read()).find((item) => item.id === workspace.gitIdentityId)
+    : undefined
+  if (!identity) throw new Error('当前工作区尚未绑定 Git 身份')
+  const key = identity.sshKeyId
+    ? (await store.sshKeys.read()).find((item) => item.id === identity.sshKeyId)
+    : undefined
+  const candidates = workspace.projects.flatMap((project) => [
+    project.path,
+    ...(project.subprojects?.map((item) => item.path) ?? [])
+  ])
+  let projectPath: string | undefined
+  for (const path of candidates) {
+    const valid = await runGitCommand(['-C', path, 'rev-parse', '--is-inside-work-tree'])
+      .then((value) => value === 'true')
+      .catch(() => false)
+    if (valid) {
+      projectPath = path
+      break
+    }
+  }
+  const empty = (expected?: string): GitEffectiveValue => ({ expected, matches: false })
+  if (!projectPath) {
+    return {
+      workspaceId,
+      repositoryFound: false,
+      username: empty(identity.username),
+      email: empty(identity.email),
+      sshCommand: empty(
+        key?.privateKeyPath ? `ssh -i ${key.privateKeyPath} -o IdentitiesOnly=yes` : undefined
+      ),
+      checkedAt: new Date().toISOString(),
+      message: '工作区中尚未找到可用于验证的 Git 仓库'
+    }
+  }
+  const read = (name: string): Promise<string> =>
+    runGitCommand(['-C', projectPath!, 'config', '--show-origin', '--get', name]).catch(() => '')
+  const [username, email, sshCommand] = await Promise.all([
+    read('user.name'),
+    read('user.email'),
+    read('core.sshCommand')
+  ])
+  return {
+    workspaceId,
+    projectPath,
+    repositoryFound: true,
+    username: effectiveValue(identity.username, username),
+    email: effectiveValue(identity.email, email),
+    sshCommand: effectiveValue(
+      key?.privateKeyPath ? `ssh -i ${key.privateKeyPath} -o IdentitiesOnly=yes` : undefined,
+      sshCommand
+    ),
+    checkedAt: new Date().toISOString()
   }
 }
 

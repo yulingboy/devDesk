@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -94,5 +94,38 @@ describe('从模板创建项目', () => {
       directoryExists: true
     })
     expect(await readFile(join(subproject!.path, 'README.md'), 'utf8')).toBe('# service\n')
+  })
+
+  it('可在一级项目下创建带备注的空目录子项目', async () => {
+    const result = await createProject({
+      source: 'empty',
+      workspaceId: 'workspace-1',
+      parentProjectId: 'project-platform',
+      projectName: 'empty-service',
+      remark: '待初始化的服务'
+    })
+
+    const subproject = result[0].projects[0].subprojects?.[0]
+    expect(subproject).toMatchObject({
+      name: 'empty-service',
+      source: 'created',
+      remark: '待初始化的服务',
+      directoryExists: true
+    })
+    await expect(readFile(join(subproject!.path, 'README.md'), 'utf8')).rejects.toThrow()
+  })
+
+  it('可创建一级空目录且不会覆盖已存在目录', async () => {
+    const options = {
+      source: 'empty' as const,
+      workspaceId: 'workspace-1',
+      projectName: 'empty-app'
+    }
+
+    await createProject(options)
+    expect((await stat(join(temporaryDirectory, 'workspace', 'empty-app'))).isDirectory()).toBe(
+      true
+    )
+    await expect(createProject(options)).rejects.toThrow('目标目录已经存在，无法覆盖')
   })
 })

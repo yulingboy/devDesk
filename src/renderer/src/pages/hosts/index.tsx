@@ -14,6 +14,7 @@ const emptyRecord: HostRecord = { id: '', ip: '', domain: '', enabled: true, rem
 /** Hosts 页面入口只组合资源、操作栏、表格和编辑抽屉。 */
 export function HostsPage(): React.JSX.Element {
   const [records, setRecords] = useState<HostRecord[]>([])
+  const [systemRecords, setSystemRecords] = useState<HostRecord[]>([])
   const [draft, setDraft] = useState<HostRecord>(emptyRecord)
   const [query, setQuery] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -22,11 +23,21 @@ export function HostsPage(): React.JSX.Element {
   const { status, report: showError, clearError } = usePageFeedback('Hosts 操作失败')
   const { isPending, run } = useAsyncAction(showError)
   const load = useCallback((): void => {
-    void window.api?.hosts
-      .list()
-      .then(setRecords)
-      .catch(showError)
-      .finally(() => setLoading(false))
+    const loadRecords = async (): Promise<void> => {
+      try {
+        const [managed, system] = await Promise.all([
+          window.api!.hosts.list(),
+          window.api!.hosts.listSystem()
+        ])
+        setRecords(managed)
+        setSystemRecords(system)
+      } catch (error) {
+        showError(error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    void loadRecords()
   }, [showError])
   useInitialLoad(load)
 
@@ -57,7 +68,7 @@ export function HostsPage(): React.JSX.Element {
       toast.success('Hosts 记录已保存')
     }
   }
-  const saveRecords = async (next: HostRecord[], success?: string): Promise<void> => {
+  const saveRecords = async (next: HostRecord[], success?: string): Promise<boolean> => {
     const value = await run(
       'hosts-save',
       async () => {
@@ -67,18 +78,26 @@ export function HostsPage(): React.JSX.Element {
       },
       success ? { success } : undefined
     )
-    if (value) setRecords(value)
+    if (!value) return false
+    setRecords(value)
+    return true
   }
-  const remove = (record: HostRecord): Promise<void> =>
-    saveRecords(
+  const remove = async (record: HostRecord): Promise<void> => {
+    await saveRecords(
       records.filter((item) => item.id !== record.id),
       'Hosts 记录已删除'
     )
-  const toggleEnabled = (record: HostRecord): Promise<void> =>
-    saveRecords(
+  }
+  const toggleEnabled = async (record: HostRecord): Promise<void> => {
+    await saveRecords(
       records.map((item) => (item.id === record.id ? { ...item, enabled: !item.enabled } : item)),
       '记录状态已更新'
     )
+  }
+  const importSystemRecords = async (): Promise<void> => {
+    const saved = await saveRecords([...records, ...systemRecords], '系统 Hosts 记录已导入')
+    if (saved) setSystemRecords([])
+  }
   const filtered = useMemo(() => {
     const keyword = query.toLowerCase()
     return records.filter((record) =>
@@ -90,6 +109,8 @@ export function HostsPage(): React.JSX.Element {
   return (
     <div className="h-full space-y-2.5 overflow-auto p-3">
       <HostsToolbar
+        systemRecordCount={systemRecords.length}
+        onImportSystem={importSystemRecords}
         onCreate={() => {
           setDraft(emptyRecord)
           setDrawerOpen(true)

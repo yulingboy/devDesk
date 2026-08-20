@@ -25,7 +25,7 @@ export function SettingsToolbar({
       </div>
       <div className="min-w-0">
         <div className="text-[13px] font-semibold text-slate-900">系统设置</div>
-        <div className="truncate text-[11px] text-slate-500">管理应用行为、本地数据和开发环境</div>
+        <div className="truncate text-[11px] text-slate-500">管理应用行为、本地数据和高级选项</div>
       </div>
       <div className="ml-auto flex items-center gap-1.5">
         <span

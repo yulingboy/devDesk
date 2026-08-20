@@ -300,8 +300,6 @@ function formatGitStatus(status: Project['gitStatus']): string {
       return '未安装 Git'
     case 'no-remote':
       return '无远程仓库'
-    case 'no-upstream':
-      return '未设置上游'
     case 'error':
       return '读取失败'
     default:

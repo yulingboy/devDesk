@@ -1,171 +1,16 @@
-import { access, lstat, readFile } from 'node:fs/promises'
-import { basename, join, resolve } from 'node:path'
+import { lstat } from 'node:fs/promises'
+import { basename, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type {
-  Project,
-  ProjectPackageManager,
-  ProjectScript,
-  WorkspaceSubproject
-} from '@shared/domain'
+import type { Project, WorkspaceSubproject } from '@shared/domain'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
 import { createId } from './common'
-import { parseProjectPackageManager } from './project-environment'
 import {
   discoverProjectSubprojectPaths,
   type DiscoveredWorkspaceProject
 } from './workspace-discovery'
 
 const execFileAsync = promisify(execFile)
-
-interface PackageJsonSnapshot {
-  name?: unknown
-  version?: unknown
-  scripts?: unknown
-  engines?: unknown
-  packageManager?: unknown
-  volta?: unknown
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  return access(path)
-    .then(() => true)
-    .catch(() => false)
-}
-
-export async function commandVersion(command: string): Promise<string> {
-  const env = await getUserShellEnvironment()
-  return execFileAsync(command, ['--version'], { timeout: 5_000, env })
-    .then(({ stdout }) => stdout.trim().replace(/^v/, ''))
-    .catch(() => '')
-}
-
-/** Electron 内置 Node 不是用户项目运行时，未找到外部 node 时应保持未检测状态。 */
-export async function readCurrentNodeVersion(): Promise<string> {
-  return commandVersion('node')
-}
-
-async function resolvePackageManager(
-  path: string,
-  packageManager: unknown
-): Promise<ProjectPackageManager | undefined> {
-  const configured = parseProjectPackageManager(packageManager)
-  if (configured) return configured
-  if (await fileExists(join(path, 'pnpm-lock.yaml'))) return 'pnpm'
-  if (await fileExists(join(path, 'yarn.lock'))) return 'yarn'
-  if ((await fileExists(join(path, 'bun.lockb'))) || (await fileExists(join(path, 'bun.lock'))))
-    return 'bun'
-  if (await fileExists(join(path, 'package-lock.json'))) return 'npm'
-  return undefined
-}
-
-export async function readPackageSnapshot(path: string): Promise<{
-  packageName?: string
-  packageVersion?: string
-  packageManager?: ProjectPackageManager
-  nodeRequirement?: string
-  hasPackageJson: boolean
-  dependencyState: NonNullable<Project['dependencyState']>
-  scripts: ProjectScript[]
-  lockfileType?: ProjectPackageManager
-  lockfileState: 'ready' | 'missing' | 'mismatch'
-  nodeRequirementSource?: '.nvmrc' | '.node-version' | 'volta' | 'engines.node'
-  nodeSource: 'process' | 'nvmrc' | 'node-version' | 'volta' | 'engines' | 'unknown'
-}> {
-  const raw = await readFile(join(path, 'package.json'), 'utf8').catch(() => '')
-  if (!raw) {
-    return {
-      hasPackageJson: false,
-      dependencyState: 'not-applicable',
-      scripts: [],
-      lockfileState: 'missing',
-      nodeSource: 'unknown'
-    }
-  }
-  let manifest: PackageJsonSnapshot
-  try {
-    manifest = JSON.parse(raw) as PackageJsonSnapshot
-  } catch {
-    // package.json 已存在但无效，仍以项目方式展示，避免扫描中断整个工作区。
-    return {
-      hasPackageJson: true,
-      dependencyState: 'missing',
-      scripts: [],
-      lockfileState: 'missing',
-      nodeSource: 'unknown'
-    }
-  }
-  const scripts =
-    manifest.scripts && typeof manifest.scripts === 'object'
-      ? Object.entries(manifest.scripts as Record<string, unknown>)
-          .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-          .map(([name, command]) => ({ name, command }))
-      : []
-  const engines = manifest.engines && typeof manifest.engines === 'object' ? manifest.engines : {}
-  const [packageManager, lockfileType, nvmrc, nodeVersionFile] = await Promise.all([
-    resolvePackageManager(path, manifest.packageManager),
-    resolvePackageManager(path, undefined),
-    readFile(join(path, '.nvmrc'), 'utf8')
-      .then((value) => value.trim())
-      .catch(() => ''),
-    readFile(join(path, '.node-version'), 'utf8')
-      .then((value) => value.trim())
-      .catch(() => '')
-  ])
-  const volta =
-    manifest.volta && typeof manifest.volta === 'object'
-      ? (manifest.volta as { node?: unknown }).node
-      : undefined
-  const engineRequirement = (engines as { node?: unknown }).node
-  const nodeRequirement =
-    nvmrc ||
-    nodeVersionFile ||
-    (typeof volta === 'string' ? volta : undefined) ||
-    (typeof engineRequirement === 'string' ? engineRequirement : undefined)
-  return {
-    packageName: typeof manifest.name === 'string' ? manifest.name : undefined,
-    packageVersion: typeof manifest.version === 'string' ? manifest.version : undefined,
-    packageManager,
-    nodeRequirement,
-    lockfileType,
-    lockfileState:
-      packageManager && lockfileType && packageManager !== lockfileType
-        ? 'mismatch'
-        : lockfileType
-          ? 'ready'
-          : 'missing',
-    nodeRequirementSource: nvmrc
-      ? '.nvmrc'
-      : nodeVersionFile
-        ? '.node-version'
-        : volta
-          ? 'volta'
-          : engineRequirement
-            ? 'engines.node'
-            : undefined,
-    nodeSource: nvmrc
-      ? 'nvmrc'
-      : nodeVersionFile
-        ? 'node-version'
-        : volta
-          ? 'volta'
-          : nodeRequirement
-            ? 'engines'
-            : 'process',
-    hasPackageJson: true,
-    dependencyState: (await fileExists(join(path, 'node_modules'))) ? 'ready' : 'missing',
-    scripts
-  }
-}
-
-export async function readProjectRemote(path: string): Promise<string | undefined> {
-  return execFileAsync('git', ['-C', path, 'remote', 'get-url', 'origin'], {
-    timeout: 5_000,
-    env: await getUserShellEnvironment()
-  })
-    .then(({ stdout }) => stdout.trim() || undefined)
-    .catch(() => undefined)
-}
 
 function classifyGitError(error: unknown): Pick<Project, 'gitError' | 'gitStatus'> {
   const value = error as NodeJS.ErrnoException & { stderr?: string }
@@ -184,19 +29,7 @@ function classifyGitError(error: unknown): Pick<Project, 'gitError' | 'gitStatus
 
 export async function readGitStatus(
   path: string
-): Promise<
-  Pick<
-    Project,
-    | 'branch'
-    | 'dirty'
-    | 'gitError'
-    | 'gitStatus'
-    | 'gitAhead'
-    | 'gitBehind'
-    | 'gitChangedFiles'
-    | 'lastCommit'
-  >
-> {
+): Promise<Pick<Project, 'branch' | 'dirty' | 'gitError' | 'gitStatus'>> {
   const env = await getUserShellEnvironment()
   try {
     await execFileAsync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], {
@@ -216,35 +49,15 @@ export async function readGitStatus(
     gitStatus = 'no-remote'
   }
   try {
-    const [{ stdout: branch }, { stdout: status }, { stdout: lastCommit }] = await Promise.all([
+    const [{ stdout: branch }, { stdout: status }] = await Promise.all([
       execFileAsync('git', ['-C', path, 'branch', '--show-current'], { timeout: 8_000, env }),
-      execFileAsync('git', ['-C', path, 'status', '--porcelain'], { timeout: 8_000, env }),
-      execFileAsync('git', ['-C', path, 'log', '-1', '--pretty=%h · %s'], {
-        timeout: 8_000,
-        env
-      }).catch(() => ({ stdout: '', stderr: '' }))
+      execFileAsync('git', ['-C', path, 'status', '--porcelain'], { timeout: 8_000, env })
     ])
-    let divergence = '0\t0'
-    try {
-      const result = await execFileAsync(
-        'git',
-        ['-C', path, 'rev-list', '--left-right', '--count', 'HEAD...@{upstream}'],
-        { timeout: 8_000, env }
-      )
-      divergence = result.stdout
-    } catch {
-      if (gitStatus === 'ready') gitStatus = 'no-upstream'
-    }
     const changedFiles = status.split('\n').filter(Boolean).length
-    const [ahead = 0, behind = 0] = divergence.trim().split(/\s+/).map(Number)
     return {
       branch: branch.trim() || '分离头指针',
       gitStatus,
-      dirty: changedFiles > 0,
-      gitChangedFiles: changedFiles,
-      gitAhead: Number.isFinite(ahead) ? ahead : 0,
-      gitBehind: Number.isFinite(behind) ? behind : 0,
-      lastCommit: lastCommit.trim() || undefined
+      dirty: changedFiles > 0
     }
   } catch (error) {
     return classifyGitError(error)
@@ -352,7 +165,9 @@ export async function scanDiscoveredProject(
 export async function scanProjectWithSubprojects(
   workspaceId: string,
   project: Project,
-  previousProjects: Project[]
+  previousProjects: Project[],
+  scanDepth = 3,
+  ignoredDirectories: string[] = []
 ): Promise<Project> {
   const scanned = await scanProject(workspaceId, project.path, project)
   if (scanned.directoryExists === false) {
@@ -361,7 +176,12 @@ export async function scanProjectWithSubprojects(
       subprojects: project.subprojects?.map((item) => ({ ...item, directoryExists: false }))
     }
   }
-  const discovery = await discoverProjectSubprojectPaths(project.path)
+  const discovery = await discoverProjectSubprojectPaths(
+    project.path,
+    200,
+    scanDepth,
+    ignoredDirectories
+  )
   return {
     ...scanned,
     subprojects: await buildSubprojects(discovery.paths, previousProjects, project)

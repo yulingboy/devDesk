@@ -7,6 +7,7 @@ import type {
   GitIdentity,
   HostRecord,
   NodeInstallOptions,
+  NodeDownloadSettings,
   ProjectCreateOptions,
   ProjectTemplate,
   SSHKeyDraft,
@@ -31,10 +32,12 @@ import {
   getDataStats,
   getLogStats,
   openLogDirectory,
-  clearLogArchives
+  clearLogArchives,
+  testNodeDownloadSource
 } from '@main/services/settings'
 import {
   listHosts,
+  listSystemHosts,
   saveHosts,
   restoreHostsBackup,
   openHostsFile,
@@ -54,7 +57,8 @@ import {
   saveGitIdentity,
   removeGitIdentity,
   getGitFiles,
-  getGitIdentityDetail
+  getGitIdentityDetail,
+  verifyWorkspaceGitIdentity
 } from '@main/services/git'
 import {
   listWorkspaces,
@@ -66,14 +70,9 @@ import {
   openProjectEditor,
   saveProjectRemark,
   scanWorkspaceDetailed,
-  getProjectDetail,
-  refreshProject,
+  cancelWorkspaceScan,
   addProjectToWorkspace,
-  removeProjectFromWorkspace,
-  installProjectDependencies,
-  runProjectScript,
-  listProjectTasks,
-  stopProjectTask
+  removeProjectFromWorkspace
 } from '@main/services/workspaces'
 import {
   listTemplates,
@@ -114,6 +113,7 @@ import {
 } from '@main/services/node'
 import type { NodeRegistryDraft } from '@shared/domain'
 import { store } from '@main/infrastructure/store'
+import { getOverviewHistory } from '@main/services/overview'
 import {
   checkForAppUpdate,
   downloadAppUpdate,
@@ -196,7 +196,9 @@ export function registerApplicationIpc(): void {
   })
 
   registerIpcHandler(IPC_CHANNELS.overview.getSnapshot, () => store.overview.read())
+  registerIpcHandler(IPC_CHANNELS.overview.getHistory, () => getOverviewHistory())
   registerIpcHandler(IPC_CHANNELS.hosts.list, () => listHosts())
+  registerIpcHandler(IPC_CHANNELS.hosts.listSystem, () => listSystemHosts())
   registerIpcHandler(IPC_CHANNELS.hosts.save, (_, records) => saveHosts(parseHostRecords(records)))
   registerIpcHandler(IPC_CHANNELS.hosts.restoreBackup, () => restoreHostsBackup())
   registerIpcHandler(IPC_CHANNELS.hosts.openFile, () => openHostsFile())
@@ -221,6 +223,9 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.git.removeIdentity, (_, id) => removeGitIdentity(String(id)))
   registerIpcHandler(IPC_CHANNELS.git.files, () => getGitFiles())
   registerIpcHandler(IPC_CHANNELS.git.identityDetail, (_, id) => getGitIdentityDetail(String(id)))
+  registerIpcHandler(IPC_CHANNELS.git.verifyWorkspace, (_, id) =>
+    verifyWorkspaceGitIdentity(String(id))
+  )
 
   registerIpcHandler(IPC_CHANNELS.workspaces.list, () => listWorkspaces())
   registerIpcHandler(IPC_CHANNELS.workspaces.save, (_, workspace) =>
@@ -231,16 +236,13 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.workspaces.scanDetailed, (_, id) =>
     scanWorkspaceDetailed(String(id))
   )
+  registerIpcHandler<void>(IPC_CHANNELS.workspaces.cancelScan, (_, id) =>
+    cancelWorkspaceScan(String(id))
+  )
   registerIpcHandler(IPC_CHANNELS.workspaces.open, (_, id) => openWorkspace(String(id)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, path) => openProject(String(path)))
   registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path, editor) =>
     openProjectEditor(String(path), editor === undefined ? undefined : String(editor))
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.getProjectDetail, (_, workspaceId, projectId) =>
-    getProjectDetail(String(workspaceId), String(projectId))
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.refreshProject, (_, workspaceId, projectId) =>
-    refreshProject(String(workspaceId), String(projectId))
   )
   registerIpcHandler(
     IPC_CHANNELS.workspaces.saveProjectRemark,
@@ -252,18 +254,6 @@ export function registerApplicationIpc(): void {
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.removeProject, (_, workspaceId, projectId) =>
     removeProjectFromWorkspace(String(workspaceId), String(projectId))
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.installDependencies, (_, workspaceId, projectId) =>
-    installProjectDependencies(String(workspaceId), String(projectId))
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.runScript, (_, workspaceId, projectId, script) =>
-    runProjectScript(String(workspaceId), String(projectId), String(script))
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.tasks, (_, projectId) =>
-    listProjectTasks(projectId ? String(projectId) : undefined)
-  )
-  registerIpcHandler(IPC_CHANNELS.workspaces.stopTask, (_, taskId) =>
-    stopProjectTask(String(taskId))
   )
 
   registerIpcHandler(IPC_CHANNELS.templates.list, () => listTemplates())
@@ -342,6 +332,9 @@ export function registerApplicationIpc(): void {
     saveSettings(parseAppSettings(settings))
   )
   registerIpcHandler(IPC_CHANNELS.settings.reset, () => resetSettings())
+  registerIpcHandler(IPC_CHANNELS.settings.testNodeDownloadSource, (_, settings) =>
+    testNodeDownloadSource(parseNodeDownloadSettings(settings))
+  )
   registerIpcHandler(IPC_CHANNELS.settings.export, () => exportSettings())
   registerIpcHandler(IPC_CHANNELS.settings.exportFile, () => exportSettingsFile())
   registerIpcHandler(IPC_CHANNELS.settings.import, async (_, data) => {
@@ -492,12 +485,19 @@ function parseWorkspace(value: unknown): Workspace {
   const input = requiredRecord(value, '工作区')
   if (input.projects !== undefined && !Array.isArray(input.projects))
     throw new Error('工作区项目参数无效')
+  const scanDepth = Number(input.scanDepth ?? 3)
+  if (!Number.isInteger(scanDepth) || scanDepth < 1 || scanDepth > 5)
+    throw new Error('子项目扫描深度必须是 1 到 5')
+  if (input.ignoredDirectories !== undefined && !Array.isArray(input.ignoredDirectories))
+    throw new Error('忽略目录参数无效')
   return {
     id: text(input.id, '工作区 ID', true) ?? '',
     name: text(input.name, '工作区名称')!,
     rootPath: text(input.rootPath, '工作区目录')!,
     description: text(input.description, '工作区描述', true) ?? '',
     gitIdentityId: text(input.gitIdentityId, 'Git 身份 ID', true),
+    scanDepth,
+    ignoredDirectories: (input.ignoredDirectories ?? []).map((item) => text(item, '忽略目录名')!),
     // 项目记录仅由扫描服务产生，禁止 IPC 调用写入任意项目路径。
     projects: []
   }
@@ -518,8 +518,13 @@ function parseTemplate(value: unknown): ProjectTemplate {
 
 function parseProjectCreateOptions(value: unknown): ProjectCreateOptions {
   const input = requiredRecord(value, '创建项目')
+  const source = text(input.source, '项目创建来源', true) ?? 'template'
+  if (source !== 'empty' && source !== 'template') throw new Error('项目创建来源参数无效')
+  const templateId = text(input.templateId, '模板 ID', true)
+  if (source === 'template' && !templateId) throw new Error('模板 ID 参数无效')
   return {
-    templateId: text(input.templateId, '模板 ID')!,
+    source,
+    templateId,
     workspaceId: text(input.workspaceId, '工作区 ID')!,
     projectName: text(input.projectName, '项目名称')!,
     parentProjectId: text(input.parentProjectId, '父项目 ID', true),
@@ -538,6 +543,16 @@ function parseNodeRegistryDraft(value: unknown): NodeRegistryDraft {
     id: text(input.id, 'Registry ID', true),
     name: text(input.name, 'Registry 名称')!,
     url: text(input.url, 'Registry 地址')!
+  }
+}
+
+function parseNodeDownloadSettings(value: unknown): NodeDownloadSettings {
+  const input = requiredRecord(value, 'Node 下载源')
+  return {
+    indexUrl: text(input.indexUrl, '版本索引')!,
+    downloadSource: text(input.downloadSource, '下载源')!,
+    packageManager: text(input.packageManager, '默认包管理器')!,
+    registry: text(input.registry, '默认 Registry')!
   }
 }
 
@@ -563,9 +578,8 @@ function parseAppSettings(value: unknown): AppSettings {
     throw new Error('默认包管理器无效')
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     general: {
-      theme: text(general.theme, '主题') as AppSettings['general']['theme'],
       launchAtLogin: general.launchAtLogin,
       minimizeToTray: general.minimizeToTray
     },
@@ -585,7 +599,8 @@ function parseAppSettings(value: unknown): AppSettings {
 
 function parseDataExport(value: unknown): DataExport {
   const input = requiredRecord(value, '备份文件')
-  if (input.schemaVersion !== 1 || !isRecord(input.settings)) throw new Error('备份文件参数无效')
+  if (![1, 2].includes(Number(input.schemaVersion)) || !isRecord(input.settings))
+    throw new Error('备份文件参数无效')
   for (const field of ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates']) {
     if (!Array.isArray(input[field])) throw new Error('备份文件参数无效')
   }

@@ -93,6 +93,44 @@ export function WorkspaceEditorDrawer({
             </SelectContent>
           </Select>
         </Field>
+        <Field
+          description="一级项目列表保持不变，仅在项目内部按此深度发现子项目。"
+          htmlFor="workspace-scan-depth"
+          label="子项目扫描深度"
+        >
+          <Select
+            value={String(localDraft.scanDepth ?? 3)}
+            onValueChange={(value) => setLocalDraft({ ...localDraft, scanDepth: Number(value) })}
+          >
+            <SelectTrigger id="workspace-scan-depth">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[1, 2, 3, 4, 5].map((depth) => (
+                <SelectItem key={depth} value={String(depth)}>
+                  {depth} 层
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field
+          description="填写目录名并用逗号分隔，将与 node_modules、target 等内置规则叠加。"
+          htmlFor="workspace-ignored-directories"
+          label="忽略目录"
+        >
+          <Input
+            id="workspace-ignored-directories"
+            onChange={(event) =>
+              setLocalDraft({
+                ...localDraft,
+                ignoredDirectories: event.target.value.split(',').map((item) => item.trim())
+              })
+            }
+            placeholder="例如：examples, archive"
+            value={(localDraft.ignoredDirectories ?? []).join(', ')}
+          />
+        </Field>
         {status && (
           <Alert variant="destructive">
             <AlertDescription>{status}</AlertDescription>

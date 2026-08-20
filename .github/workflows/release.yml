@@ -10,8 +10,37 @@ permissions:
   contents: write
 
 jobs:
+  quality:
+    name: 质量检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: 获取代码
+        uses: actions/checkout@v4
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 代码检查
+        run: pnpm lint
+      - name: 类型检查
+        run: pnpm typecheck
+      - name: 自动化测试
+        run: pnpm test
+      - name: 检查补丁格式
+        run: |
+          git show --check --oneline --no-renames HEAD
+          git diff --check
+
   build:
     name: 构建 ${{ matrix.platform }}
+    needs: quality
     strategy:
       fail-fast: false
       matrix:
@@ -29,17 +58,43 @@ jobs:
     steps:
       - name: 获取代码
         uses: actions/checkout@v4
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
       - name: 配置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: 安装 pnpm
-        run: npm install --global pnpm@11.19.0
+          cache: pnpm
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
       - name: 构建应用代码
         run: pnpm build
+      - name: 验证应用入口与更新配置
+        shell: bash
+        run: |
+          test -f out/main/index.js
+          test -f electron-builder.yml
+          grep -q "provider: github" electron-builder.yml
+      - name: 准备 Apple 公证密钥
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          test -n "$APPLE_API_KEY_BASE64"
+          test -n "$APPLE_API_KEY_ID"
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$key_path"
+          echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
       - name: 构建安装包
+        env:
+          CSC_LINK: ${{ matrix.platform == 'mac' && secrets.MAC_CERTIFICATE || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'mac' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'mac' && secrets.APPLE_API_ISSUER || '' }}
         run: pnpm exec electron-builder --${{ matrix.platform }} ${{ matrix.args }} --publish never
       - name: 保存安装包
         uses: actions/upload-artifact@v4

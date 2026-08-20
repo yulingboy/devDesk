@@ -102,7 +102,7 @@ function TrendPlot({
   }))
   return (
     <ChartContainer className="mt-1.5 h-[240px] w-full lg:h-[280px]" config={chartConfig}>
-      {data.some((item) => item.usage !== null) ? (
+      {data.filter((item) => item.usage !== null).length >= 2 ? (
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
             <defs>
@@ -143,7 +143,7 @@ function TrendPlot({
         </ResponsiveContainer>
       ) : (
         <div className="grid h-full place-items-center text-xs text-slate-400">
-          正在等待设备采样
+          正在积累趋势数据，至少需要两个采样点
         </div>
       )}
     </ChartContainer>

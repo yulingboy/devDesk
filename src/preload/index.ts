@@ -59,6 +59,7 @@ const api: AppApi = {
   },
   overview: {
     getSnapshot: () => invoke(IPC_CHANNELS.overview.getSnapshot),
+    getHistory: () => invoke(IPC_CHANNELS.overview.getHistory),
     onUpdated: (listener) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
@@ -70,6 +71,7 @@ const api: AppApi = {
   },
   hosts: {
     list: () => invoke(IPC_CHANNELS.hosts.list),
+    listSystem: () => invoke(IPC_CHANNELS.hosts.listSystem),
     save: (records) => invoke(IPC_CHANNELS.hosts.save, records),
     restoreBackup: () => invoke(IPC_CHANNELS.hosts.restoreBackup),
     openFile: () => invoke(IPC_CHANNELS.hosts.openFile),
@@ -89,7 +91,8 @@ const api: AppApi = {
     saveIdentity: (identity) => invoke(IPC_CHANNELS.git.saveIdentity, identity),
     removeIdentity: (id) => invoke(IPC_CHANNELS.git.removeIdentity, id),
     files: () => invoke(IPC_CHANNELS.git.files),
-    getIdentityDetail: (id) => invoke(IPC_CHANNELS.git.identityDetail, id)
+    getIdentityDetail: (id) => invoke(IPC_CHANNELS.git.identityDetail, id),
+    verifyWorkspace: (workspaceId) => invoke(IPC_CHANNELS.git.verifyWorkspace, workspaceId)
   },
   workspaces: {
     list: () => invoke(IPC_CHANNELS.workspaces.list),
@@ -101,30 +104,13 @@ const api: AppApi = {
     openProjectEditor: (path, editor) =>
       invoke(IPC_CHANNELS.workspaces.openProjectEditor, path, editor),
     scanDetailed: (id) => invoke(IPC_CHANNELS.workspaces.scanDetailed, id),
-    getProjectDetail: (workspaceId, projectId) =>
-      invoke(IPC_CHANNELS.workspaces.getProjectDetail, workspaceId, projectId),
-    refreshProject: (workspaceId, projectId) =>
-      invoke(IPC_CHANNELS.workspaces.refreshProject, workspaceId, projectId),
+    cancelScan: (id) => invoke(IPC_CHANNELS.workspaces.cancelScan, id),
     saveProjectRemark: (workspaceId, projectId, remark) =>
       invoke(IPC_CHANNELS.workspaces.saveProjectRemark, workspaceId, projectId, remark),
     addProject: (workspaceId, path) =>
       invoke(IPC_CHANNELS.workspaces.addProject, workspaceId, path),
     removeProject: (workspaceId, projectId) =>
-      invoke(IPC_CHANNELS.workspaces.removeProject, workspaceId, projectId),
-    installDependencies: (workspaceId, projectId) =>
-      invoke(IPC_CHANNELS.workspaces.installDependencies, workspaceId, projectId),
-    runScript: (workspaceId, projectId, script) =>
-      invoke(IPC_CHANNELS.workspaces.runScript, workspaceId, projectId, script),
-    tasks: (projectId) => invoke(IPC_CHANNELS.workspaces.tasks, projectId),
-    stopTask: (taskId) => invoke(IPC_CHANNELS.workspaces.stopTask, taskId),
-    onTaskUpdated: (listener) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        task: Parameters<typeof listener>[0]
-      ): void => listener(task)
-      ipcRenderer.on(IPC_CHANNELS.workspaces.taskUpdated, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.workspaces.taskUpdated, handler)
-    }
+      invoke(IPC_CHANNELS.workspaces.removeProject, workspaceId, projectId)
   },
   templates: {
     list: () => invoke(IPC_CHANNELS.templates.list),
@@ -177,6 +163,8 @@ const api: AppApi = {
     get: () => invoke(IPC_CHANNELS.settings.get),
     save: (settings) => invoke(IPC_CHANNELS.settings.save, settings),
     reset: () => invoke(IPC_CHANNELS.settings.reset),
+    testNodeDownloadSource: (settings) =>
+      invoke(IPC_CHANNELS.settings.testNodeDownloadSource, settings),
     export: () => invoke(IPC_CHANNELS.settings.export),
     exportFile: () => invoke(IPC_CHANNELS.settings.exportFile),
     import: (data) => invoke(IPC_CHANNELS.settings.import, data),

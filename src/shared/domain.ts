@@ -1,5 +1,3 @@
-/** 主题名称与参考项目保持一致，主题只改变强调色并维持浅色工作区。 */
-export type ThemeName = 'blue' | 'purple' | 'green' | 'orange' | 'rose' | 'cyan' | 'indigo' | 'teal'
 export type TemplateType = 'git' | 'local'
 export type TaskStatus =
   'waiting' | 'downloading' | 'extracting' | 'completed' | 'skipped' | 'failed' | 'cancelled'
@@ -59,12 +57,35 @@ export interface GitIdentityDetail {
   files: GitFileSnapshot[]
 }
 
+export interface GitEffectiveValue {
+  expected?: string
+  actual?: string
+  source?: string
+  matches: boolean
+}
+
+/** 在真实项目目录读取 Git 最终配置，用于发现 includeIf 被其他配置覆盖的情况。 */
+export interface GitWorkspaceVerification {
+  workspaceId: string
+  projectPath?: string
+  repositoryFound: boolean
+  username: GitEffectiveValue
+  email: GitEffectiveValue
+  sshCommand: GitEffectiveValue
+  checkedAt: string
+  message?: string
+}
+
 export interface Workspace {
   id: string
   name: string
   rootPath: string
   description: string
   gitIdentityId?: string
+  /** 子项目递归扫描层数；一级项目本身始终只展示在工作区主列表。 */
+  scanDepth?: number
+  /** 工作区专属忽略目录名，在内置忽略规则基础上叠加。 */
+  ignoredDirectories?: string[]
   projects: Project[]
 }
 
@@ -106,16 +127,7 @@ export interface Project {
   dirty?: boolean
   gitError?: string
   /** Git 状态读取结果，区分非仓库、无远程和实际读取失败。 */
-  gitStatus?: 'ready' | 'not-repository' | 'git-missing' | 'no-remote' | 'no-upstream' | 'error'
-  /** 以下字段均从项目目录派生，旧项目记录缺失时会在下次扫描补齐。 */
-  packageName?: string
-  packageVersion?: string
-  packageManager?: ProjectPackageManager
-  nodeRequirement?: string
-  hasPackageJson?: boolean
-  dependencyState?: 'ready' | 'missing' | 'not-applicable'
-  remote?: string
-  scriptCount?: number
+  gitStatus?: 'ready' | 'not-repository' | 'git-missing' | 'no-remote' | 'error'
   lastScannedAt?: string
   /** 手动纳入的项目目录被移动或删除后，仍保留记录供用户明确移除。 */
   directoryExists?: boolean
@@ -123,94 +135,6 @@ export interface Project {
   subprojects?: WorkspaceSubproject[]
   /** 用户维护的项目说明，扫描目录时必须原样保留。 */
   remark?: string
-  /** 用户行为字段独立于扫描结果，后续扫描不得覆盖。 */
-  favorite?: boolean
-  archived?: boolean
-  lastOpenedAt?: string
-  /** 以下字段用于项目列表快速判断，详情页会重新读取磁盘状态。 */
-  lockfileType?: ProjectPackageManager
-  lockfileState?: 'ready' | 'missing' | 'mismatch'
-  gitAhead?: number
-  gitBehind?: number
-  gitChangedFiles?: number
-  lastCommit?: string
-}
-
-export type ProjectPackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun'
-
-export interface ProjectScript {
-  name: string
-  command: string
-}
-
-export type ProjectIssueType =
-  'directory' | 'node' | 'package-manager' | 'dependency' | 'lockfile' | 'git'
-
-/** 环境异常统一转换为可执行问题，页面不再重复拼装判断规则。 */
-export interface ProjectIssue {
-  id: string
-  type: ProjectIssueType
-  severity: 'error' | 'warning' | 'info'
-  title: string
-  description: string
-  action?: 'refresh' | 'install-dependencies' | 'open-node' | 'open-git'
-}
-
-export type ProjectTaskStatus = 'running' | 'completed' | 'failed' | 'cancelled'
-
-/** 项目脚本由主进程持有，渲染层只能启动已在 package.json 中声明的脚本。 */
-export interface ProjectTask {
-  id: string
-  workspaceId: string
-  projectId: string
-  projectName: string
-  script: string
-  command: string
-  status: ProjectTaskStatus
-  pid?: number
-  startedAt: string
-  finishedAt?: string
-  exitCode?: number
-  logs: string[]
-  error?: string
-}
-
-/** 项目详情只反映磁盘上实时状态，不额外保存敏感命令或依赖内容。 */
-export interface ProjectDetail {
-  project: Project
-  scripts: ProjectScript[]
-  issues: ProjectIssue[]
-  tasks: ProjectTask[]
-  workspace: {
-    id: string
-    name: string
-    rootPath: string
-    gitIdentity?: Pick<GitIdentity, 'id' | 'name' | 'username' | 'email'>
-  }
-  environment: {
-    directoryExists: boolean
-    currentNodeVersion: string
-    nodeSource: 'process' | 'nvmrc' | 'node-version' | 'volta' | 'engines' | 'unknown'
-    nodeRequirement?: string
-    nodeRequirementSource?: '.nvmrc' | '.node-version' | 'volta' | 'engines.node'
-    nodeCompatible: boolean | null
-    packageManager?: ProjectPackageManager
-    packageManagerAvailable: boolean
-    dependencyState: NonNullable<Project['dependencyState']>
-    lockfileType?: ProjectPackageManager
-    lockfileState: 'ready' | 'missing' | 'mismatch'
-  }
-  git: {
-    branch?: string
-    remote?: string
-    status?: Project['gitStatus']
-    dirty: boolean
-    changedFiles: number
-    ahead: number
-    behind: number
-    lastCommit?: string
-    error?: string
-  }
 }
 
 /** 扫描结果额外描述目录变化，旧的 scan 接口仍继续返回 Workspace[]。 */
@@ -221,6 +145,7 @@ export interface WorkspaceScanResult {
   total: number
   truncated: boolean
   gitErrorCount: number
+  cancelled?: boolean
 }
 
 export interface ProjectTemplate {
@@ -353,10 +278,18 @@ export interface NodeDownloadSettings {
   registry: string
 }
 
+export interface NodeDownloadSourceTestResult {
+  indexReachable: boolean
+  version?: string
+  packageUrl?: string
+  packageReachable: boolean
+  checksumReachable: boolean
+  checkedAt: string
+}
+
 export interface AppSettings {
-  schemaVersion: 1
+  schemaVersion: 2
   general: {
-    theme: ThemeName
     launchAtLogin: boolean
     minimizeToTray: boolean
   }
@@ -380,6 +313,10 @@ export interface SystemOverviewSnapshot {
   paths: { userData: string; data: string; logs: string }
 }
 
+export interface SystemOverviewHistory {
+  items: SystemOverviewSnapshot[]
+}
+
 export interface NodeRelease {
   version: string
   date?: string
@@ -400,7 +337,7 @@ export interface NodeReleaseCache {
 }
 
 export interface DataExport {
-  schemaVersion: 1
+  schemaVersion: 2
   exportedAt: string
   settings: AppSettings
   hosts: HostRecord[]
@@ -411,6 +348,7 @@ export interface DataExport {
   nodeState?: NodeState | null
   nodeReleases?: NodeReleaseCache | null
   overview?: SystemOverviewSnapshot | null
+  overviewHistory?: SystemOverviewHistory | null
   hostsBackup?: string
 }
 
@@ -430,8 +368,13 @@ export interface SSHKeyGenerateOptions {
   passphrase?: string
 }
 
+export type ProjectCreateSource = 'empty' | 'template'
+
 export interface ProjectCreateOptions {
-  templateId: string
+  /** 缺省值为 template，以兼容旧版本渲染进程发起的创建请求。 */
+  source?: ProjectCreateSource
+  /** 仅从模板创建时必填。 */
+  templateId?: string
   workspaceId: string
   projectName: string
   /** 传入一级项目 ID 时，新目录创建在该项目下并收纳为子项目。 */

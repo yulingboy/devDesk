@@ -50,8 +50,8 @@ export interface DiscoveredWorkspaceProject {
   subprojectPaths: string[]
 }
 
-function shouldInspectDirectory(name: string): boolean {
-  return !name.startsWith('.') && !ignoredDirectoryNames.has(name)
+function shouldInspectDirectory(name: string, customIgnored: Set<string>): boolean {
+  return !name.startsWith('.') && !ignoredDirectoryNames.has(name) && !customIgnored.has(name)
 }
 
 async function hasProjectMarker(path: string): Promise<boolean> {
@@ -85,23 +85,48 @@ async function mapWithConcurrency<T, R>(
   return result
 }
 
-/** 只检查项目目录的下一层，子项目不会继续递归形成无限层级。 */
+/**
+ * 在一级项目内部按预算递归发现子项目。命中项目标记后停止该分支下钻，
+ * 既能发现 apps/web 等常见结构，也避免把项目内部示例目录无限展开。
+ */
 export async function discoverProjectSubprojectPaths(
   projectPath: string,
-  limit = 200
+  limit = 200,
+  maxDepth = 3,
+  ignored: string[] = [],
+  isCancelled: () => boolean = () => false
 ): Promise<{ paths: string[]; truncated: boolean }> {
-  const entries = await readdir(projectPath, { withFileTypes: true }).catch(() => [])
-  const directories = entries
-    .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name))
-    .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
-  const inspectedDirectories = directories.slice(0, limit)
-  const paths = (
-    await mapWithConcurrency(inspectedDirectories, 16, async (entry) => {
-      const path = resolve(projectPath, entry.name)
-      return (await hasProjectMarker(path)) ? path : undefined
-    })
-  ).filter((path): path is string => Boolean(path))
-  return { paths, truncated: directories.length > inspectedDirectories.length }
+  const customIgnored = new Set(ignored.map((item) => item.trim()).filter(Boolean))
+  const paths: string[] = []
+  let inspected = 0
+  let truncated = false
+  let level = [{ path: projectPath, depth: 0 }]
+  while (level.length) {
+    if (isCancelled()) return { paths, truncated: true }
+    const nextLevel: typeof level = []
+    for (const parent of level) {
+      if (parent.depth >= maxDepth) continue
+      const entries = await readdir(parent.path, { withFileTypes: true }).catch(() => [])
+      const directories = entries
+        .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name, customIgnored))
+        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+      for (const entry of directories) {
+        if (isCancelled()) return { paths, truncated: true }
+        if (inspected >= limit) {
+          truncated = true
+          break
+        }
+        inspected += 1
+        const path = resolve(parent.path, entry.name)
+        if (await hasProjectMarker(path)) paths.push(path)
+        else nextLevel.push({ path, depth: parent.depth + 1 })
+      }
+      if (truncated) break
+    }
+    if (truncated) break
+    level = nextLevel
+  }
+  return { paths, truncated }
 }
 
 /**
@@ -111,26 +136,38 @@ export async function discoverProjectSubprojectPaths(
 export async function discoverWorkspaceProjectPaths(
   rootPath: string,
   limit = 500,
-  subprojectLimit = 200
+  subprojectLimit = 200,
+  scanDepth = 3,
+  ignored: string[] = [],
+  isCancelled: () => boolean = () => false
 ): Promise<WorkspaceDiscoveryResult> {
   const entries = await readdir(rootPath, { withFileTypes: true })
   const directDirectories = entries
-    .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name))
+    .filter((entry) => entry.isDirectory() && shouldInspectDirectory(entry.name, new Set(ignored)))
     .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
   const inspectedDirectories = directDirectories.slice(0, limit)
   const projects = await mapWithConcurrency(inspectedDirectories, 16, async (entry) => {
+    if (isCancelled()) return { project: undefined, truncated: true }
     const directPath = resolve(rootPath, entry.name)
-    const nested = await discoverProjectSubprojectPaths(directPath, subprojectLimit)
+    const nested = await discoverProjectSubprojectPaths(
+      directPath,
+      subprojectLimit,
+      scanDepth,
+      ignored,
+      isCancelled
+    )
     return {
       project: { path: directPath, subprojectPaths: nested.paths },
       truncated: nested.truncated
     }
   })
   return {
-    projects: projects.map((item) => item.project),
+    projects: projects
+      .map((item) => item.project)
+      .filter((item): item is DiscoveredWorkspaceProject => Boolean(item)),
     total: directDirectories.length,
     subprojectTotal: projects.reduce(
-      (total, item) => total + item.project.subprojectPaths.length,
+      (total, item) => total + (item.project?.subprojectPaths.length ?? 0),
       0
     ),
     truncated:

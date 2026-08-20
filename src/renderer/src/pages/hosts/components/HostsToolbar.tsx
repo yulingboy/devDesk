@@ -1,10 +1,11 @@
-import { ExternalLink, Plus, RefreshCw, RotateCcw } from 'lucide-react'
+import { ExternalLink, Import, Plus, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TooltipButton } from '@/components/common/TooltipButton'
 import { ResourcePanel } from '@/components/common/ResourcePanel'
 import { SearchInput } from '@/components/common/SearchInput'
 import { useAsyncAction } from '@/hooks/useAsyncAction'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
+import { ConfirmAction } from '@/components/common/ConfirmAction'
 
 export function HostsToolbar({
   query,
@@ -13,6 +14,8 @@ export function HostsToolbar({
   onCreate,
   onRestore,
   onRefresh,
+  onImportSystem,
+  systemRecordCount,
   children
 }: {
   query: string
@@ -21,6 +24,8 @@ export function HostsToolbar({
   onCreate: () => void
   onRestore: () => void
   onRefresh: () => void
+  onImportSystem: () => Promise<void>
+  systemRecordCount: number
   children: React.ReactNode
 }): React.JSX.Element {
   const { report } = usePageFeedback('Hosts 工具操作失败', { keepStatus: false })
@@ -90,6 +95,22 @@ export function HostsToolbar({
           <RefreshCw size={16} />
         </TooltipButton>
       </div>
+      {systemRecordCount > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-amber-100 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800">
+          <span>检测到 {systemRecordCount} 条系统已有映射，当前不会自动接管。</span>
+          <ConfirmAction
+            description="导入后，这些映射会从系统原位置移入 DevDesk 受管区块，后续可在列表中启用、停用或删除。"
+            onConfirm={onImportSystem}
+            title={`导入 ${systemRecordCount} 条系统 Hosts 记录？`}
+            triggerTooltip="导入系统已有记录"
+          >
+            <Button size="sm" variant="outline">
+              <Import />
+              导入
+            </Button>
+          </ConfirmAction>
+        </div>
+      )}
       {children}
     </ResourcePanel>
   )

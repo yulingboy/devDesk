@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { FolderKanban, FolderTree, Rocket } from 'lucide-react'
-import type { ProjectTemplate, Workspace } from '@shared/domain'
+import { FolderKanban, FolderPlus, FolderTree, Rocket } from 'lucide-react'
+import type { ProjectCreateSource, ProjectTemplate, Workspace } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ interface ProjectCreateDrawerProps {
   defaultTemplateId?: string
   defaultWorkspaceId?: string
   defaultParentProjectId?: string
+  defaultSource?: ProjectCreateSource
   onClose: () => void
   onCreated: (workspaces: Workspace[]) => void
   onError: (error: unknown) => void
@@ -34,6 +35,7 @@ export function ProjectCreateDrawer({
   defaultTemplateId,
   defaultWorkspaceId,
   defaultParentProjectId,
+  defaultSource,
   onClose,
   onCreated,
   onError,
@@ -42,6 +44,7 @@ export function ProjectCreateDrawer({
   workspaces
 }: ProjectCreateDrawerProps): React.JSX.Element {
   const [templateId, setTemplateId] = useState('')
+  const [source, setSource] = useState<ProjectCreateSource>()
   const [workspaceId, setWorkspaceId] = useState('')
   const [projectName, setProjectName] = useState('')
   const [remark, setRemark] = useState('')
@@ -50,6 +53,9 @@ export function ProjectCreateDrawer({
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const fixedTemplate = templates.find((item) => item.id === defaultTemplateId)
+  const selectedSource: ProjectCreateSource = fixedTemplate
+    ? 'template'
+    : (source ?? defaultSource ?? 'empty')
   const fixedWorkspace = workspaces.find((item) => item.id === defaultWorkspaceId)
   const selectedTemplateId = templateId || defaultTemplateId || templates[0]?.id || ''
   const selectedWorkspaceId = workspaceId || defaultWorkspaceId || workspaces[0]?.id || ''
@@ -65,6 +71,7 @@ export function ProjectCreateDrawer({
 
   const close = (): void => {
     setTemplateId('')
+    setSource(undefined)
     setWorkspaceId('')
     setProjectName('')
     setRemark('')
@@ -75,12 +82,12 @@ export function ProjectCreateDrawer({
     onClose()
   }
 
-  const createProject = (): void => {
+  const createProject = async (): Promise<void> => {
     const reject = (message: string): void => {
       setErrorMessage(message)
       onError(new Error(message))
     }
-    if (!selectedTemplateId) return reject('请选择项目模板')
+    if (selectedSource === 'template' && !selectedTemplateId) return reject('请选择项目模板')
     if (!selectedWorkspaceId) return reject('请选择目标工作区')
     if (effectiveMode === 'subproject' && !selectedParentProjectId) return reject('请选择父项目')
     const name = projectName.trim()
@@ -89,73 +96,98 @@ export function ProjectCreateDrawer({
 
     setErrorMessage('')
     setSubmitting(true)
-    void window.api?.templates
-      .createProject({
-        templateId: selectedTemplateId,
+    try {
+      const value = await window.api?.templates.createProject({
+        source: selectedSource,
+        templateId: selectedSource === 'template' ? selectedTemplateId : undefined,
         workspaceId: selectedWorkspaceId,
         projectName: name,
         parentProjectId: effectiveMode === 'subproject' ? selectedParentProjectId : undefined,
         remark
       })
-      .then((value) => {
-        onCreated(value)
-        close()
-      })
-      .catch((error: unknown) => {
-        setErrorMessage(toErrorMessage(error, '创建项目失败'))
-        onError(error)
-      })
-      .finally(() => setSubmitting(false))
+      if (!value) throw new Error('当前页面未连接桌面服务，无法创建项目。')
+      onCreated(value)
+      close()
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, '创建项目失败'))
+      onError(error)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <Drawer
-      description="从模板创建一级项目或子项目；目标已存在时不会覆盖。"
+      description="创建空目录或从模板创建一级项目、子项目；目标已存在时不会覆盖。"
       footer={
         <>
           <Button disabled={submitting} onClick={close} variant="secondary">
             取消
           </Button>
           <Button disabled={submitting} onClick={createProject} variant="success">
-            <Rocket size={15} />
+            {selectedSource === 'empty' ? <FolderPlus size={15} /> : <Rocket size={15} />}
             {submitting ? '创建中...' : '创建项目'}
           </Button>
         </>
       }
       onClose={close}
       open={open}
-      title="从模板创建项目"
+      title="创建项目"
     >
       <div className="space-y-3">
-        <Field htmlFor="create-project-template" label="项目模板">
-          {fixedTemplate ? (
-            <Item className="bg-slate-50">
-              <ItemContent>
-                <ItemTitle>{fixedTemplate.name}</ItemTitle>
-                <ItemDescription>
-                  {fixedTemplate.type === 'git' ? 'Git 模板' : '本地目录模板'}
-                </ItemDescription>
-              </ItemContent>
-            </Item>
-          ) : (
-            <Select
+        {!fixedTemplate && (
+          <Field label="创建来源">
+            <ToggleGroup
+              className="grid grid-cols-2"
               disabled={submitting}
-              onValueChange={setTemplateId}
-              value={selectedTemplateId || undefined}
+              onValueChange={(value) => {
+                if (value === 'empty' || value === 'template') setSource(value)
+              }}
+              type="single"
+              value={selectedSource}
             >
-              <SelectTrigger id="create-project-template">
-                <SelectValue placeholder="请选择模板" />
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.name}（{template.type === 'git' ? 'Git' : '本地'}）
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </Field>
+              <ToggleGroupItem className="justify-center" value="empty">
+                <FolderPlus />
+                空目录
+              </ToggleGroupItem>
+              <ToggleGroupItem className="justify-center" value="template">
+                <Rocket />
+                项目模板
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </Field>
+        )}
+        {selectedSource === 'template' && (
+          <Field htmlFor="create-project-template" label="项目模板">
+            {fixedTemplate ? (
+              <Item className="bg-slate-50">
+                <ItemContent>
+                  <ItemTitle>{fixedTemplate.name}</ItemTitle>
+                  <ItemDescription>
+                    {fixedTemplate.type === 'git' ? 'Git 模板' : '本地目录模板'}
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+            ) : (
+              <Select
+                disabled={submitting}
+                onValueChange={setTemplateId}
+                value={selectedTemplateId || undefined}
+              >
+                <SelectTrigger id="create-project-template">
+                  <SelectValue placeholder="请选择模板" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}（{template.type === 'git' ? 'Git' : '本地'}）
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </Field>
+        )}
         <Field
           description={
             effectiveMode === 'subproject'
@@ -258,7 +290,7 @@ export function ProjectCreateDrawer({
             id="create-project-name"
             onChange={(event) => setProjectName(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') createProject()
+              if (event.key === 'Enter') void createProject()
             }}
             placeholder="例如 my-app"
             value={projectName}

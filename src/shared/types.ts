@@ -79,9 +79,7 @@ import type {
   NodeRelease,
   NodeState,
   ProjectCreateOptions,
-  ProjectDetail,
   ProjectEditorId,
-  ProjectTask,
   ProjectTemplate,
   SSHKey,
   SSHKeyDraft,
@@ -92,12 +90,15 @@ import type {
   NodeRegistry,
   DataStats,
   GitIdentityDetail,
+  GitWorkspaceVerification,
   NodeEnvironmentPath,
   NodeTask,
   SSHDeleteImpact,
   WorkspaceScanResult,
   DialogOperationResult,
-  LogStats
+  LogStats,
+  NodeDownloadSourceTestResult,
+  SystemOverviewHistory
 } from './domain'
 
 export interface AppApi {
@@ -126,10 +127,12 @@ export interface AppApi {
   }
   overview: {
     getSnapshot: () => Promise<SystemOverviewSnapshot | null>
+    getHistory: () => Promise<SystemOverviewHistory>
     onUpdated: (listener: (snapshot: SystemOverviewSnapshot) => void) => () => void
   }
   hosts: {
     list: () => Promise<HostRecord[]>
+    listSystem: () => Promise<HostRecord[]>
     save: (records: HostRecord[]) => Promise<HostRecord[]>
     restoreBackup: () => Promise<HostRecord[]>
     openFile: () => Promise<void>
@@ -150,6 +153,7 @@ export interface AppApi {
     removeIdentity: (id: string) => Promise<GitState>
     files: () => Promise<GitFileSnapshot[]>
     getIdentityDetail: (id: string) => Promise<GitIdentityDetail>
+    verifyWorkspace: (workspaceId: string) => Promise<GitWorkspaceVerification>
   }
   workspaces: {
     list: () => Promise<Workspace[]>
@@ -160,8 +164,7 @@ export interface AppApi {
     openProject: (path: string) => Promise<void>
     openProjectEditor: (path: string, editor?: ProjectEditorId) => Promise<void>
     scanDetailed: (id: string) => Promise<WorkspaceScanResult>
-    getProjectDetail: (workspaceId: string, projectId: string) => Promise<ProjectDetail>
-    refreshProject: (workspaceId: string, projectId: string) => Promise<ProjectDetail>
+    cancelScan: (id: string) => Promise<void>
     saveProjectRemark: (
       workspaceId: string,
       projectId: string,
@@ -169,11 +172,6 @@ export interface AppApi {
     ) => Promise<Workspace[]>
     addProject: (workspaceId: string, path: string) => Promise<Workspace[]>
     removeProject: (workspaceId: string, projectId: string) => Promise<Workspace[]>
-    installDependencies: (workspaceId: string, projectId: string) => Promise<ProjectDetail>
-    runScript: (workspaceId: string, projectId: string, script: string) => Promise<ProjectTask>
-    tasks: (projectId?: string) => Promise<ProjectTask[]>
-    stopTask: (taskId: string) => Promise<ProjectTask>
-    onTaskUpdated: (listener: (task: ProjectTask) => void) => () => void
   }
   templates: {
     list: () => Promise<ProjectTemplate[]>
@@ -221,6 +219,7 @@ export interface AppApi {
     get: () => Promise<AppSettings>
     save: (settings: AppSettings) => Promise<AppSettings>
     reset: () => Promise<AppSettings>
+    testNodeDownloadSource: (settings: AppSettings['node']) => Promise<NodeDownloadSourceTestResult>
     export: () => Promise<DataExport>
     exportFile: () => Promise<DialogOperationResult>
     import: (data: DataExport) => Promise<AppSettings>

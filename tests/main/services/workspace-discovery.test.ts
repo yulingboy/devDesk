@@ -69,6 +69,26 @@ describe('工作区项目发现', () => {
     expect(result.subprojectTotal).toBe(1)
   })
 
+  it('可以递归发现多层子项目并在命中项目后停止下钻', async () => {
+    const root = await createWorkspace()
+    const api = await createProject(root, 'platform/services/backend/api', 'go.mod')
+    await createProject(root, 'platform/services/backend/api/examples/demo', 'package.json')
+
+    const result = await discoverWorkspaceProjectPaths(root, 500, 200, 4)
+
+    expect(result.projects).toEqual([{ path: join(root, 'platform'), subprojectPaths: [api] }])
+  })
+
+  it('支持工作区自定义忽略目录', async () => {
+    const root = await createWorkspace()
+    await createProject(root, 'platform/archive/legacy', 'pom.xml')
+    const active = await createProject(root, 'platform/services/active', 'go.mod')
+
+    const result = await discoverWorkspaceProjectPaths(root, 500, 200, 4, ['archive'])
+
+    expect(result.projects[0]?.subprojectPaths).toEqual([active])
+  })
+
   it('忽略依赖、构建产物和隐藏目录', async () => {
     const root = await createWorkspace()
     const project = await createProject(root, 'application', 'Cargo.toml')

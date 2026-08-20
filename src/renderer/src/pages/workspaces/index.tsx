@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import type { Project, Workspace, WorkspaceSubproject, WorkspaceScanResult } from '@shared/domain'
+import type {
+  Project,
+  ProjectCreateSource,
+  Workspace,
+  WorkspaceSubproject,
+  WorkspaceScanResult
+} from '@shared/domain'
 import { ProjectCreateDrawer } from '@/components/project/ProjectCreateDrawer'
 import { PageLoadingSkeleton } from '@/components/common/PageLoadingSkeleton'
 import { ProjectGrid } from './components/ProjectGrid'
@@ -23,6 +29,7 @@ export function WorkspacesPage(): React.JSX.Element {
   )
   const [createWorkspaceId, setCreateWorkspaceId] = useState<string>()
   const [createParentProjectId, setCreateParentProjectId] = useState<string>()
+  const [createSource, setCreateSource] = useState<ProjectCreateSource>('empty')
   const [removingProject, setRemovingProject] = useState(false)
   const [scanningWorkspaceId, setScanningWorkspaceId] = useState<string>()
   const [scanResults, setScanResults] = useState<Record<string, WorkspaceScanResult>>({})
@@ -102,6 +109,10 @@ export function WorkspacesPage(): React.JSX.Element {
       const result = await window.api?.workspaces.scanDetailed(id)
       if (!result) throw new Error('当前页面未连接桌面服务，无法扫描工作区。')
       setWorkspaces(result.workspaces)
+      if (result.cancelled) {
+        toast.info('工作区扫描已取消')
+        return
+      }
       setScanResults((current) => ({ ...current, [id]: result }))
       toast.success(`一级项目扫描完成：新增 ${result.added}，移除 ${result.removed}`)
       if (result.truncated) toast.warning('目录数量超过扫描上限，已展示可安全读取的部分')
@@ -235,7 +246,14 @@ export function WorkspacesPage(): React.JSX.Element {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-sm">
           <WorkspaceToolbar
             onAddProject={() => void addProject(visibleWorkspace)}
-            onCreateProject={() => {
+            onCreateEmptyProject={() => {
+              setCreateSource('empty')
+              setCreateWorkspaceId(visibleWorkspace.id)
+              setCreateParentProjectId(undefined)
+              setDrawerMode('project')
+            }}
+            onCreateFromTemplate={() => {
+              setCreateSource('template')
               setCreateWorkspaceId(visibleWorkspace.id)
               setCreateParentProjectId(undefined)
               setDrawerMode('project')
@@ -249,6 +267,7 @@ export function WorkspacesPage(): React.JSX.Element {
             onQueryChange={setQuery}
             onRefresh={() => void refresh()}
             onScan={() => void scan(visibleWorkspace.id)}
+            onCancelScan={() => void window.api?.workspaces.cancelScan(visibleWorkspace.id)}
             onSelectWorkspace={(id) => {
               setSelectedWorkspaceId(id)
               setSelectedProjectId(undefined)
@@ -300,6 +319,7 @@ export function WorkspacesPage(): React.JSX.Element {
       />
       <ProjectCreateDrawer
         defaultParentProjectId={createParentProjectId}
+        defaultSource={createSource}
         defaultWorkspaceId={createWorkspaceId}
         onClose={() => {
           setDrawerMode(null)
@@ -318,6 +338,7 @@ export function WorkspacesPage(): React.JSX.Element {
         identity={selectedIdentity}
         onClose={() => !removingProject && setSelectedProjectId(undefined)}
         onCreateSubproject={(project) => {
+          setCreateSource('empty')
           setSelectedProjectId(undefined)
           setCreateWorkspaceId(selectedWorkspace?.id)
           setCreateParentProjectId(project.id)

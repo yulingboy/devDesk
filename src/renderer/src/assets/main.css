@@ -61,17 +61,23 @@ svg.lucide {
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: #cbd5e1 content-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background-color: #94a3b8;
 }
 
 /* 仪表盘优先保持整洁，仍可使用触控板或滚轮滚动超出视口的窄屏内容。 */

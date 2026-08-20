@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   FolderOpen,
   FolderPlus,
@@ -9,10 +10,10 @@ import {
   RefreshCw,
   Rocket,
   ScanSearch,
-  Trash2
+  Trash2,
+  ChevronDown
 } from 'lucide-react'
 import type { Workspace, WorkspaceScanResult } from '@shared/domain'
-import { ConfirmAction } from '@/components/common/ConfirmAction'
 import { SearchInput } from '@/components/common/SearchInput'
 import { TooltipButton } from '@/components/common/TooltipButton'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,16 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
 
 interface WorkspaceToolbarProps {
   query: string
@@ -40,13 +51,15 @@ interface WorkspaceToolbarProps {
   workspace: Workspace
   workspaces: Workspace[]
   onAddProject: () => void
-  onCreateProject: () => void
+  onCreateEmptyProject: () => void
+  onCreateFromTemplate: () => void
   onCreateWorkspace: () => void
   onDelete: () => Promise<void>
   onEdit: () => void
   onQueryChange: (value: string) => void
   onRefresh: () => void
   onScan: () => void
+  onCancelScan: () => void
   onSelectWorkspace: (id: string) => void
   onViewDetails: () => void
 }
@@ -61,22 +74,25 @@ export function WorkspaceToolbar({
   workspace,
   workspaces,
   onAddProject,
-  onCreateProject,
+  onCreateEmptyProject,
+  onCreateFromTemplate,
   onCreateWorkspace,
   onDelete,
   onEdit,
   onQueryChange,
   onRefresh,
   onScan,
+  onCancelScan,
   onSelectWorkspace,
   onViewDetails
 }: WorkspaceToolbarProps): React.JSX.Element {
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const { report } = usePageFeedback('打开工作区目录失败', { keepStatus: false })
 
   return (
-    <section className="shrink-0 bg-white">
-      <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-1">
+    <section className="shrink-0 border-b border-slate-100 bg-white px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-1">
           <Select onValueChange={onSelectWorkspace} value={workspace.id}>
             <SelectTrigger
               aria-label="选择工作区"
@@ -88,91 +104,14 @@ export function WorkspaceToolbar({
             <SelectContent>
               {workspaces.map((item) => (
                 <SelectItem key={item.id} value={item.id}>
-                  {item.name} · {item.projects.length} 个项目
+                  {item.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={onCreateWorkspace} size="sm" variant="secondary">
-            <Plus />
-            新增工作区
-          </Button>
-          <span className="shrink-0 tabular-nums text-[10px] text-slate-400">
-            {workspace.projects.length} 个项目
-          </span>
-          <Button onClick={onViewDetails} size="sm" variant="ghost">
-            <Info />
-            查看详情
-          </Button>
         </div>
-
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <Button
-            loading={scanning}
-            loadingText="扫描中"
-            onClick={onScan}
-            size="sm"
-            variant="secondary"
-          >
-            <ScanSearch />
-            扫描项目
-          </Button>
-          <Button
-            disabled={!templatesAvailable}
-            onClick={onCreateProject}
-            size="sm"
-            variant="success"
-          >
-            <Rocket />
-            从模板创建
-          </Button>
-          <Button onClick={onAddProject} size="sm" variant="outline">
-            <FolderPlus />
-            纳入已有项目
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button aria-label="更多工作区操作" size="sm" variant="outline">
-                <MoreHorizontal />
-                更多
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onEdit}>
-                <Pencil />
-                编辑工作区
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => void window.api?.workspaces.open(workspace.id).catch(report)}
-              >
-                <FolderOpen />
-                打开工作区目录
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <ConfirmAction
-            description={`删除工作区“${workspace.name}”会同时移除应用内项目记录和 Git 路径规则，不会删除磁盘目录。`}
-            onConfirm={onDelete}
-            title="删除工作区？"
-            triggerTooltip="删除工作区"
-          >
-            <Button
-              aria-label="删除工作区"
-              className="text-slate-400 hover:bg-red-50 hover:text-red-600"
-              disabled={scanning}
-              size="sm"
-              variant="outline"
-            >
-              <Trash2 />
-              删除
-            </Button>
-          </ConfirmAction>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 px-3 pb-2 pt-3">
         <SearchInput
-          className="min-w-48 flex-1"
+          className="min-w-36 flex-1"
           onValueChange={onQueryChange}
           placeholder="搜索项目名称、备注或子项目"
           value={query}
@@ -186,10 +125,78 @@ export function WorkspaceToolbar({
         >
           <RefreshCw />
         </TooltipButton>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button
+            onClick={scanning ? onCancelScan : onScan}
+            size="sm"
+            variant={scanning ? 'outline' : 'secondary'}
+          >
+            <ScanSearch />
+            {scanning ? '取消扫描' : '扫描项目'}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="success">
+                <Plus />
+                新增项目
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onCreateEmptyProject}>
+                <FolderPlus />
+                创建空目录
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!templatesAvailable} onSelect={onCreateFromTemplate}>
+                <Rocket />
+                从模板创建
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddProject}>
+                <FolderPlus />
+                纳入已有目录
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label="更多工作区操作" size="icon" variant="outline">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onViewDetails}>
+                <Info />
+                查看工作区详情
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onCreateWorkspace}>
+                <Plus />
+                新增工作区
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onEdit}>
+                <Pencil />
+                编辑工作区
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => void window.api?.workspaces.open(workspace.id).catch(report)}
+              >
+                <FolderOpen />
+                打开工作区目录
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                disabled={scanning}
+                onSelect={() => setDeleteOpen(true)}
+              >
+                <Trash2 />
+                删除工作区
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {scanResult && (
-        <div className="mx-3 mb-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-slate-50 px-3 py-1.5 text-[10px] text-slate-500">
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-slate-50 px-3 py-1.5 text-[10px] text-slate-500">
           <span>扫描结果</span>
           <span>新增 {scanResult.added}</span>
           <span>移除 {scanResult.removed}</span>
@@ -197,6 +204,21 @@ export function WorkspaceToolbar({
           {scanResult.truncated && <span className="text-amber-700">已达到扫描上限</span>}
         </div>
       )}
+      <AlertDialog onOpenChange={setDeleteOpen} open={deleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除工作区？</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除工作区“{workspace.name}”会同时移除应用内项目记录和 Git
+              路径规则，不会删除磁盘目录。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void onDelete()}>确认删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

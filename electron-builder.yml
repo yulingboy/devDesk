@@ -21,7 +21,8 @@ nsis:
 mac:
   artifactName: ${name}-${version}-${arch}.${ext}
   entitlementsInherit: build/entitlements.mac.plist
-  notarize: false
+  hardenedRuntime: true
+  notarize: true
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
 linux:

@@ -1,4 +1,4 @@
-import { access, cp, rm } from 'node:fs/promises'
+import { access, cp, mkdir, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -60,9 +60,12 @@ function describeCloneFailure(error: unknown): string {
 }
 
 export async function createProject(options: ProjectCreateOptions): Promise<Workspace[]> {
-  const templates = await store.templates.read()
-  const template = templates.find((item) => item.id === options.templateId)
-  if (!template) throw new Error('项目模板不存在')
+  const source = options.source ?? 'template'
+  const template =
+    source === 'template'
+      ? (await store.templates.read()).find((item) => item.id === options.templateId)
+      : undefined
+  if (source === 'template' && !template) throw new Error('项目模板不存在')
   const workspaces = await store.workspaces.read()
   const workspace = workspaces.find((item) => item.id === options.workspaceId)
   if (!workspace) throw new Error('工作区不存在')
@@ -88,24 +91,36 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
   )
     throw new Error('目标目录已经存在，无法覆盖')
   try {
-    if (template.type === 'git')
-      await execFileAsync('git', ['clone', '--depth', '1', '--no-tags', template.source, target], {
-        timeout: 120_000,
-        env: { ...(await getUserShellEnvironment()), GIT_TERMINAL_PROMPT: '0' }
-      })
-    else {
-      await cp(template.source, target, {
-        recursive: true,
-        filter: (source) => !/(^|[/\\])(?:\.git|node_modules|dist|build)(?:[/\\]|$)/.test(source)
-      })
+    if (source === 'empty') {
+      await mkdir(target)
+    } else {
+      // 上方已校验模板存在；此处按模板类型执行非交互克隆或本地复制。
+      if (!template) throw new Error('项目模板不存在')
+      if (template.type === 'git') {
+        await execFileAsync(
+          'git',
+          ['clone', '--depth', '1', '--no-tags', template.source, target],
+          {
+            timeout: 120_000,
+            env: { ...(await getUserShellEnvironment()), GIT_TERMINAL_PROMPT: '0' }
+          }
+        )
+      } else {
+        await cp(template.source, target, {
+          recursive: true,
+          filter: (source) => !/(^|[/\\])(?:\.git|node_modules|dist|build)(?:[/\\]|$)/.test(source)
+        })
+      }
+      await rm(join(target, '.git'), { recursive: true, force: true })
     }
-    await rm(join(target, '.git'), { recursive: true, force: true })
   } catch (error) {
     await rm(target, { recursive: true, force: true }).catch(() => undefined)
     throw new Error(
-      template.type === 'git'
-        ? describeCloneFailure(error)
-        : '复制本地模板失败，请检查模板路径和目录权限'
+      source === 'empty'
+        ? '创建空目录失败，请检查工作区路径和目录权限'
+        : template?.type === 'git'
+          ? describeCloneFailure(error)
+          : '复制本地模板失败，请检查模板路径和目录权限'
     )
   }
   const scannedWorkspaces = await scanWorkspace(workspace.id)

@@ -69,7 +69,7 @@ export function TemplatesPage(): React.JSX.Element {
   return (
     <div className="h-full space-y-2.5 overflow-auto p-3">
       <TemplateToolbar
-        canCreateProject={Boolean(templates.length && workspaces.length)}
+        canCreateProject={Boolean(workspaces.length)}
         onCreateProject={() => {
           setCreateTemplateId(undefined)
           setDrawerMode('project')
@@ -110,6 +110,7 @@ export function TemplatesPage(): React.JSX.Element {
         saving={isPending('template-save')}
       />
       <ProjectCreateDrawer
+        defaultSource={createTemplateId ? 'template' : 'empty'}
         defaultTemplateId={createTemplateId}
         onClose={() => setDrawerMode(null)}
         onCreated={(value) => {

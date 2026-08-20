@@ -1,5 +1,14 @@
-import { FolderOpen, GitBranch, KeyRound, Pencil } from 'lucide-react'
-import type { GitIdentity, SSHKey, Workspace } from '@shared/domain'
+import { useState } from 'react'
+import {
+  CheckCircle2,
+  FolderOpen,
+  GitBranch,
+  KeyRound,
+  Pencil,
+  ShieldCheck,
+  XCircle
+} from 'lucide-react'
+import type { GitIdentity, GitWorkspaceVerification, SSHKey, Workspace } from '@shared/domain'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
@@ -24,7 +33,21 @@ export function WorkspaceDetailDrawer({
   sshKey,
   workspace
 }: WorkspaceDetailDrawerProps): React.JSX.Element {
-  const { report } = usePageFeedback('打开工作区目录失败', { keepStatus: false })
+  const [verification, setVerification] = useState<GitWorkspaceVerification>()
+  const [verifying, setVerifying] = useState(false)
+  const { report } = usePageFeedback('工作区操作失败', { keepStatus: false })
+
+  const verifyIdentity = async (): Promise<void> => {
+    if (!workspace || verifying) return
+    setVerifying(true)
+    try {
+      setVerification(await window.api!.git.verifyWorkspace(workspace.id))
+    } catch (error) {
+      report(error)
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   return (
     <Drawer
@@ -76,9 +99,20 @@ export function WorkspaceDetailDrawer({
           <Separator />
 
           <section aria-labelledby="workspace-identity-title">
-            <h3 className="mb-2 text-xs font-semibold text-slate-700" id="workspace-identity-title">
-              Git / SSH 身份
-            </h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-slate-700" id="workspace-identity-title">
+                Git / SSH 身份
+              </h3>
+              <Button
+                disabled={!identity || verifying}
+                onClick={() => void verifyIdentity()}
+                size="sm"
+                variant="ghost"
+              >
+                <ShieldCheck />
+                {verifying ? '验证中' : '验证实际配置'}
+              </Button>
+            </div>
             <div className="space-y-1.5">
               <Item>
                 <GitBranch className="shrink-0 text-slate-400" size={15} />
@@ -101,9 +135,53 @@ export function WorkspaceDetailDrawer({
                 </ItemContent>
               </Item>
             </div>
+            {verification && (
+              <div className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-100">
+                {verification.message ? (
+                  <p className="px-3 py-2.5 text-[11px] text-amber-700">{verification.message}</p>
+                ) : (
+                  <>
+                    <VerificationRow label="用户名" value={verification.username} />
+                    <VerificationRow label="邮箱" value={verification.email} />
+                    <VerificationRow label="SSH 命令" value={verification.sshCommand} />
+                  </>
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}
     </Drawer>
+  )
+}
+
+function VerificationRow({
+  label,
+  value
+}: {
+  label: string
+  value: GitWorkspaceVerification['username']
+}): React.JSX.Element {
+  return (
+    <div className="flex min-w-0 items-start gap-2 px-3 py-2">
+      {value.matches ? (
+        <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={13} />
+      ) : (
+        <XCircle className="mt-0.5 shrink-0 text-red-500" size={13} />
+      )}
+      <div className="min-w-0 text-[11px]">
+        <p className="text-slate-600">
+          {label}：{value.actual || '未生效'}
+        </p>
+        {!value.matches && (
+          <p className="mt-0.5 text-slate-400">预期：{value.expected || '未配置'}</p>
+        )}
+        {value.source && (
+          <p className="mt-0.5 truncate text-slate-400" title={value.source}>
+            来源：{value.source}
+          </p>
+        )}
+      </div>
+    </div>
   )
 }

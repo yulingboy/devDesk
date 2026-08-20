@@ -23,10 +23,12 @@ export const IPC_CHANNELS = {
   },
   overview: {
     getSnapshot: 'overview:get-snapshot',
+    getHistory: 'overview:get-history',
     updated: 'overview:updated'
   },
   hosts: {
     list: 'hosts:list',
+    listSystem: 'hosts:list-system',
     save: 'hosts:save',
     restoreBackup: 'hosts:restore-backup',
     openFile: 'hosts:open-file',
@@ -46,7 +48,8 @@ export const IPC_CHANNELS = {
     saveIdentity: 'git:save-identity',
     removeIdentity: 'git:remove-identity',
     files: 'git:files',
-    identityDetail: 'git:identity-detail'
+    identityDetail: 'git:identity-detail',
+    verifyWorkspace: 'git:verify-workspace'
   },
   workspaces: {
     list: 'workspaces:list',
@@ -57,16 +60,10 @@ export const IPC_CHANNELS = {
     openProject: 'workspaces:open-project',
     openProjectEditor: 'workspaces:open-project-editor',
     scanDetailed: 'workspaces:scan-detailed',
-    getProjectDetail: 'workspaces:get-project-detail',
-    refreshProject: 'workspaces:refresh-project',
+    cancelScan: 'workspaces:cancel-scan',
     saveProjectRemark: 'workspaces:save-project-remark',
     addProject: 'workspaces:add-project',
-    removeProject: 'workspaces:remove-project',
-    installDependencies: 'workspaces:install-dependencies',
-    runScript: 'workspaces:run-script',
-    tasks: 'workspaces:tasks',
-    stopTask: 'workspaces:stop-task',
-    taskUpdated: 'workspaces:task-updated'
+    removeProject: 'workspaces:remove-project'
   },
   templates: {
     list: 'templates:list',
@@ -110,6 +107,7 @@ export const IPC_CHANNELS = {
     get: 'settings:get',
     save: 'settings:save',
     reset: 'settings:reset',
+    testNodeDownloadSource: 'settings:test-node-download-source',
     export: 'settings:export',
     exportFile: 'settings:export-file',
     import: 'settings:import',

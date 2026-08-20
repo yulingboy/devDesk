@@ -20,7 +20,9 @@ import type {
   DataStats,
   DialogOperationResult,
   LogStats,
-  ThemeName
+  NodeDownloadSettings,
+  NodeDownloadSourceTestResult,
+  NodeRelease
 } from '@shared/domain'
 import { isPathWithin } from './common'
 import { getAppPaths } from '@main/infrastructure/paths'
@@ -36,34 +38,16 @@ import { resetUserShellEnvironment } from '@main/infrastructure/shell-environmen
 import { removeGitRuleInclude, syncGitRules } from '@main/services/git-rules'
 import { listSshKeys } from '@main/services/ssh'
 
-const supportedThemes: ThemeName[] = [
-  'blue',
-  'purple',
-  'green',
-  'orange',
-  'rose',
-  'cyan',
-  'indigo',
-  'teal'
-]
-
-const normalizeTheme = (value: unknown): ThemeName =>
-  supportedThemes.includes(value as ThemeName) ? (value as ThemeName) : 'blue'
-
 export async function getSettings(): Promise<AppSettings> {
-  const settings = await store.settings.read()
-  return {
-    ...settings,
-    general: { ...settings.general, theme: normalizeTheme(settings.general.theme) }
-  }
+  return store.settings.read()
 }
 
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {
   const current = await store.settings.read()
   const next: AppSettings = {
     ...settings,
-    schemaVersion: 1,
-    general: { ...settings.general, theme: normalizeTheme(settings.general.theme) },
+    schemaVersion: 2,
+    general: settings.general,
     // 数据目录只能通过迁移接口修改，普通设置保存不能改变运行时存储指针。
     data: current.data,
     advanced: { ...settings.advanced, logLevel: settings.advanced.logLevel ?? 'info' },
@@ -76,25 +60,84 @@ export async function saveSettings(settings: AppSettings): Promise<AppSettings> 
   return next
 }
 
-function validateHttpUrl(value: string, label: string): string {
+function validateHttpUrl(value: string, label: string, secure = false): string {
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol)) throw new Error()
+    const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname)
+    if (secure && url.protocol !== 'https:' && !local) {
+      throw new Error(`${label}必须使用 HTTPS；HTTP 仅允许本机地址`)
+    }
     return url.toString().replace(/\/$/, '')
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('必须使用 HTTPS')) throw error
     throw new Error(`${label}必须是有效的 HTTP 或 HTTPS 地址`)
   }
 }
 
-function validateNodeSettings(value: AppSettings['node']): AppSettings['node'] {
+export function validateNodeSettings(value: AppSettings['node']): AppSettings['node'] {
   if (!['npm', 'pnpm', 'yarn', 'bun'].includes(value.packageManager)) {
     throw new Error('默认包管理器无效')
   }
   return {
-    indexUrl: validateHttpUrl(value.indexUrl, '版本索引'),
-    downloadSource: validateHttpUrl(value.downloadSource, '下载源'),
+    indexUrl: validateHttpUrl(value.indexUrl, '版本索引', true),
+    downloadSource: validateHttpUrl(value.downloadSource, '下载源', true),
     packageManager: value.packageManager,
     registry: validateHttpUrl(value.registry, 'Registry')
+  }
+}
+
+function nodeArchiveName(version: string): string {
+  const platform = process.platform === 'win32' ? 'win' : process.platform
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
+  const extension = process.platform === 'win32' ? 'zip' : 'tar.gz'
+  return `node-${version}-${platform}-${arch}.${extension}`
+}
+
+async function reachable(url: string): Promise<boolean> {
+  const headResponse = await fetch(url, {
+    method: 'HEAD',
+    signal: AbortSignal.timeout(8_000)
+  }).catch(() => undefined)
+  if (headResponse?.ok) return true
+
+  // 部分镜像拒绝 HEAD 请求，Range GET 只读取首字节，避免为连通性测试下载完整安装包。
+  const rangeResponse = await fetch(url, {
+    headers: { Range: 'bytes=0-0' },
+    signal: AbortSignal.timeout(8_000)
+  }).catch(() => undefined)
+  await rangeResponse?.body?.cancel().catch(() => undefined)
+  return Boolean(rangeResponse?.ok)
+}
+
+/** 保存前验证镜像的索引、目标版本目录、安装包和校验文件是否完整。 */
+export async function testNodeDownloadSource(
+  input: NodeDownloadSettings
+): Promise<NodeDownloadSourceTestResult> {
+  const settings = validateNodeSettings(input)
+  const response = await fetch(settings.indexUrl, { signal: AbortSignal.timeout(10_000) }).catch(
+    () => undefined
+  )
+  if (!response?.ok) throw new Error('版本索引无法访问，请检查地址、网络或镜像服务状态')
+  const payload = (await response.json().catch(() => undefined)) as NodeRelease[] | undefined
+  const release = Array.isArray(payload)
+    ? payload.find((item) => typeof item?.version === 'string')
+    : undefined
+  if (!release) throw new Error('版本索引格式无效，必须返回 Node.js 官方兼容的版本数组')
+  const version = release.version.startsWith('v') ? release.version : `v${release.version}`
+  const directory = `${settings.downloadSource}/${version}`
+  const packageUrl = `${directory}/${nodeArchiveName(version)}`
+  const [packageReachable, checksumReachable] = await Promise.all([
+    reachable(packageUrl),
+    reachable(`${directory}/SHASUMS256.txt`)
+  ])
+  return {
+    indexReachable: true,
+    version,
+    packageUrl,
+    packageReachable,
+    checksumReachable,
+    checkedAt: new Date().toISOString()
   }
 }
 
@@ -102,7 +145,7 @@ export async function resetSettings(): Promise<AppSettings> {
   const current = await store.settings.read()
   return saveSettings({
     ...current,
-    general: { theme: 'blue', launchAtLogin: false, minimizeToTray: false },
+    general: { launchAtLogin: false, minimizeToTray: false },
     advanced: { logLevel: 'info', developerTools: false }
   })
 }
@@ -178,6 +221,7 @@ export async function changeDataDirectory(): Promise<DialogOperationResult<AppSe
     'templates.json',
     'hosts.backup',
     'system-overview-snapshot.json',
+    'system-overview-history.json',
     'node-manager.json',
     'node-releases.json',
     'git-rules'

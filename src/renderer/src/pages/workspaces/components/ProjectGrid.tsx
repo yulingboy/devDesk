@@ -1,4 +1,4 @@
-import { FolderOpen, Info, Pencil, TriangleAlert } from 'lucide-react'
+import { FolderOpen, Info, MoreHorizontal, Pencil, TriangleAlert } from 'lucide-react'
 import type { Project } from '@shared/domain'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,12 @@ import {
   TableRow
 } from '@/components/ui/table'
 import { TooltipButton } from '@/components/common/TooltipButton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { ProjectEditorMenu } from './ProjectEditorMenu'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 
@@ -128,38 +134,37 @@ export function ProjectGrid({
                   )}
                 </TableCell>
                 <TableCell>
-                  <div className="flex justify-end gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    <TooltipButton
-                      onClick={() => onOpen(project)}
-                      size="icon"
-                      tooltip="查看项目详情"
-                      variant="ghost"
-                    >
-                      <Info size={14} />
-                    </TooltipButton>
-                    <TooltipButton
-                      onClick={() => onEditRemark(project)}
-                      size="icon"
-                      tooltip="编辑项目备注"
-                      variant="ghost"
-                    >
-                      <Pencil size={14} />
-                    </TooltipButton>
+                  <div className="flex justify-end gap-1 opacity-80 transition-opacity group-hover:opacity-100">
                     <ProjectEditorMenu
                       disabled={project.directoryExists === false}
                       path={project.path}
                     />
-                    <TooltipButton
-                      disabled={project.directoryExists === false}
-                      onClick={() =>
-                        void window.api?.workspaces.openProject(project.path).catch(report)
-                      }
-                      size="icon"
-                      tooltip="打开项目目录"
-                      variant="ghost"
-                    >
-                      <FolderOpen size={14} />
-                    </TooltipButton>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <TooltipButton size="icon" tooltip="更多项目操作" variant="ghost">
+                          <MoreHorizontal size={14} />
+                        </TooltipButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => onOpen(project)}>
+                          <Info />
+                          查看详情
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => onEditRemark(project)}>
+                          <Pencil />
+                          编辑备注
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={project.directoryExists === false}
+                          onSelect={() =>
+                            void window.api?.workspaces.openProject(project.path).catch(report)
+                          }
+                        >
+                          <FolderOpen />
+                          打开目录
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </TableCell>
               </TableRow>

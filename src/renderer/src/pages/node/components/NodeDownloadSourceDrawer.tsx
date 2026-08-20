@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Check, Download } from 'lucide-react'
+import { Check, Download, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import type { AppSettings } from '@shared/domain'
+import type { AppSettings, NodeDownloadSourceTestResult } from '@shared/domain'
 import {
   getNodeDownloadSourcePresetId,
   NODE_DOWNLOAD_SOURCE_PRESETS,
@@ -27,6 +27,7 @@ import {
   SheetTitle
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface NodeDownloadSourceDrawerProps {
@@ -46,24 +47,28 @@ export function NodeDownloadSourceDrawer({
 }: NodeDownloadSourceDrawerProps): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [preset, setPreset] = useState<NodeDownloadSourcePresetId>('official')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<NodeDownloadSourceTestResult>()
   const { status, report, clearError } = usePageFeedback('Node 下载源设置失败')
 
   useEffect(() => {
     if (!open) return
     let active = true
-    void window
-      .api!.settings.get()
-      .then((value) => {
+    const loadSettings = async (): Promise<void> => {
+      try {
+        const value = await window.api!.settings.get()
         if (!active) return
         setSettings(value)
         setPreset(getNodeDownloadSourcePresetId(value.node))
-      })
-      .catch(report)
-      .finally(() => {
+      } catch (error) {
+        if (active) report(error)
+      } finally {
         if (active) setLoading(false)
-      })
+      }
+    }
+    void loadSettings()
     return () => {
       active = false
     }
@@ -86,9 +91,26 @@ export function NodeDownloadSourceDrawer({
 
   const changeAddress = (field: 'indexUrl' | 'downloadSource', value: string): void => {
     setPreset('custom')
+    setTestResult(undefined)
     setSettings((current) =>
       current ? { ...current, node: { ...current.node, [field]: value } } : current
     )
+  }
+
+  const testSource = async (): Promise<void> => {
+    if (!settings || testing) return
+    setTesting(true)
+    clearError()
+    try {
+      const result = await window.api!.settings.testNodeDownloadSource(settings.node)
+      setTestResult(result)
+      if (result.packageReachable && result.checksumReachable) toast.success('下载源结构验证通过')
+      else toast.warning('索引可用，但安装包或校验文件不完整')
+    } catch (error) {
+      report(error)
+    } finally {
+      setTesting(false)
+    }
   }
 
   const save = async (): Promise<void> => {
@@ -192,9 +214,22 @@ export function NodeDownloadSourceDrawer({
                   value={settings.node.downloadSource}
                 />
               </Field>
-              <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2.5 text-[11px] leading-5 text-slate-500">
-                DevDesk 会校验安装包的 SHA256。自定义镜像必须保留 Node.js
-                官方发行目录结构和校验文件。
+              <div className="space-y-2 rounded-md border border-amber-100 bg-amber-50/60 px-3 py-2.5 text-[11px] leading-5 text-amber-800">
+                <p>
+                  SHA256 只能校验文件与镜像提供的校验表一致，不能证明自定义镜像的发布者可信。
+                  非本机地址必须使用 HTTPS。
+                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="truncate">
+                    {testResult
+                      ? `已验证 ${testResult.version}：安装包${testResult.packageReachable ? '可用' : '缺失'}，校验表${testResult.checksumReachable ? '可用' : '缺失'}`
+                      : '保存前建议验证镜像目录结构。'}
+                  </span>
+                  <Button onClick={() => void testSource()} size="sm" variant="outline">
+                    <ShieldCheck />
+                    {testing ? '验证中' : '测试下载源'}
+                  </Button>
+                </div>
               </div>
             </>
           )}

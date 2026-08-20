@@ -31,7 +31,7 @@ export function HomePage(): React.JSX.Element {
     setSnapshot(next)
     setHistory((current) => {
       const withoutDuplicate = current.filter((item) => item.sampledAt !== next.sampledAt)
-      return [...withoutDuplicate, next].slice(-24)
+      return [...withoutDuplicate, next].slice(-48)
     })
   }, [])
 
@@ -41,19 +41,30 @@ export function HomePage(): React.JSX.Element {
       return () => window.clearTimeout(timer)
     }
 
+    let active = true
     const unsubscribe = window.api.overview.onUpdated(appendSnapshot)
-    void window.api.overview
-      .getSnapshot()
-      .then((overview) => {
+    const loadOverview = async (): Promise<void> => {
+      try {
+        const [overview, savedHistory] = await Promise.all([
+          window.api!.overview.getSnapshot(),
+          window.api!.overview.getHistory()
+        ])
+        if (!active) return
+        setHistory(savedHistory.items.slice(-48))
         if (overview) appendSnapshot(overview)
-      })
-      .catch((error: unknown) => {
+      } catch (error) {
         rendererLogger.error('首页系统信息读取失败', {
           error: toErrorMessage(error)
         })
-      })
-      .finally(() => setLoading(false))
-    return unsubscribe
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    void loadOverview()
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [appendSnapshot])
 
   useEffect(() => {

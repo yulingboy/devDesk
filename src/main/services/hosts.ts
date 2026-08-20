@@ -10,6 +10,15 @@ import { createId, isValidDomain, isValidIp, optionalText, requiredText } from '
 const execFileAsync = promisify(execFile)
 const startMarker = '# >>> devdesk managed hosts >>>'
 const endMarker = '# <<< devdesk managed hosts <<<'
+const systemHostNames = new Set([
+  'localhost',
+  'localhost.localdomain',
+  'broadcasthost',
+  'ip6-localhost',
+  'ip6-loopback',
+  'ip6-allnodes',
+  'ip6-allrouters'
+])
 
 function hostsPath(): string {
   if (process.platform === 'win32')
@@ -45,7 +54,7 @@ async function writeSystemHosts(path: string, content: string): Promise<void> {
   }
 }
 
-function parseManaged(raw: string): HostRecord[] {
+export function parseManagedHosts(raw: string): HostRecord[] {
   const start = raw.indexOf(startMarker)
   const end = raw.indexOf(endMarker)
   if (start < 0 || end < start) return []
@@ -70,9 +79,10 @@ function parseManaged(raw: string): HostRecord[] {
 }
 
 /** 首次接管时读取系统 Hosts 中未被注释的 IPv4 / IPv6 映射，避免已有记录显示为空。 */
-function parseSystemRecords(raw: string): HostRecord[] {
+export function parseSystemHosts(raw: string): HostRecord[] {
   const start = raw.indexOf(startMarker)
   const end = raw.indexOf(endMarker)
+  const parsedDomains = new Set<string>()
   const unmanaged =
     start >= 0 && end >= start ? `${raw.slice(0, start)}${raw.slice(end + endMarker.length)}` : raw
   return unmanaged
@@ -85,21 +95,44 @@ function parseSystemRecords(raw: string): HostRecord[] {
         !line.startsWith(startMarker) &&
         !line.startsWith(endMarker)
     )
-    .map((line) => line.split('#')[0].trim().split(/\s+/))
-    .filter((parts) => parts.length >= 2 && isValidIp(parts[0]) && isValidDomain(parts[1]))
-    .map(([ip, domain, ...remarkParts]) => ({
-      id: createId('host'),
-      ip,
-      domain,
-      enabled: true,
-      remark: remarkParts.join(' ')
-    }))
+    .flatMap((line) => {
+      const [mapping = '', comment = ''] = line.split('#', 2)
+      const [ip, ...domains] = mapping.trim().split(/\s+/)
+      if (!isValidIp(ip)) return []
+      return domains
+        .filter((domain) => isValidDomain(domain) && !systemHostNames.has(domain.toLowerCase()))
+        .map((domain) => ({
+          id: createId('host'),
+          ip,
+          domain,
+          enabled: true,
+          remark: comment.trim()
+        }))
+    })
+    .filter((item) => {
+      const domain = item.domain.toLowerCase()
+      if (parsedDomains.has(domain)) return false
+      parsedDomains.add(domain)
+      return true
+    })
 }
 
 export async function listHosts(): Promise<HostRecord[]> {
   const raw = await readFile(hostsPath(), 'utf8').catch(() => '')
   const records = await store.hosts.read()
-  return records.length ? records : [...parseManaged(raw), ...parseSystemRecords(raw)]
+  return records.length ? records : parseManagedHosts(raw)
+}
+
+/** 系统已有映射只用于显式导入预览，不会自动进入 DevDesk 受管区块。 */
+export async function listSystemHosts(): Promise<HostRecord[]> {
+  const raw = await readFile(hostsPath(), 'utf8').catch(() => '')
+  const knownDomains = new Set((await listHosts()).map((item) => item.domain.toLowerCase()))
+  return parseSystemHosts(raw).filter((item) => {
+    const domain = item.domain.toLowerCase()
+    if (knownDomains.has(domain)) return false
+    knownDomains.add(domain)
+    return true
+  })
 }
 
 function validateRecords(records: HostRecord[]): HostRecord[] {
@@ -173,7 +206,7 @@ export async function restoreHostsBackup(): Promise<HostRecord[]> {
   await writeSystemHosts(hostsPath(), backup).catch(() => {
     throw new Error('恢复 Hosts 备份失败，请检查权限')
   })
-  const records = parseManaged(await readFile(hostsPath(), 'utf8').catch(() => ''))
+  const records = parseManagedHosts(await readFile(hostsPath(), 'utf8').catch(() => ''))
   await store.hosts.write(records)
   return records
 }

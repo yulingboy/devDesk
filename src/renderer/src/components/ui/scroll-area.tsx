@@ -26,15 +26,15 @@ export const ScrollBar = forwardRef<
 >(({ className, orientation = 'vertical', ...props }, ref) => (
   <ScrollAreaPrimitive.ScrollAreaScrollbar
     className={cn(
-      'flex touch-none select-none p-px transition-colors',
-      orientation === 'vertical' ? 'h-full w-2.5' : 'h-2.5 flex-col',
+      'flex touch-none select-none transition-colors',
+      orientation === 'vertical' ? 'h-full w-1.5' : 'h-1.5 flex-col',
       className
     )}
     orientation={orientation}
     ref={ref}
     {...props}
   >
-    <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-slate-300" />
+    <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full border border-transparent bg-slate-300/80 bg-clip-content transition-colors hover:bg-slate-400" />
   </ScrollAreaPrimitive.ScrollAreaScrollbar>
 ))
 ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName

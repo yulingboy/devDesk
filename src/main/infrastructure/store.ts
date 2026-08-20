@@ -12,12 +12,13 @@ import type {
   NodeReleaseCache,
   ProjectTemplate,
   SSHKey,
+  SystemOverviewHistory,
   SystemOverviewSnapshot,
   Workspace
 } from '@shared/domain'
 import { DEFAULT_NODE_DOWNLOAD_SETTINGS } from '@shared/node-download-sources'
 
-const schemaVersion = 1 as const
+const schemaVersion = 2 as const
 let storeDirectory: string | undefined
 let settingsDirectory: string | undefined
 const pendingWrites = new Map<string, Promise<void>>()
@@ -27,7 +28,7 @@ const dataMutationContext = new AsyncLocalStorage<boolean>()
 
 const emptySettings = (dataDirectory: string): AppSettings => ({
   schemaVersion,
-  general: { theme: 'blue', launchAtLogin: false, minimizeToTray: false },
+  general: { launchAtLogin: false, minimizeToTray: false },
   data: { directory: dataDirectory },
   advanced: { logLevel: 'info', developerTools: false },
   node: {
@@ -42,8 +43,15 @@ export async function initializeStore(paths: AppPaths): Promise<void> {
   storeDirectory = paths.data
 
   // 基础设置始终留在 Electron 默认目录，它同时是自定义业务目录的指针。
-  const settings = await readJsonFrom(paths.data, 'settings.json', emptySettings(paths.data))
-  if (settings.data.directory) storeDirectory = settings.data.directory
+  const rawSettings = await readJsonFrom<unknown>(
+    paths.data,
+    'settings.json',
+    emptySettings(paths.data)
+  )
+  const data = isRecord(rawSettings) && isRecord(rawSettings.data) ? rawSettings.data : {}
+  if (typeof data.directory === 'string' && data.directory) storeDirectory = data.directory
+  const settings = normalizeSettings(rawSettings, storeDirectory)
+  await writeJsonTo(paths.data, 'settings.json', settings)
 }
 
 export function getStoreDirectory(): string {
@@ -98,10 +106,6 @@ function normalizeSettings(value: unknown, dataDirectory: string): AppSettings {
   return {
     schemaVersion,
     general: {
-      theme:
-        typeof general.theme === 'string'
-          ? (general.theme as AppSettings['general']['theme'])
-          : 'blue',
       launchAtLogin: Boolean(general.launchAtLogin),
       minimizeToTray: Boolean(general.minimizeToTray)
     },
@@ -242,6 +246,12 @@ export const store = {
     write: (value: SystemOverviewSnapshot): Promise<void> =>
       writeJson('system-overview-snapshot.json', value)
   },
+  overviewHistory: {
+    read: (): Promise<SystemOverviewHistory> =>
+      readJson('system-overview-history.json', { items: [] }),
+    write: (value: SystemOverviewHistory): Promise<void> =>
+      writeJson('system-overview-history.json', value)
+  },
   node: {
     read: (): Promise<NodeState | null> => readJson('node-manager.json', null),
     write: (value: NodeState): Promise<void> => writeJson('node-manager.json', value)
@@ -263,17 +273,19 @@ export const store = {
       nodeState: await store.node.read(),
       nodeReleases: await store.nodeReleases.read(),
       overview: await store.overview.read(),
+      overviewHistory: await store.overviewHistory.read(),
       hostsBackup: await readFile(join(getStoreDirectory(), 'hosts.backup'), 'utf8').catch(
         () => undefined
       )
     }
   },
   async importData(value: DataExport): Promise<void> {
-    validateDataExport(value)
+    const migrated = migrateDataExport(value)
+    validateDataExport(migrated)
     await withDataMutation(async () => {
       const previous = await store.exportData()
       try {
-        await writeImportedData(value)
+        await writeImportedData(migrated)
       } catch (error) {
         // 多文件存储无法由文件系统提供跨文件事务，失败时立即回滚到完整导入前快照。
         try {
@@ -337,6 +349,38 @@ function validateDataExport(value: unknown): asserts value is DataExport {
   }
 }
 
+/** 当前只存在 v1 到 v2 的无损迁移；后续版本在此按顺序继续追加。 */
+function migrateDataExport(value: unknown): DataExport {
+  if (!isRecord(value) || ![1, 2].includes(Number(value.schemaVersion))) {
+    throw new Error('备份文件版本不受支持')
+  }
+  const workspaces = Array.isArray(value.workspaces)
+    ? value.workspaces.map((workspace) => {
+        if (!isRecord(workspace)) return workspace
+        return {
+          ...workspace,
+          scanDepth:
+            typeof workspace.scanDepth === 'number'
+              ? Math.min(5, Math.max(1, Math.trunc(workspace.scanDepth)))
+              : 3,
+          ignoredDirectories: Array.isArray(workspace.ignoredDirectories)
+            ? workspace.ignoredDirectories.filter((item) => typeof item === 'string')
+            : []
+        }
+      })
+    : value.workspaces
+  return {
+    ...value,
+    schemaVersion,
+    settings: normalizeSettings(value.settings, getStoreDirectory()),
+    workspaces,
+    overviewHistory:
+      isRecord(value.overviewHistory) && Array.isArray(value.overviewHistory.items)
+        ? { items: value.overviewHistory.items.slice(-48) as SystemOverviewSnapshot[] }
+        : { items: value.overview ? [value.overview as SystemOverviewSnapshot] : [] }
+  } as DataExport
+}
+
 async function writeImportedData(value: DataExport): Promise<void> {
   // 导入备份不应偷偷改变本机的数据目录。
   await store.settings.write({
@@ -354,6 +398,8 @@ async function writeImportedData(value: DataExport): Promise<void> {
   else await removeImportedOptionalFile('node-releases.json')
   if (value.overview) await store.overview.write(value.overview)
   else await removeImportedOptionalFile('system-overview-snapshot.json')
+  if (value.overviewHistory) await store.overviewHistory.write(value.overviewHistory)
+  else await removeImportedOptionalFile('system-overview-history.json')
   if (value.hostsBackup) {
     await mkdir(getStoreDirectory(), { recursive: true })
     await writeFile(join(getStoreDirectory(), 'hosts.backup'), value.hostsBackup, 'utf8')

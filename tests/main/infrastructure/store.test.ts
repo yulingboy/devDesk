@@ -176,5 +176,34 @@ describe('数据存储', () => {
     expect(settings.general.launchAtLogin).toBe(true)
     expect(settings.node.indexUrl).toBe('https://nodejs.org/dist/index.json')
     expect(settings.node.downloadSource).toBe('https://nodejs.org/dist')
+    expect(settings.schemaVersion).toBe(2)
+  })
+
+  it('导入 v1 备份时会迁移工作区扫描配置和首页历史', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const backup = await store.exportData()
+    const legacy = {
+      ...backup,
+      schemaVersion: 1,
+      settings: { ...backup.settings, schemaVersion: 1 },
+      workspaces: [
+        {
+          id: 'workspace-legacy',
+          name: '旧工作区',
+          rootPath: directory,
+          description: '',
+          projects: []
+        }
+      ]
+    }
+
+    await store.importData(legacy as never)
+
+    await expect(store.workspaces.read()).resolves.toMatchObject([
+      { scanDepth: 3, ignoredDirectories: [] }
+    ])
+    await expect(store.overviewHistory.read()).resolves.toEqual({ items: [] })
   })
 })
