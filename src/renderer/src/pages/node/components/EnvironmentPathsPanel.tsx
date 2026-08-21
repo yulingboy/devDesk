@@ -45,7 +45,7 @@ export function EnvironmentPathsPanel({
           Array.from({ length: 5 }, (_, index) => <Skeleton className="h-12 w-full" key={index} />)}
         {!loading &&
           paths.map((item) => (
-            <Item className="px-1" key={item.name}>
+            <Item className="px-1" key={item.id}>
               <ItemContent>
                 <ItemTitle>{item.name}</ItemTitle>
                 <ItemDescription className="font-mono" title={item.path}>
@@ -58,7 +58,11 @@ export function EnvironmentPathsPanel({
                 </Badge>
                 <TooltipButton
                   disabled={!item.exists}
-                  onClick={() => void window.api?.node.openPath(item.path).catch(report)}
+                  onClick={() =>
+                    void window.api?.node
+                      .openPath({ type: 'environment', id: item.id })
+                      .catch(report)
+                  }
                   size="icon"
                   tooltip="打开目录"
                   variant="ghost"

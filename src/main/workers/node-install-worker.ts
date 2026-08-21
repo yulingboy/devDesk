@@ -5,6 +5,7 @@ import { cp, mkdir, open, readdir, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { parentPort, workerData } from 'node:worker_threads'
+import { validateArchiveEntries } from '@main/services/node-archive'
 
 const execFileAsync = promisify(execFile)
 
@@ -80,12 +81,30 @@ async function extract(): Promise<string> {
   await mkdir(payload.extractPath, { recursive: true })
   if (process.platform === 'win32') {
     const quote = (value: string): string => `'${value.replace(/'/g, "''")}'`
+    const { stdout } = await execFileAsync('powershell', [
+      '-NoProfile',
+      '-Command',
+      `Add-Type -AssemblyName System.IO.Compression.FileSystem; $zip=[IO.Compression.ZipFile]::OpenRead(${quote(payload.archivePath)}); try { $zip.Entries | ForEach-Object { $_.FullName } } finally { $zip.Dispose() }`
+    ])
+    validateArchiveEntries(stdout.split(/\r?\n/))
     await execFileAsync('powershell', [
       '-NoProfile',
       '-Command',
       `Expand-Archive -LiteralPath ${quote(payload.archivePath)} -DestinationPath ${quote(payload.extractPath)} -Force`
     ])
   } else {
+    const [{ stdout: entries }, { stdout: verboseEntries }] = await Promise.all([
+      execFileAsync('tar', ['-tzf', payload.archivePath], { timeout: 30_000 }),
+      execFileAsync('tar', ['-tvzf', payload.archivePath], { timeout: 30_000 })
+    ])
+    validateArchiveEntries(entries.split(/\r?\n/))
+    if (
+      verboseEntries
+        .split(/\r?\n/)
+        .some((line) => ['l', 'h'].includes(line.trimStart().charAt(0).toLowerCase()))
+    ) {
+      throw new Error('安装包包含链接条目，已拒绝解压')
+    }
     await execFileAsync('tar', ['-xzf', payload.archivePath, '-C', payload.extractPath], {
       timeout: 180_000
     })

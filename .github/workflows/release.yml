@@ -5,9 +5,17 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的已有 Git 标签，例如 v1.0.0'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   quality:
@@ -16,6 +24,8 @@ jobs:
     steps:
       - name: 获取代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -27,6 +37,8 @@ jobs:
           cache: pnpm
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
+      - name: 校验发布标签与应用版本
+        run: node scripts/validate-release-tag.mjs "$RELEASE_TAG"
       - name: 代码检查
         run: pnpm lint
       - name: 类型检查
@@ -58,6 +70,8 @@ jobs:
     steps:
       - name: 获取代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: 安装 pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -119,6 +133,7 @@ jobs:
       - name: 获取标签
         uses: actions/checkout@v4
         with:
+          ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 1
       - name: 下载所有安装包
         uses: actions/download-artifact@v4
@@ -129,4 +144,4 @@ jobs:
       - name: 发布 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" release-artifacts/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "DevDesk $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$RELEASE_TAG" release-artifacts/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "DevDesk $RELEASE_TAG" --generate-notes

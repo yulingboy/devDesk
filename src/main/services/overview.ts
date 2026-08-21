@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import { app } from 'electron'
 import type { SystemOverviewHistory, SystemOverviewSnapshot } from '@shared/domain'
 import { getAppPaths } from '@main/infrastructure/paths'
-import { store } from '@main/infrastructure/store'
+import { store, withDataMutation } from '@main/infrastructure/store'
 
 const execFileAsync = promisify(execFile)
 let previousCpu = os.cpus()
@@ -32,14 +32,15 @@ function cpuUsage(): number {
 async function readDisks(): Promise<SystemOverviewSnapshot['disks']> {
   if (process.platform === 'win32') return []
   try {
-    const { stdout } = await execFileAsync('df', ['-kP'])
+    // 首页只展示当前系统数据卷，避免把虚拟卷和外接卷百分比做无意义平均。
+    const { stdout } = await execFileAsync('df', ['-kP', '/'])
     return stdout
       .trim()
       .split('\n')
       .slice(1)
       .map((line) => line.trim().split(/\s+/))
       .filter((parts) => parts.length >= 6 && parts[1] !== '0')
-      .slice(0, 4)
+      .slice(0, 1)
       .map((parts) => {
         const total = Number(parts[1]) * 1024
         const free = Number(parts[3]) * 1024
@@ -56,9 +57,34 @@ async function readDisks(): Promise<SystemOverviewSnapshot['disks']> {
   }
 }
 
+/** 将 macOS vm_stat 页面统计换算为可用内存，压缩内存仍计入已使用部分。 */
+export function parseMacMemoryAvailable(output: string, total: number): number | undefined {
+  const pageSize = Number(output.match(/page size of\s+(\d+)\s+bytes/i)?.[1])
+  if (!pageSize) return undefined
+  const values = new Map<string, number>()
+  for (const line of output.split(/\r?\n/)) {
+    const match = line.match(/^([^:]+):\s+(\d+)\.?$/)
+    if (match) values.set(match[1].trim(), Number(match[2]))
+  }
+  const pages =
+    (values.get('Pages free') ?? 0) +
+    (values.get('Pages inactive') ?? 0) +
+    (values.get('Pages speculative') ?? 0)
+  if (!pages) return undefined
+  return Math.min(total, pages * pageSize)
+}
+
+async function readMemoryFree(total: number): Promise<number> {
+  if (process.platform !== 'darwin') return os.freemem()
+  const output = await execFileAsync('vm_stat', [], { timeout: 5_000 })
+    .then(({ stdout }) => stdout)
+    .catch(() => '')
+  return parseMacMemoryAvailable(output, total) ?? os.freemem()
+}
+
 export async function sampleSystemOverview(): Promise<SystemOverviewSnapshot> {
   const memoryTotal = os.totalmem()
-  const memoryFree = os.freemem()
+  const memoryFree = await readMemoryFree(memoryTotal)
   const networks = Object.entries(os.networkInterfaces())
     .flatMap(([name, addresses]) =>
       (addresses ?? []).map((address) => ({
@@ -91,16 +117,16 @@ export async function sampleSystemOverview(): Promise<SystemOverviewSnapshot> {
     electronVersion: process.versions.electron,
     paths: getAppPaths()
   }
-  const history = await store.overviewHistory.read()
-  await Promise.all([
-    store.overview.write(snapshot),
-    store.overviewHistory.write({
+  await withDataMutation(async () => {
+    const history = await store.overviewHistory.read()
+    await store.overview.write(snapshot)
+    await store.overviewHistory.write({
       items: [
         ...history.items.filter((item) => item.sampledAt !== snapshot.sampledAt),
         snapshot
       ].slice(-48)
     })
-  ])
+  })
   return snapshot
 }
 

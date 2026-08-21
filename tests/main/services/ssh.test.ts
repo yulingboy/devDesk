@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { SSHKey } from '@shared/domain'
-import { createDiscoveredSshKeyId, materializeSshKeyBinding } from '@main/services/ssh'
+import {
+  createDiscoveredSshKeyId,
+  materializeSshKeyBinding,
+  validateSshKeyFileName
+} from '@main/services/ssh'
 
 const discoveredKey: SSHKey = {
   id: createDiscoveredSshKeyId('ssh-ed25519 AAAATEST developer@example.com'),
@@ -43,5 +47,11 @@ describe('SSH 密钥绑定', () => {
 
     expect(result.key).toBe(saved[0])
     expect(result.keys).toBe(saved)
+  })
+
+  it('拒绝可能逃逸 .ssh 目录的密钥名称', () => {
+    expect(() => validateSshKeyFileName('../../outside')).toThrow('密钥名称只能包含')
+    expect(() => validateSshKeyFileName('team/id_ed25519')).toThrow('密钥名称只能包含')
+    expect(validateSshKeyFileName('id_ed25519.work')).toBe('id_ed25519.work')
   })
 })

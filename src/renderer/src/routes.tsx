@@ -19,7 +19,7 @@ export interface AppRoute {
 
 // 路由元数据同时驱动侧栏和页面标题，新增模块时只需维护这一处。
 export const appRoutes: AppRoute[] = [
-  { path: '/', label: '概览', description: '工作区与项目运行状态', icon: House },
+  { path: '/', label: '概览', description: '设备与系统状态', icon: House },
   {
     path: '/workspaces',
     label: '工作区',

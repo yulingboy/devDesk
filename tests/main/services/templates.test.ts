@@ -10,6 +10,7 @@ const data = vi.hoisted(() => ({
 }))
 
 vi.mock('@main/infrastructure/store', () => ({
+  withDataMutation: async <T>(operation: () => Promise<T>): Promise<T> => operation(),
   store: {
     templates: {
       read: async (): Promise<ProjectTemplate[]> => data.templates
@@ -29,7 +30,30 @@ vi.mock('@main/infrastructure/shell-environment', () => ({
 
 // 本用例关注模板创建后的元数据回填，扫描结果使用当前工作区快照。
 vi.mock('@main/services/workspaces', () => ({
-  scanWorkspace: async (): Promise<Workspace[]> => data.workspaces
+  scanWorkspace: async (workspaceId: string): Promise<Workspace[]> => {
+    const { readdir } = await import('node:fs/promises')
+    data.workspaces = await Promise.all(
+      data.workspaces.map(async (workspace) => {
+        if (workspace.id !== workspaceId) return workspace
+        const entries = await readdir(workspace.rootPath, { withFileTypes: true })
+        const knownPaths = new Set(workspace.projects.map((project) => project.path))
+        const discovered = entries
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => `${workspace.rootPath}/${entry.name}`)
+          .filter((path) => !knownPaths.has(path))
+          .map((path) => ({
+            id: `project-${path.split('/').at(-1)}`,
+            workspaceId,
+            name: path.split('/').at(-1) ?? '',
+            path,
+            source: 'scanned' as const,
+            directoryExists: true
+          }))
+        return { ...workspace, projects: [...workspace.projects, ...discovered] }
+      })
+    )
+    return data.workspaces
+  }
 }))
 
 import { createProject } from '@main/services/templates'

@@ -1,15 +1,24 @@
 import { createHash } from 'node:crypto'
-import { access, readFile, readdir } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { SSHDeleteImpact, SSHKey, SSHKeyDraft, SSHKeyGenerateOptions } from '@shared/domain'
-import { store } from '@main/infrastructure/store'
-import { createId, requiredText } from './common'
+import { store, withDataMutation } from '@main/infrastructure/store'
+import { createId, entityId, requiredText } from './common'
 import { syncGitRules } from './git-rules'
 
 const execFileAsync = promisify(execFile)
+
+/** 密钥名最终会成为 ~/.ssh 下的文件名，禁止路径分隔符和特殊目录名。 */
+export function validateSshKeyFileName(value: string): string {
+  const name = requiredText(value, '密钥名称', 80)
+  if (name === '.' || name === '..' || !/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error('密钥名称只能包含字母、数字、点、下划线和短横线')
+  }
+  return name
+}
 
 function fingerprint(publicKey: string): string {
   const body = publicKey.trim().split(/\s+/)[1] ?? publicKey
@@ -114,42 +123,75 @@ export function materializeSshKeyBinding(
  * 持久化后 profile 生成和后续重启都能继续解析同一个密钥 ID。
  */
 export async function ensureSshKeyPersisted(id: string): Promise<SSHKey | undefined> {
-  const saved = await store.sshKeys.read()
-  const existing = saved.find((key) => key.id === id)
-  if (existing) return existing
-  const result = materializeSshKeyBinding(saved, await listSshKeys(), id)
-  if (result.key && result.keys !== saved) await store.sshKeys.write(result.keys)
-  return result.key
+  return withDataMutation(async () => {
+    const saved = await store.sshKeys.read()
+    const existing = saved.find((key) => key.id === id)
+    if (existing) return existing
+    const result = materializeSshKeyBinding(saved, await listSshKeys(), id)
+    if (result.key && result.keys !== saved) await store.sshKeys.write(result.keys)
+    return result.key
+  })
 }
 
 export async function saveSshKey(draft: SSHKeyDraft): Promise<SSHKey[]> {
   const name = requiredText(draft.name, '密钥名称', 80)
   const publicKey = requiredText(draft.publicKey, '公钥', 8_000)
-  const existing = await store.sshKeys.read()
   const parsed = parsePublicKey(publicKey, name, draft.source ?? 'manual', draft.privateKeyPath)
-  const duplicateName = existing.some((item) => item.name === name && item.id !== draft.id)
-  if (duplicateName) throw new Error(`密钥名称重复：${name}`)
-  const next = existing.filter(
-    (item) => item.id !== draft.id && item.publicKey !== parsed.publicKey
-  )
-  next.push({
-    ...parsed,
-    id: draft.id ?? parsed.id,
-    algorithm: draft.algorithm ?? parsed.algorithm
+  await withDataMutation(async () => {
+    const existing = await store.sshKeys.read()
+    const id = draft.id ? entityId(draft.id, 'SSH 密钥 ID') : parsed.id
+    if (
+      draft.id &&
+      !existing.some((item) => item.id === id) &&
+      id !== createDiscoveredSshKeyId(parsed.publicKey)
+    )
+      throw new Error('SSH 密钥不存在')
+    const duplicateName = existing.some((item) => item.name === name && item.id !== id)
+    if (duplicateName) throw new Error(`密钥名称重复：${name}`)
+    const next = existing.filter((item) => item.id !== id && item.publicKey !== parsed.publicKey)
+    next.push({
+      ...parsed,
+      id,
+      algorithm: draft.algorithm ?? parsed.algorithm
+    })
+    await store.sshKeys.write(next)
+    const affectsGitRules = (await store.gitIdentities.read()).some(
+      (identity) => identity.sshKeyId === id
+    )
+    if (!affectsGitRules) return
+    try {
+      await syncGitRules()
+    } catch (error) {
+      await store.sshKeys.write(existing)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 规则同步失败，密钥修改已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
   })
-  await store.sshKeys.write(next)
   return listSshKeys()
 }
 
 export async function generateSshKey(options: SSHKeyGenerateOptions): Promise<SSHKey[]> {
-  const name = requiredText(options.name, '密钥名称', 80)
+  const name = validateSshKeyFileName(options.name)
   const directory = join(homedir(), '.ssh')
   const target = join(directory, name)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const targetExists = await Promise.all(
+    [target, `${target}.pub`].map((path) =>
+      access(path)
+        .then(() => true)
+        .catch(() => false)
+    )
+  )
+  if (targetExists.some(Boolean)) throw new Error('同名 SSH 密钥文件已存在，请更换名称')
   const args = ['-t', options.algorithm, '-f', target, '-N', options.passphrase ?? '']
   if (options.algorithm === 'rsa') args.push('-b', '4096')
   if (options.comment?.trim()) args.push('-C', options.comment.trim())
-  await execFileAsync('ssh-keygen', args).catch(() => {
-    throw new Error('生成 SSH 密钥失败，请确认 ssh-keygen 可用且目标文件不存在')
+  await execFileAsync('ssh-keygen', args, { timeout: 30_000 }).catch(async () => {
+    // 目标在执行前已确认不存在，因此这里只清理由本次失败命令留下的半成品。
+    await Promise.all([rm(target, { force: true }), rm(`${target}.pub`, { force: true })])
+    throw new Error('生成 SSH 密钥失败，请确认 ssh-keygen 可用且参数有效')
   })
   const publicKey = await readFile(`${target}.pub`, 'utf8')
   return saveSshKey({
@@ -180,17 +222,28 @@ export async function getSshDeleteImpact(id: string): Promise<SSHDeleteImpact> {
 }
 
 export async function removeSshKey(id: string): Promise<SSHKey[]> {
-  const existing = await store.sshKeys.read()
-  const key = existing.find((item) => item.id === id)
-  if (!key) throw new Error('SSH 密钥不存在')
-  const identities = await store.gitIdentities.read()
-  await store.gitIdentities.write(
-    identities.map((identity) =>
-      identity.sshKeyId === id ? { ...identity, sshKeyId: undefined } : identity
+  await withDataMutation(async () => {
+    const existing = await store.sshKeys.read()
+    const key = existing.find((item) => item.id === id)
+    if (!key) throw new Error('SSH 密钥不存在')
+    const identities = await store.gitIdentities.read()
+    await store.gitIdentities.write(
+      identities.map((identity) =>
+        identity.sshKeyId === id ? { ...identity, sshKeyId: undefined } : identity
+      )
     )
-  )
-  await store.sshKeys.write(existing.filter((item) => item.id !== id))
-  // 删除密钥会改变 Git profile 中的 sshCommand，必须立即重建受管规则。
-  await syncGitRules()
+    await store.sshKeys.write(existing.filter((item) => item.id !== id))
+    try {
+      // 删除密钥会改变 Git profile 中的 sshCommand，必须立即重建受管规则。
+      await syncGitRules()
+    } catch (error) {
+      await store.sshKeys.write(existing)
+      await store.gitIdentities.write(identities)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 规则同步失败，密钥删除已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+  })
   return listSshKeys()
 }

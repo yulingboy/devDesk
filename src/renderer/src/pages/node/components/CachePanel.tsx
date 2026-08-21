@@ -77,7 +77,10 @@ export function CachePanel({
               </span>
               <TooltipButton
                 disabled={!cache.exists}
-                onClick={() => void window.api?.node.openPath(cache.path).catch(report)}
+                onClick={() =>
+                  cache.id &&
+                  void window.api?.node.openPath({ type: 'cache', id: cache.id }).catch(report)
+                }
                 size="icon"
                 tooltip="打开缓存目录"
                 variant="ghost"

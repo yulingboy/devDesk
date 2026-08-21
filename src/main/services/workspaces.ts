@@ -4,10 +4,10 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { shell } from 'electron'
 import { PROJECT_EDITOR_OPTIONS, type ProjectEditorId } from '@shared/domain'
-import type { Project, Workspace, WorkspaceScanResult } from '@shared/domain'
-import { store } from '@main/infrastructure/store'
+import type { Project, Workspace, WorkspaceScanResult, WorkspaceSubproject } from '@shared/domain'
+import { store, withDataMutation } from '@main/infrastructure/store'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
-import { createId, optionalText, requiredText } from './common'
+import { createId, entityId, optionalText, requiredText } from './common'
 import { syncGitRules } from './git-rules'
 import { discoverWorkspaceProjectPaths } from './workspace-discovery'
 import { getTopLevelProjectPath, normalizeWorkspaceProjectHierarchy } from './workspace-hierarchy'
@@ -75,15 +75,85 @@ async function findProject(
   projectId: string
 ): Promise<{
   workspace: Workspace
-  project: Project
+  project: Project | WorkspaceSubproject
 }> {
   const id = requiredText(workspaceId, '工作区 ID', 120)
   const projectKey = requiredText(projectId, '项目 ID', 120)
-  const workspace = (await store.workspaces.read()).find((item) => item.id === id)
+  return findWorkspaceProject(await store.workspaces.read(), id, projectKey)
+}
+
+/** 只按持久化 ID 解析项目路径，不接受渲染层传入的文件系统路径。 */
+export function findWorkspaceProject(
+  workspaces: Workspace[],
+  workspaceId: string,
+  projectId: string
+): { workspace: Workspace; project: Project | WorkspaceSubproject } {
+  const workspace = workspaces.find((item) => item.id === workspaceId)
   if (!workspace) throw new Error('工作区不存在')
-  const project = workspace.projects.find((item) => item.id === projectKey)
-  if (!project) throw new Error('项目不存在，请先扫描工作区')
-  return { workspace, project }
+  const project = workspace.projects.find((item) => item.id === projectId)
+  const subproject = workspace.projects
+    .flatMap((item) => item.subprojects ?? [])
+    .find((item) => item.id === projectId)
+  if (!project && !subproject) throw new Error('项目不存在，请先扫描工作区')
+  return { workspace, project: project ?? subproject! }
+}
+
+function sameScanConfiguration(left: Workspace, right: Workspace): boolean {
+  return (
+    resolve(left.rootPath) === resolve(right.rootPath) &&
+    (left.scanDepth ?? 3) === (right.scanDepth ?? 3) &&
+    JSON.stringify(left.ignoredDirectories ?? []) === JSON.stringify(right.ignoredDirectories ?? [])
+  )
+}
+
+/** 扫描只更新磁盘派生信息；扫描期间用户填写的备注、ID 和手动记录以最新数据为准。 */
+export function mergeScannedProject(scanned: Project, latest?: Project): Project {
+  if (!latest) return scanned
+  const latestSubprojects = new Map(
+    (latest.subprojects ?? []).map((item) => [resolve(item.path), item])
+  )
+  const subprojects = (scanned.subprojects ?? []).map((item) => {
+    const current = latestSubprojects.get(resolve(item.path))
+    if (!current) return item
+    latestSubprojects.delete(resolve(item.path))
+    return {
+      ...item,
+      id: current.id,
+      source: current.source ?? item.source,
+      remark: current.remark
+    }
+  })
+  // 扫描过程中由模板创建的子项目尚未出现在发现结果中，必须保留到下次扫描。
+  for (const item of latestSubprojects.values()) {
+    if (item.source === 'created') subprojects.push(item)
+  }
+  return {
+    ...scanned,
+    id: latest.id,
+    source: latest.source ?? scanned.source,
+    remark: latest.remark,
+    subprojects
+  }
+}
+
+export function mergeWorkspaceScanResults(
+  latestWorkspace: Workspace,
+  discoveredProjects: Project[],
+  manualProjects: Project[]
+): Project[] {
+  const latestByPath = new Map(latestWorkspace.projects.map((item) => [resolve(item.path), item]))
+  const mergedDiscovered = discoveredProjects.map((item) =>
+    mergeScannedProject(item, latestByPath.get(resolve(item.path)))
+  )
+  const discoveredPaths = new Set(mergedDiscovered.map((item) => resolve(item.path)))
+  const scannedManualByPath = new Map(manualProjects.map((item) => [resolve(item.path), item]))
+  const mergedManual = latestWorkspace.projects
+    .filter((item) => item.source === 'manual' && !discoveredPaths.has(resolve(item.path)))
+    .map((item) => {
+      const scanned = scannedManualByPath.get(resolve(item.path))
+      return scanned ? mergeScannedProject(scanned, item) : item
+    })
+  return [...mergedDiscovered, ...mergedManual]
 }
 
 async function mapWithConcurrency<T, R>(
@@ -105,18 +175,20 @@ async function mapWithConcurrency<T, R>(
 }
 
 export async function listWorkspaces(): Promise<Workspace[]> {
-  const stored = await store.workspaces.read()
-  const normalized = stored.map(normalizeWorkspaceProjectHierarchy)
-  const workspaces = normalized.map((item) => normalizeWorkspace(item.workspace))
-  if (
-    normalized.some((item) => item.changed) ||
-    JSON.stringify(workspaces) !== JSON.stringify(stored)
-  ) {
-    // 一次性持久化兼容结果，保证后续详情、移除和深链接都使用同一组项目 ID。
-    await store.workspaces.write(workspaces)
-    return workspaces
-  }
-  return stored
+  return withDataMutation(async () => {
+    const stored = await store.workspaces.read()
+    const normalized = stored.map(normalizeWorkspaceProjectHierarchy)
+    const workspaces = normalized.map((item) => normalizeWorkspace(item.workspace))
+    if (
+      normalized.some((item) => item.changed) ||
+      JSON.stringify(workspaces) !== JSON.stringify(stored)
+    ) {
+      // 一次性持久化兼容结果，保证后续详情、移除和深链接都使用同一组项目 ID。
+      await store.workspaces.write(workspaces)
+      return workspaces
+    }
+    return stored
+  })
 }
 
 export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
@@ -124,43 +196,69 @@ export async function saveWorkspace(input: Workspace): Promise<Workspace[]> {
   const rootPath = resolve(requiredText(input.rootPath, '工作区目录', 1_000))
   const metadata = await lstat(rootPath).catch(() => undefined)
   if (!metadata?.isDirectory()) throw new Error('工作区目录不存在或不是有效目录')
-  const existing = await store.workspaces.read()
-  if (
-    existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
-  )
-    throw new Error(`工作区名称重复：${name}`)
-  if (existing.some((item) => resolve(item.rootPath) === rootPath && item.id !== input.id))
-    throw new Error('工作区目录已被使用')
-  if (
-    input.gitIdentityId &&
-    !(await store.gitIdentities.read()).some((item) => item.id === input.gitIdentityId)
-  )
-    throw new Error('关联的 Git 身份不存在')
-  const workspace: Workspace = {
-    ...input,
-    id: input.id || createId('workspace'),
-    name,
-    rootPath,
-    description: optionalText(input.description, 200),
-    scanDepth: Math.min(5, Math.max(1, Math.trunc(input.scanDepth ?? 3))),
-    ignoredDirectories: [
-      ...new Set(
-        (input.ignoredDirectories ?? []).map((item) => optionalText(item, 80)).filter(Boolean)
+  await withDataMutation(async () => {
+    const existing = await store.workspaces.read()
+    if (input.id && !existing.some((item) => item.id === input.id)) throw new Error('工作区不存在')
+    if (
+      input.gitIdentityId &&
+      !(await store.gitIdentities.read()).some((item) => item.id === input.gitIdentityId)
+    )
+      throw new Error('关联的 Git 身份不存在')
+    if (
+      existing.some(
+        (item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id
       )
-    ],
-    // 项目清单只能由扫描流程刷新；编辑工作区元数据不能覆盖既有扫描结果。
-    projects: existing.find((item) => item.id === input.id)?.projects ?? []
-  }
-  await store.workspaces.write([...existing.filter((item) => item.id !== workspace.id), workspace])
-  await syncGitRules()
+    )
+      throw new Error(`工作区名称重复：${name}`)
+    if (existing.some((item) => resolve(item.rootPath) === rootPath && item.id !== input.id))
+      throw new Error('工作区目录已被使用')
+    const workspace: Workspace = {
+      ...input,
+      id: input.id ? entityId(input.id, '工作区 ID') : createId('workspace'),
+      name,
+      rootPath,
+      description: optionalText(input.description, 200),
+      scanDepth: Math.min(5, Math.max(1, Math.trunc(input.scanDepth ?? 3))),
+      ignoredDirectories: [
+        ...new Set(
+          (input.ignoredDirectories ?? []).map((item) => optionalText(item, 80)).filter(Boolean)
+        )
+      ],
+      // 项目清单只能由扫描流程刷新；编辑工作区元数据不能覆盖既有扫描结果。
+      projects: existing.find((item) => item.id === input.id)?.projects ?? []
+    }
+    await store.workspaces.write([
+      ...existing.filter((item) => item.id !== workspace.id),
+      workspace
+    ])
+    try {
+      await syncGitRules()
+    } catch (error) {
+      await store.workspaces.write(existing)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 工作区规则同步失败，工作区修改已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+  })
   return listWorkspaces()
 }
 
 export async function removeWorkspace(id: string): Promise<Workspace[]> {
-  const existing = await store.workspaces.read()
-  if (!existing.some((item) => item.id === id)) throw new Error('工作区不存在')
-  await store.workspaces.write(existing.filter((item) => item.id !== id))
-  await syncGitRules()
+  await withDataMutation(async () => {
+    const existing = await store.workspaces.read()
+    if (!existing.some((item) => item.id === id)) throw new Error('工作区不存在')
+    await store.workspaces.write(existing.filter((item) => item.id !== id))
+    try {
+      await syncGitRules()
+    } catch (error) {
+      await store.workspaces.write(existing)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 工作区规则同步失败，删除操作已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+  })
   return listWorkspaces()
 }
 
@@ -229,9 +327,25 @@ export async function scanWorkspaceDetailed(id: string): Promise<WorkspaceScanRe
           workspace.ignoredDirectories ?? []
         )
     )
-    const projects = [...discoveredProjects, ...manualProjects]
-    const updated = { ...workspace, projects }
-    await store.workspaces.write(existing.map((item) => (item.id === id ? updated : item)))
+    const projects = await withDataMutation(async () => {
+      const latestWorkspaces = await store.workspaces.read()
+      const latestWorkspace = latestWorkspaces.find((item) => item.id === id)
+      if (!latestWorkspace) throw new Error('扫描期间工作区已被删除，扫描结果未保存')
+      if (!sameScanConfiguration(workspace, latestWorkspace)) {
+        throw new Error('扫描期间工作区配置已变化，请重新扫描')
+      }
+      const nextProjects = mergeWorkspaceScanResults(
+        latestWorkspace,
+        discoveredProjects,
+        manualProjects
+      )
+      await store.workspaces.write(
+        latestWorkspaces.map((item) =>
+          item.id === id ? { ...latestWorkspace, projects: nextProjects } : item
+        )
+      )
+      return nextProjects
+    })
     const knownTopLevelPaths = new Set(
       workspace.projects.map((item) => getTopLevelProjectPath(workspace.rootPath, item.path))
     )
@@ -267,16 +381,19 @@ export async function openWorkspace(id: string): Promise<void> {
   if (error) throw new Error(`无法打开工作区目录：${error}`)
 }
 
-export async function openProject(path: string): Promise<void> {
-  const error = await shell.openPath(resolve(requiredText(path, '项目路径', 1_000)))
+export async function openProject(workspaceId: string, projectId: string): Promise<void> {
+  const { project } = await findProject(workspaceId, projectId)
+  const error = await shell.openPath(resolve(project.path))
   if (error) throw new Error(`无法打开项目目录：${error}`)
 }
 
 export async function openProjectEditor(
-  pathInput: string,
+  workspaceId: string,
+  projectId: string,
   editorInput: string = 'vscode'
 ): Promise<void> {
-  const path = resolve(requiredText(pathInput, '项目路径', 1_000))
+  const { project } = await findProject(workspaceId, projectId)
+  const path = resolve(project.path)
   const editor = PROJECT_EDITOR_OPTIONS.find((item) => item.id === editorInput)
   if (!editor) throw new Error('不支持指定的项目编辑器')
   const launcher = editorLaunchers[editor.id]
@@ -305,33 +422,35 @@ export async function saveProjectRemark(
   const workspaceKey = requiredText(workspaceId, '工作区 ID', 120)
   const projectKey = requiredText(projectId, '项目 ID', 120)
   const remark = optionalText(remarkInput, 200)
-  const workspaces = await store.workspaces.read()
-  const workspace = workspaces.find((item) => item.id === workspaceKey)
-  if (!workspace) throw new Error('工作区不存在')
-  const projectExists = workspace.projects.some(
-    (project) =>
-      project.id === projectKey || project.subprojects?.some((item) => item.id === projectKey)
-  )
-  if (!projectExists) throw new Error('项目不存在，请先扫描工作区')
-  await store.workspaces.write(
-    workspaces.map((item) =>
-      item.id === workspace.id
-        ? {
-            ...item,
-            projects: item.projects.map((candidate) =>
-              candidate.id === projectKey
-                ? { ...candidate, remark }
-                : {
-                    ...candidate,
-                    subprojects: candidate.subprojects?.map((subproject) =>
-                      subproject.id === projectKey ? { ...subproject, remark } : subproject
-                    )
-                  }
-            )
-          }
-        : item
+  await withDataMutation(async () => {
+    const workspaces = await store.workspaces.read()
+    const workspace = workspaces.find((item) => item.id === workspaceKey)
+    if (!workspace) throw new Error('工作区不存在')
+    const projectExists = workspace.projects.some(
+      (project) =>
+        project.id === projectKey || project.subprojects?.some((item) => item.id === projectKey)
     )
-  )
+    if (!projectExists) throw new Error('项目不存在，请先扫描工作区')
+    await store.workspaces.write(
+      workspaces.map((item) =>
+        item.id === workspace.id
+          ? {
+              ...item,
+              projects: item.projects.map((candidate) =>
+                candidate.id === projectKey
+                  ? { ...candidate, remark }
+                  : {
+                      ...candidate,
+                      subprojects: candidate.subprojects?.map((subproject) =>
+                        subproject.id === projectKey ? { ...subproject, remark } : subproject
+                      )
+                    }
+              )
+            }
+          : item
+      )
+    )
+  })
   return listWorkspaces()
 }
 
@@ -342,8 +461,7 @@ export async function addProjectToWorkspace(
 ): Promise<Workspace[]> {
   const id = requiredText(workspaceId, '工作区 ID', 120)
   const path = resolve(requiredText(pathInput, '项目目录', 1_000))
-  const workspaces = await store.workspaces.read()
-  const workspace = workspaces.find((item) => item.id === id)
+  const workspace = (await store.workspaces.read()).find((item) => item.id === id)
   if (!workspace) throw new Error('工作区不存在')
   const metadata = await lstat(path).catch(() => undefined)
   if (!metadata?.isDirectory()) throw new Error('项目目录不存在或不是有效目录')
@@ -362,11 +480,18 @@ export async function addProjectToWorkspace(
     workspace.scanDepth ?? 3,
     workspace.ignoredDirectories ?? []
   )
-  await store.workspaces.write(
-    workspaces.map((item) =>
-      item.id === id ? { ...item, projects: [...item.projects, project] } : item
+  await withDataMutation(async () => {
+    const latest = await store.workspaces.read()
+    const current = latest.find((item) => item.id === id)
+    if (!current) throw new Error('扫描项目期间工作区已被删除')
+    if (current.projects.some((item) => resolve(item.path) === path))
+      throw new Error('该目录已在当前工作区中')
+    await store.workspaces.write(
+      latest.map((item) =>
+        item.id === id ? { ...item, projects: [...item.projects, project] } : item
+      )
     )
-  )
+  })
   return listWorkspaces()
 }
 
@@ -375,14 +500,21 @@ export async function removeProjectFromWorkspace(
   workspaceId: string,
   projectId: string
 ): Promise<Workspace[]> {
-  const { workspace, project } = await findProject(workspaceId, projectId)
-  const workspaces = await store.workspaces.read()
-  await store.workspaces.write(
-    workspaces.map((item) =>
-      item.id === workspace.id
-        ? { ...item, projects: item.projects.filter((candidate) => candidate.id !== project.id) }
-        : item
+  const workspaceKey = requiredText(workspaceId, '工作区 ID', 120)
+  const projectKey = requiredText(projectId, '项目 ID', 120)
+  await withDataMutation(async () => {
+    const workspaces = await store.workspaces.read()
+    const workspace = workspaces.find((item) => item.id === workspaceKey)
+    if (!workspace) throw new Error('工作区不存在')
+    if (!workspace.projects.some((item) => item.id === projectKey))
+      throw new Error('只能从工作区移除一级项目')
+    await store.workspaces.write(
+      workspaces.map((item) =>
+        item.id === workspace.id
+          ? { ...item, projects: item.projects.filter((candidate) => candidate.id !== projectKey) }
+          : item
+      )
     )
-  )
+  })
   return listWorkspaces()
 }

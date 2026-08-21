@@ -289,6 +289,7 @@ export function WorkspacesPage(): React.JSX.Element {
               projects={visibleWorkspace.projects}
               query={query}
               scanning={scanningWorkspaceId === visibleWorkspace.id}
+              workspaceId={visibleWorkspace.id}
             />
           </div>
         </div>

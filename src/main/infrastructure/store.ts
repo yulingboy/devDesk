@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type { AppPaths } from '@shared/types'
 import type {
   AppSettings,
@@ -306,9 +306,11 @@ export const store = {
   }
 }
 
-function validateDataExport(value: unknown): asserts value is DataExport {
+export function validateDataExport(value: unknown): asserts value is DataExport {
   if (!isRecord(value) || value.schemaVersion !== schemaVersion)
     throw new Error('备份文件版本不受支持')
+  if (JSON.stringify(value).length > 20 * 1024 * 1024)
+    throw new Error('备份数据超过 20 MB，已拒绝导入')
   const arrayFields = ['hosts', 'sshKeys', 'gitIdentities', 'workspaces', 'templates'] as const
   if (!isRecord(value.settings) || arrayFields.some((field) => !Array.isArray(value[field]))) {
     throw new Error('备份文件结构无效，请选择由 DevDesk 导出的 JSON 文件')
@@ -320,6 +322,17 @@ function validateDataExport(value: unknown): asserts value is DataExport {
     }
   }
   const candidate = value as unknown as DataExport
+  const limits: Record<(typeof arrayFields)[number], number> = {
+    hosts: 20_000,
+    sshKeys: 5_000,
+    gitIdentities: 5_000,
+    workspaces: 2_000,
+    templates: 5_000
+  }
+  for (const field of arrayFields) {
+    if (candidate[field].length > limits[field])
+      throw new Error(`备份文件中的 ${field} 数量超过安全上限`)
+  }
   const hasStrings = (item: unknown, fields: string[]): boolean =>
     isRecord(item) && fields.every((field) => typeof item[field] === 'string')
   if (
@@ -346,6 +359,137 @@ function validateDataExport(value: unknown): asserts value is DataExport {
     )
   ) {
     throw new Error('备份文件包含无效的业务字段，未导入任何数据')
+  }
+  const validText = (value: string, maxLength: number): boolean =>
+    value.length > 0 && value.length <= maxLength && !value.includes('\0')
+  const optionalValidText = (value: unknown, maxLength: number): boolean =>
+    value === undefined ||
+    (typeof value === 'string' && value.length <= maxLength && !value.includes('\0'))
+  const uniqueIds = (label: string, items: Array<{ id: string }>): void => {
+    const ids = new Set<string>()
+    for (const item of items) {
+      if (!validText(item.id, 120) || !/^[A-Za-z0-9_-]+$/.test(item.id) || ids.has(item.id))
+        throw new Error(`备份文件中的 ${label} ID 无效或重复`)
+      ids.add(item.id)
+    }
+  }
+  uniqueIds('Hosts', candidate.hosts)
+  uniqueIds('SSH 密钥', candidate.sshKeys)
+  uniqueIds('Git 身份', candidate.gitIdentities)
+  uniqueIds('工作区', candidate.workspaces)
+  uniqueIds('模板', candidate.templates)
+  if (
+    candidate.hosts.some(
+      (item) =>
+        !validText(item.ip, 45) ||
+        !validText(item.domain, 253) ||
+        !optionalValidText(item.remark, 120)
+    ) ||
+    candidate.sshKeys.some(
+      (item) =>
+        !validText(item.name, 80) ||
+        !validText(item.algorithm, 40) ||
+        !validText(item.publicKey, 8_000) ||
+        !validText(item.fingerprint, 300) ||
+        !optionalValidText(item.privateKeyPath, 2_000)
+    ) ||
+    candidate.gitIdentities.some(
+      (item) =>
+        !validText(item.name, 80) ||
+        !validText(item.username, 120) ||
+        !validText(item.email, 200) ||
+        !optionalValidText(item.sshKeyId, 120)
+    ) ||
+    candidate.templates.some(
+      (item) =>
+        !validText(item.name, 80) ||
+        !optionalValidText(item.description, 200) ||
+        !validText(item.source, 1_000)
+    )
+  ) {
+    throw new Error('备份文件包含超出长度限制的业务字段')
+  }
+  const sshIds = new Set(candidate.sshKeys.map((item) => item.id))
+  const identityIds = new Set(candidate.gitIdentities.map((item) => item.id))
+  if (candidate.gitIdentities.some((item) => item.sshKeyId && !sshIds.has(item.sshKeyId)))
+    throw new Error('备份文件中的 Git 身份引用了不存在的 SSH 密钥')
+  if (
+    candidate.workspaces.some((item) => item.gitIdentityId && !identityIds.has(item.gitIdentityId))
+  )
+    throw new Error('备份文件中的工作区引用了不存在的 Git 身份')
+  const portableAbsolutePath = (path: string): boolean =>
+    validText(path, 2_000) && (isAbsolute(path) || /^[A-Za-z]:[\\/]/.test(path))
+  let projectCount = 0
+  const projectIds = new Set<string>()
+  for (const workspace of candidate.workspaces) {
+    if (
+      !validText(workspace.name, 80) ||
+      !optionalValidText(workspace.description, 200) ||
+      !optionalValidText(workspace.gitIdentityId, 120) ||
+      !portableAbsolutePath(workspace.rootPath) ||
+      (workspace.ignoredDirectories !== undefined &&
+        (!Array.isArray(workspace.ignoredDirectories) ||
+          workspace.ignoredDirectories.length > 200 ||
+          workspace.ignoredDirectories.some(
+            (item) => typeof item !== 'string' || !validText(item, 80)
+          )))
+    )
+      throw new Error('备份文件包含无效的工作区字段')
+    for (const project of workspace.projects) {
+      projectCount += 1
+      if (
+        project.workspaceId !== workspace.id ||
+        !validText(project.name, 120) ||
+        !optionalValidText(project.remark, 200) ||
+        !validText(project.id, 120) ||
+        !/^[A-Za-z0-9_-]+$/.test(project.id) ||
+        projectIds.has(project.id) ||
+        !portableAbsolutePath(project.path)
+      ) {
+        throw new Error('备份文件包含无效或重复的项目数据')
+      }
+      projectIds.add(project.id)
+      if (project.subprojects !== undefined && !Array.isArray(project.subprojects))
+        throw new Error('备份文件包含无效的子项目列表')
+      for (const subproject of project.subprojects ?? []) {
+        projectCount += 1
+        if (
+          !hasStrings(subproject, ['id', 'name', 'path']) ||
+          !validText(subproject.id, 120) ||
+          !/^[A-Za-z0-9_-]+$/.test(subproject.id) ||
+          !validText(subproject.name, 120) ||
+          !optionalValidText(subproject.remark, 200) ||
+          projectIds.has(subproject.id) ||
+          !portableAbsolutePath(subproject.path)
+        ) {
+          throw new Error('备份文件包含无效或重复的子项目数据')
+        }
+        projectIds.add(subproject.id)
+      }
+    }
+  }
+  if (projectCount > 100_000) throw new Error('备份文件中的项目数量超过安全上限')
+  if (candidate.nodeState !== undefined && candidate.nodeState !== null) {
+    const state = candidate.nodeState
+    if (
+      !isRecord(state) ||
+      !Array.isArray(state.installed) ||
+      !Array.isArray(state.tasks) ||
+      !Array.isArray(state.packageManagers) ||
+      !Array.isArray(state.registries) ||
+      !Array.isArray(state.globalPackages) ||
+      !Array.isArray(state.caches) ||
+      state.tasks.length > 5_000
+    ) {
+      throw new Error('备份文件中的 Node 状态无效')
+    }
+  }
+  if (
+    candidate.overviewHistory !== undefined &&
+    candidate.overviewHistory !== null &&
+    (!isRecord(candidate.overviewHistory) || !Array.isArray(candidate.overviewHistory.items))
+  ) {
+    throw new Error('备份文件中的系统历史无效')
   }
 }
 

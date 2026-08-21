@@ -3,9 +3,9 @@ import { join, resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { ProjectCreateOptions, ProjectTemplate, Workspace } from '@shared/domain'
-import { store } from '@main/infrastructure/store'
+import { store, withDataMutation } from '@main/infrastructure/store'
 import { getUserShellEnvironment } from '@main/infrastructure/shell-environment'
-import { createId, isPathWithin, optionalText, requiredText } from './common'
+import { createId, entityId, isPathWithin, optionalText, requiredText } from './common'
 import { scanWorkspace } from './workspaces'
 
 const execFileAsync = promisify(execFile)
@@ -18,24 +18,34 @@ export async function saveTemplate(input: ProjectTemplate): Promise<ProjectTempl
   const name = requiredText(input.name, '模板名称', 80)
   const source = requiredText(input.source, '模板来源', 1_000)
   if (input.type !== 'git' && input.type !== 'local') throw new Error('模板类型无效')
-  const existing = await store.templates.read()
-  if (
-    existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
-  )
-    throw new Error(`模板名称重复：${name}`)
   const template: ProjectTemplate = {
     ...input,
-    id: input.id || createId('template'),
+    id: input.id ? entityId(input.id, '模板 ID') : createId('template'),
     name,
     source,
     description: optionalText(input.description, 200)
   }
-  await store.templates.write([...existing.filter((item) => item.id !== template.id), template])
+  await withDataMutation(async () => {
+    const existing = await store.templates.read()
+    if (input.id && !existing.some((item) => item.id === template.id))
+      throw new Error('项目模板不存在')
+    if (
+      existing.some(
+        (item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id
+      )
+    )
+      throw new Error(`模板名称重复：${name}`)
+    await store.templates.write([...existing.filter((item) => item.id !== template.id), template])
+  })
   return listTemplates()
 }
 
 export async function removeTemplate(id: string): Promise<ProjectTemplate[]> {
-  await store.templates.write((await store.templates.read()).filter((item) => item.id !== id))
+  await withDataMutation(async () => {
+    const existing = await store.templates.read()
+    if (!existing.some((item) => item.id === id)) throw new Error('项目模板不存在')
+    await store.templates.write(existing.filter((item) => item.id !== id))
+  })
   return listTemplates()
 }
 
@@ -123,47 +133,52 @@ export async function createProject(options: ProjectCreateOptions): Promise<Work
           : '复制本地模板失败，请检查模板路径和目录权限'
     )
   }
-  const scannedWorkspaces = await scanWorkspace(workspace.id)
-  const remark = optionalText(options.remark, 200)
-  const updatedWorkspaces = scannedWorkspaces.map((item) => {
-    if (item.id !== workspace.id) return item
-    if (!parentProject) {
-      return {
-        ...item,
-        projects: item.projects.map((project) =>
-          resolve(project.path) === target ? { ...project, remark } : project
-        )
-      }
-    }
-    return {
-      ...item,
-      projects: item.projects.map((project) => {
-        if (project.id !== parentProject.id) return project
-        const existing = project.subprojects?.find(
-          (subproject) => resolve(subproject.path) === target
-        )
-        const createdSubproject = {
-          ...existing,
-          id: existing?.id ?? createId('subproject'),
-          name: projectName,
-          path: target,
-          source: 'created' as const,
-          remark,
-          directoryExists: true,
-          lastScannedAt: new Date().toISOString()
-        }
-        return {
-          ...project,
-          subprojects: [
-            ...(project.subprojects ?? []).filter(
-              (subproject) => resolve(subproject.path) !== target
-            ),
-            createdSubproject
-          ].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
-        }
-      })
-    }
+  await scanWorkspace(workspace.id).catch((error: unknown) => {
+    throw new Error(
+      `项目目录已创建，但工作区扫描失败；目录已保留，请手动重新扫描：${error instanceof Error ? error.message : '未知错误'}`
+    )
   })
-  await store.workspaces.write(updatedWorkspaces)
-  return updatedWorkspaces
+  const remark = optionalText(options.remark, 200)
+  return withDataMutation(async () => {
+    const latest = await store.workspaces.read()
+    const currentWorkspace = latest.find((item) => item.id === workspace.id)
+    if (!currentWorkspace) throw new Error('项目目录已创建，但工作区已被删除；目录已保留')
+    const projects = currentWorkspace.projects.map((project) => {
+      if (!parentProject) return resolve(project.path) === target ? { ...project, remark } : project
+      if (project.id !== parentProject.id) return project
+      const existing = project.subprojects?.find(
+        (subproject) => resolve(subproject.path) === target
+      )
+      const createdSubproject = {
+        ...existing,
+        id: existing?.id ?? createId('subproject'),
+        name: projectName,
+        path: target,
+        source: 'created' as const,
+        remark,
+        directoryExists: true,
+        lastScannedAt: new Date().toISOString()
+      }
+      return {
+        ...project,
+        subprojects: [
+          ...(project.subprojects ?? []).filter(
+            (subproject) => resolve(subproject.path) !== target
+          ),
+          createdSubproject
+        ].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+      }
+    })
+    if (!parentProject && !projects.some((project) => resolve(project.path) === target)) {
+      throw new Error('项目目录已创建，但扫描未建立项目索引；目录已保留，请手动重新扫描')
+    }
+    if (parentProject && !projects.some((project) => project.id === parentProject.id)) {
+      throw new Error('项目目录已创建，但父项目已被移除；目录已保留')
+    }
+    const updated = latest.map((item) =>
+      item.id === workspace.id ? { ...currentWorkspace, projects } : item
+    )
+    await store.workspaces.write(updated)
+    return updated
+  })
 }

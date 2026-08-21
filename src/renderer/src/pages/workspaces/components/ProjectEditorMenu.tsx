@@ -10,14 +10,16 @@ import {
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface ProjectEditorMenuProps {
-  path: string
+  workspaceId: string
+  projectId: string
   disabled?: boolean
   labeled?: boolean
 }
 
 /** 项目和子项目共用同一组编辑器入口，避免各页面继续写死 VS Code。 */
 export function ProjectEditorMenu({
-  path,
+  workspaceId,
+  projectId,
   disabled,
   labeled = false
 }: ProjectEditorMenuProps): React.JSX.Element {
@@ -46,7 +48,9 @@ export function ProjectEditorMenu({
           <DropdownMenuItem
             key={editor.id}
             onSelect={() =>
-              void window.api?.workspaces.openProjectEditor(path, editor.id).catch(report)
+              void window.api?.workspaces
+                .openProjectEditor(workspaceId, projectId, editor.id)
+                .catch(report)
             }
           >
             <Code2 />

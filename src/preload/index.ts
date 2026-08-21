@@ -100,9 +100,10 @@ const api: AppApi = {
     remove: (id) => invoke(IPC_CHANNELS.workspaces.remove, id),
     scan: (id) => invoke(IPC_CHANNELS.workspaces.scan, id),
     open: (id) => invoke(IPC_CHANNELS.workspaces.open, id),
-    openProject: (path) => invoke(IPC_CHANNELS.workspaces.openProject, path),
-    openProjectEditor: (path, editor) =>
-      invoke(IPC_CHANNELS.workspaces.openProjectEditor, path, editor),
+    openProject: (workspaceId, projectId) =>
+      invoke(IPC_CHANNELS.workspaces.openProject, workspaceId, projectId),
+    openProjectEditor: (workspaceId, projectId, editor) =>
+      invoke(IPC_CHANNELS.workspaces.openProjectEditor, workspaceId, projectId, editor),
     scanDetailed: (id) => invoke(IPC_CHANNELS.workspaces.scanDetailed, id),
     cancelScan: (id) => invoke(IPC_CHANNELS.workspaces.cancelScan, id),
     saveProjectRemark: (workspaceId, projectId, remark) =>
@@ -119,7 +120,7 @@ const api: AppApi = {
     createProject: (options) => invoke(IPC_CHANNELS.templates.createProject, options)
   },
   node: {
-    getState: () => invoke(IPC_CHANNELS.node.getState),
+    getState: (refresh) => invoke(IPC_CHANNELS.node.getState, refresh),
     releases: (filter) => invoke(IPC_CHANNELS.node.releases, filter),
     install: (options) => invoke(IPC_CHANNELS.node.install, options),
     switch: (version, setDefault) => invoke(IPC_CHANNELS.node.switch, version, setDefault),
@@ -149,7 +150,7 @@ const api: AppApi = {
     cancelTask: (id) => invoke(IPC_CHANNELS.node.cancelTask, id),
     retryTask: (id) => invoke(IPC_CHANNELS.node.retryTask, id),
     clearTasks: () => invoke(IPC_CHANNELS.node.clearTasks),
-    openPath: (path) => invoke(IPC_CHANNELS.node.openPath, path),
+    openPath: (target) => invoke(IPC_CHANNELS.node.openPath, target),
     onTaskUpdated: (listener) => {
       const handler = (
         _event: Electron.IpcRendererEvent,

@@ -240,10 +240,15 @@ export interface NodeCacheSnapshot {
 }
 
 export interface NodeEnvironmentPath {
+  id: 'node' | 'nvm-root' | 'versions' | 'npm-cache' | 'pnpm-store' | 'yarn-cache' | 'bun-cache'
   name: string
   path: string
   exists: boolean
 }
+
+export type NodeOpenPathTarget =
+  | { type: 'environment'; id: NodeEnvironmentPath['id'] }
+  | { type: 'cache'; id: NonNullable<NodeCacheSnapshot['id']> }
 
 export interface DataStats {
   directory: string

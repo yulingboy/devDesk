@@ -6,6 +6,13 @@ export function createId(prefix: string): string {
   return `${prefix}_${randomUUID()}`
 }
 
+/** 业务 ID 会参与文件名和 IPC 资源定位，只允许稳定的非路径字符。 */
+export function entityId(value: unknown, label = '资源 ID'): string {
+  const id = requiredText(value, label, 120)
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`${label}格式无效`)
+  return id
+}
+
 export function requiredText(value: unknown, label: string, maxLength = 200): string {
   if (typeof value !== 'string') throw new Error(`${label}必须是文本`)
   const result = value.trim()

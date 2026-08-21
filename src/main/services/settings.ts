@@ -167,10 +167,19 @@ export async function exportSettingsFile(): Promise<DialogOperationResult> {
 
 export async function importSettings(data: DataExport): Promise<AppSettings> {
   return withDataMutation(async () => {
-    await store.importData(data)
-    await syncGitRules()
-    resetUserShellEnvironment()
-    return saveSettings(await store.settings.read())
+    const previous = await store.exportData()
+    try {
+      await store.importData(data)
+      await syncGitRules()
+      resetUserShellEnvironment()
+      return saveSettings(await store.settings.read())
+    } catch (error) {
+      await store.importData(previous)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `导入失败，已恢复原有数据：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
   })
 }
 
@@ -181,6 +190,9 @@ export async function importSettingsFile(): Promise<DialogOperationResult<AppSet
     filters: [{ name: 'JSON 文件', extensions: ['json'] }]
   })
   if (result.canceled || !result.filePaths[0]) return { cancelled: true }
+  const file = await stat(result.filePaths[0]).catch(() => undefined)
+  if (!file?.isFile()) throw new Error('备份文件不存在或无法读取')
+  if (file.size > 20 * 1024 * 1024) throw new Error('备份文件超过 20 MB，已拒绝导入')
   let data: DataExport
   try {
     data = JSON.parse(await readFile(result.filePaths[0], 'utf8')) as DataExport
@@ -296,13 +308,22 @@ export async function changeDataDirectory(): Promise<DialogOperationResult<AppSe
 
 export async function clearBusinessData(): Promise<AppSettings> {
   return withDataMutation(async () => {
-    await store.hosts.write([])
-    await store.sshKeys.write([])
-    await store.gitIdentities.write([])
-    await store.workspaces.write([])
-    await store.templates.write([])
-    await syncGitRules()
-    return store.settings.read()
+    const previous = await store.exportData()
+    try {
+      await store.hosts.write([])
+      await store.sshKeys.write([])
+      await store.gitIdentities.write([])
+      await store.workspaces.write([])
+      await store.templates.write([])
+      await syncGitRules()
+      return store.settings.read()
+    } catch (error) {
+      await store.importData(previous)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `清空数据失败，已恢复原有数据：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
   })
 }
 

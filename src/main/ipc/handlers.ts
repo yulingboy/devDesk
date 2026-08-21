@@ -240,9 +240,17 @@ export function registerApplicationIpc(): void {
     cancelWorkspaceScan(String(id))
   )
   registerIpcHandler(IPC_CHANNELS.workspaces.open, (_, id) => openWorkspace(String(id)))
-  registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, path) => openProject(String(path)))
-  registerIpcHandler(IPC_CHANNELS.workspaces.openProjectEditor, (_, path, editor) =>
-    openProjectEditor(String(path), editor === undefined ? undefined : String(editor))
+  registerIpcHandler(IPC_CHANNELS.workspaces.openProject, (_, workspaceId, projectId) =>
+    openProject(String(workspaceId), String(projectId))
+  )
+  registerIpcHandler(
+    IPC_CHANNELS.workspaces.openProjectEditor,
+    (_, workspaceId, projectId, editor) =>
+      openProjectEditor(
+        String(workspaceId),
+        String(projectId),
+        editor === undefined ? undefined : String(editor)
+      )
   )
   registerIpcHandler(
     IPC_CHANNELS.workspaces.saveProjectRemark,
@@ -265,7 +273,7 @@ export function registerApplicationIpc(): void {
     createProject(parseProjectCreateOptions(options))
   )
 
-  registerIpcHandler(IPC_CHANNELS.node.getState, () => getNodeState())
+  registerIpcHandler(IPC_CHANNELS.node.getState, (_, refresh) => getNodeState(Boolean(refresh)))
   registerIpcHandler(IPC_CHANNELS.node.releases, (_, filter) =>
     listNodeReleases(
       filter as { keyword?: string; channel?: 'all' | 'lts' | 'current'; refresh?: boolean }
@@ -325,7 +333,7 @@ export function registerApplicationIpc(): void {
   registerIpcHandler(IPC_CHANNELS.node.cancelTask, (_, id) => cancelNodeTask(String(id)))
   registerIpcHandler(IPC_CHANNELS.node.retryTask, (_, id) => retryNodeTask(String(id)))
   registerIpcHandler(IPC_CHANNELS.node.clearTasks, () => clearNodeTasks())
-  registerIpcHandler(IPC_CHANNELS.node.openPath, (_, path) => openNodePath(String(path)))
+  registerIpcHandler(IPC_CHANNELS.node.openPath, (_, target) => openNodePath(target))
 
   registerIpcHandler(IPC_CHANNELS.settings.get, () => getSettings())
   registerIpcHandler(IPC_CHANNELS.settings.save, (_, settings) =>

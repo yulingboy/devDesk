@@ -54,7 +54,7 @@ export function NodePage(): React.JSX.Element {
     (notify = false): void => {
       setLoading(true)
       void window.api?.node
-        .getState()
+        .getState(notify)
         .then((value) => {
           setState(value)
           setTasks(value.tasks)

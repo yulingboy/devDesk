@@ -92,6 +92,7 @@ import type {
   GitIdentityDetail,
   GitWorkspaceVerification,
   NodeEnvironmentPath,
+  NodeOpenPathTarget,
   NodeTask,
   SSHDeleteImpact,
   WorkspaceScanResult,
@@ -161,8 +162,12 @@ export interface AppApi {
     remove: (id: string) => Promise<Workspace[]>
     scan: (id: string) => Promise<Workspace[]>
     open: (id: string) => Promise<void>
-    openProject: (path: string) => Promise<void>
-    openProjectEditor: (path: string, editor?: ProjectEditorId) => Promise<void>
+    openProject: (workspaceId: string, projectId: string) => Promise<void>
+    openProjectEditor: (
+      workspaceId: string,
+      projectId: string,
+      editor?: ProjectEditorId
+    ) => Promise<void>
     scanDetailed: (id: string) => Promise<WorkspaceScanResult>
     cancelScan: (id: string) => Promise<void>
     saveProjectRemark: (
@@ -180,7 +185,7 @@ export interface AppApi {
     createProject: (options: ProjectCreateOptions) => Promise<Workspace[]>
   }
   node: {
-    getState: () => Promise<NodeState>
+    getState: (refresh?: boolean) => Promise<NodeState>
     releases: (filter?: {
       keyword?: string
       channel?: 'all' | 'lts' | 'current'
@@ -212,7 +217,7 @@ export interface AppApi {
     cancelTask: (id: string) => Promise<NodeState>
     retryTask: (id: string) => Promise<NodeState>
     clearTasks: () => Promise<NodeState>
-    openPath: (path: string) => Promise<void>
+    openPath: (target: NodeOpenPathTarget) => Promise<void>
     onTaskUpdated: (listener: (state: NodeState) => void) => () => void
   }
   settings: {

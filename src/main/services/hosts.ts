@@ -63,7 +63,7 @@ export function parseManagedHosts(raw: string): HostRecord[] {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
+    .map((line): HostRecord => {
       const disabled = line.startsWith('# devdesk-disabled ')
       const content = line.replace(/^# devdesk-disabled\s+/, '')
       const [ip, domain, ...remarkParts] = content.split(/\s+/)
@@ -155,11 +155,44 @@ function validateRecords(records: HostRecord[]): HostRecord[] {
   })
 }
 
+/** 将即将纳管的域名从原系统映射中移除，同时保留同一行未纳管的其他别名。 */
+export function removeManagedDomainsFromUnmanaged(
+  raw: string,
+  records: Pick<HostRecord, 'domain'>[]
+): string {
+  const managedDomains = new Set(records.map((item) => item.domain.toLowerCase()))
+  return raw
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) return line
+      const commentIndex = line.indexOf('#')
+      const mapping = (commentIndex >= 0 ? line.slice(0, commentIndex) : line).trim()
+      const comment = commentIndex >= 0 ? line.slice(commentIndex).trim() : ''
+      const [ip, ...domains] = mapping.split(/\s+/)
+      if (!isValidIp(ip)) return line
+      const remaining = domains.filter((domain) => !managedDomains.has(domain.toLowerCase()))
+      if (remaining.length === domains.length) return line
+      if (!remaining.length) return null
+      return `${ip} ${remaining.join(' ')}${comment ? ` ${comment}` : ''}`
+    })
+    .filter((line): line is string => line !== null)
+    .join('\n')
+}
+
 export async function saveHosts(input: HostRecord[]): Promise<HostRecord[]> {
   const records = validateRecords(input)
   const path = hostsPath()
   const raw = await readFile(path, 'utf8').catch(() => '')
-  await access(backupPath()).catch(() => copyFile(path, backupPath()).catch(() => undefined))
+  const hasBackup = await access(backupPath())
+    .then(() => true)
+    .catch(() => false)
+  if (!hasBackup) {
+    await mkdir(getStoreDirectory(), { recursive: true })
+    await copyFile(path, backupPath()).catch(() => {
+      throw new Error('首次修改 Hosts 前无法创建备份，已取消写入')
+    })
+  }
   const managed = [
     startMarker,
     ...records.map(
@@ -170,19 +203,7 @@ export async function saveHosts(input: HostRecord[]): Promise<HostRecord[]> {
   ].join('\n')
   const start = raw.indexOf(startMarker)
   const end = raw.indexOf(endMarker)
-  const baseRaw =
-    start < 0 || end < start
-      ? raw
-          .split('\n')
-          .filter((line) => {
-            const parts = line.trim().split(/\s+/)
-            return !(
-              parts.length >= 2 &&
-              records.some((record) => record.ip === parts[0] && record.domain === parts[1])
-            )
-          })
-          .join('\n')
-      : raw
+  const baseRaw = start < 0 || end < start ? removeManagedDomainsFromUnmanaged(raw, records) : raw
   const next =
     start >= 0 && end >= start
       ? `${raw.slice(0, start)}${managed}${raw.slice(end + endMarker.length)}`

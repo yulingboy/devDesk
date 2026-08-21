@@ -24,6 +24,7 @@ import { ProjectEditorMenu } from './ProjectEditorMenu'
 import { usePageFeedback } from '@/hooks/usePageFeedback'
 
 interface ProjectGridProps {
+  workspaceId: string
   projects: Project[]
   query: string
   scanning: boolean
@@ -33,6 +34,7 @@ interface ProjectGridProps {
 
 /** 主列表只展示一级项目，子项目以数量提示并在详情抽屉中查看。 */
 export function ProjectGrid({
+  workspaceId,
   projects,
   query,
   scanning,
@@ -137,7 +139,8 @@ export function ProjectGrid({
                   <div className="flex justify-end gap-1 opacity-80 transition-opacity group-hover:opacity-100">
                     <ProjectEditorMenu
                       disabled={project.directoryExists === false}
-                      path={project.path}
+                      projectId={project.id}
+                      workspaceId={workspaceId}
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -157,7 +160,9 @@ export function ProjectGrid({
                         <DropdownMenuItem
                           disabled={project.directoryExists === false}
                           onSelect={() =>
-                            void window.api?.workspaces.openProject(project.path).catch(report)
+                            void window.api?.workspaces
+                              .openProject(workspaceId, project.id)
+                              .catch(report)
                           }
                         >
                           <FolderOpen />

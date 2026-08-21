@@ -8,8 +8,8 @@ import type {
   GitState,
   GitWorkspaceVerification
 } from '@shared/domain'
-import { getStoreDirectory, store } from '@main/infrastructure/store'
-import { createId, isValidEmail } from './common'
+import { getStoreDirectory, store, withDataMutation } from '@main/infrastructure/store'
+import { createId, entityId, isValidEmail } from './common'
 import { ensureSshKeyPersisted } from './ssh'
 import { gitConfigValue as configValue, syncGitRules } from './git-rules'
 import { runGitCommand } from './git-command'
@@ -183,8 +183,24 @@ export async function saveGlobalGit(value: { username: string; email: string }):
   const username = configValue(value.username, 'Git 用户名', 120)
   const email = configValue(value.email, 'Git 邮箱', 200)
   if (!isValidEmail(email)) throw new Error('Git 邮箱格式无效')
-  await runGitCommand(['config', '--global', '--replace-all', 'user.name', username])
-  await runGitCommand(['config', '--global', '--replace-all', 'user.email', email])
+  const previous = await readGlobal()
+  try {
+    await runGitCommand(['config', '--global', '--replace-all', 'user.name', username])
+    await runGitCommand(['config', '--global', '--replace-all', 'user.email', email])
+  } catch (error) {
+    const restore = async (key: string, previousValue: string): Promise<void> => {
+      if (previousValue)
+        await runGitCommand(['config', '--global', '--replace-all', key, previousValue])
+      else await runGitCommand(['config', '--global', '--unset-all', key]).catch(() => undefined)
+    }
+    await Promise.all([
+      restore('user.name', previous.username),
+      restore('user.email', previous.email)
+    ]).catch(() => undefined)
+    throw new Error(
+      `全局 Git 配置写入失败，已尝试恢复原配置：${error instanceof Error ? error.message : '未知错误'}`
+    )
+  }
   return getGitState()
 }
 
@@ -193,27 +209,56 @@ export async function saveGitIdentity(input: GitIdentity): Promise<GitState> {
   const username = configValue(input.username, '用户名', 120)
   const email = configValue(input.email, '邮箱', 200)
   if (!isValidEmail(email)) throw new Error('身份邮箱格式无效')
-  const existing = await store.gitIdentities.read()
-  if (
-    existing.some((item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id)
-  )
-    throw new Error(`身份名称重复：${name}`)
-  if (input.sshKeyId && !(await ensureSshKeyPersisted(input.sshKeyId)))
-    throw new Error('关联的 SSH 密钥不存在，请重新选择')
-  const identity = { ...input, id: input.id || createId('git'), name, username, email }
-  await store.gitIdentities.write([...existing.filter((item) => item.id !== identity.id), identity])
-  await syncGitRules()
+  await withDataMutation(async () => {
+    // 密钥可能来自自动发现，持久化与身份写入必须处于同一个事务中。
+    if (input.sshKeyId && !(await ensureSshKeyPersisted(input.sshKeyId))) {
+      throw new Error('关联的 SSH 密钥不存在，请重新选择')
+    }
+    const existing = await store.gitIdentities.read()
+    const id = input.id ? entityId(input.id, '身份 ID') : createId('git')
+    if (input.id && !existing.some((item) => item.id === id)) throw new Error('Git 身份不存在')
+    const identity = { ...input, id, name, username, email }
+    if (
+      existing.some(
+        (item) => item.name.toLowerCase() === name.toLowerCase() && item.id !== input.id
+      )
+    )
+      throw new Error(`身份名称重复：${name}`)
+    await store.gitIdentities.write([
+      ...existing.filter((item) => item.id !== identity.id),
+      identity
+    ])
+    try {
+      await syncGitRules()
+    } catch (error) {
+      await store.gitIdentities.write(existing)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 规则同步失败，身份修改已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+  })
   return getGitState()
 }
 
 export async function removeGitIdentity(id: string): Promise<GitState> {
-  const workspaces = await store.workspaces.read()
-  const references = workspaces.filter((workspace) => workspace.gitIdentityId === id).slice(0, 3)
-  if (references.length)
-    throw new Error(`身份仍被工作区使用：${references.map((item) => item.name).join('、')}`)
-  await store.gitIdentities.write(
-    (await store.gitIdentities.read()).filter((item) => item.id !== id)
-  )
-  await syncGitRules()
+  await withDataMutation(async () => {
+    const workspaces = await store.workspaces.read()
+    const references = workspaces.filter((workspace) => workspace.gitIdentityId === id).slice(0, 3)
+    if (references.length)
+      throw new Error(`身份仍被工作区使用：${references.map((item) => item.name).join('、')}`)
+    const existing = await store.gitIdentities.read()
+    if (!existing.some((item) => item.id === id)) throw new Error('Git 身份不存在')
+    await store.gitIdentities.write(existing.filter((item) => item.id !== id))
+    try {
+      await syncGitRules()
+    } catch (error) {
+      await store.gitIdentities.write(existing)
+      await syncGitRules().catch(() => undefined)
+      throw new Error(
+        `Git 规则同步失败，身份删除已撤销：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+  })
   return getGitState()
 }

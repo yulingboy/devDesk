@@ -54,9 +54,10 @@ export async function syncGitRules(): Promise<void> {
   const lines = workspaces.flatMap((workspace) => {
     const identity = identities.find((item) => item.id === workspace.gitIdentityId)
     if (!identity) return []
+    const gitDirectory = `${workspace.rootPath.replace(/\\/g, '/').replace(/\/+$/, '')}/`
     return [
-      `[includeIf "gitdir:${workspace.rootPath.replace(/\\/g, '/')}/"]`,
-      `\tpath = ${join(directory, `${identity.id}.profile`)}`
+      `[includeIf ${quoteGitConfigValue(`gitdir:${gitDirectory}`)}]`,
+      `\tpath = ${quoteGitConfigValue(join(directory, `${identity.id}.profile`))}`
     ]
   })
   await writeFile(join(directory, 'workspace-rules.inc'), `${lines.join('\n')}\n`, 'utf8')
@@ -90,7 +91,8 @@ export async function removeGitRuleInclude(includePath: string): Promise<void> {
     { env: await getUserShellEnvironment() }
   ).catch((error: unknown) => {
     // Git 在键不存在时返回退出码 5，这不是异常；其他失败应保留给调用方处理。
-    if (error instanceof Error && 'code' in error && error.code === 5) return
+    if (error instanceof Error && 'code' in error && (error.code === 5 || error.code === 'ENOENT'))
+      return
     throw error
   })
 }

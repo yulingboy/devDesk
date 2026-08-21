@@ -78,13 +78,22 @@ export function ProjectDetailDrawer({
             </Button>
             <Button
               disabled={!directoryAvailable}
-              onClick={() => void window.api?.workspaces.openProject(project.path).catch(report)}
+              onClick={() =>
+                void window.api?.workspaces
+                  .openProject(project.workspaceId, project.id)
+                  .catch(report)
+              }
               variant="outline"
             >
               <FolderOpen />
               打开目录
             </Button>
-            <ProjectEditorMenu labeled disabled={!directoryAvailable} path={project.path} />
+            <ProjectEditorMenu
+              labeled
+              disabled={!directoryAvailable}
+              projectId={project.id}
+              workspaceId={project.workspaceId}
+            />
           </>
         ) : undefined
       }
@@ -194,12 +203,15 @@ export function ProjectDetailDrawer({
                       </TooltipButton>
                       <ProjectEditorMenu
                         disabled={subproject.directoryExists === false}
-                        path={subproject.path}
+                        projectId={subproject.id}
+                        workspaceId={workspace.id}
                       />
                       <TooltipButton
                         disabled={subproject.directoryExists === false}
                         onClick={() =>
-                          void window.api?.workspaces.openProject(subproject.path).catch(report)
+                          void window.api?.workspaces
+                            .openProject(workspace.id, subproject.id)
+                            .catch(report)
                         }
                         size="icon"
                         tooltip="打开子项目目录"

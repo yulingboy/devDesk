@@ -149,6 +149,49 @@ describe('数据存储', () => {
     await expect(store.hosts.read()).resolves.toEqual([])
   })
 
+  it('会拒绝跨对象引用失效的备份', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const backup = await store.exportData()
+    backup.gitIdentities = [
+      {
+        id: 'git-1',
+        name: '个人身份',
+        username: 'developer',
+        email: 'developer@example.com',
+        sshKeyId: 'missing-key'
+      }
+    ]
+
+    await expect(store.importData(backup)).rejects.toThrow('不存在的 SSH 密钥')
+  })
+
+  it('会拒绝项目归属和项目 ID 冲突的备份', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
+    temporaryDirectories.push(directory)
+    await initializeStore({ userData: directory, data: directory, logs: directory })
+    const backup = await store.exportData()
+    backup.workspaces = [
+      {
+        id: 'workspace-1',
+        name: '工作区',
+        rootPath: '/workspace',
+        description: '',
+        projects: [
+          {
+            id: 'project-1',
+            workspaceId: 'wrong-workspace',
+            name: '项目',
+            path: '/workspace/project'
+          }
+        ]
+      }
+    ]
+
+    await expect(store.importData(backup)).rejects.toThrow('无效或重复的项目数据')
+  })
+
   it('导入不含可选 Node 状态的旧备份时会清除残留状态', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'devdesk-store-'))
     temporaryDirectories.push(directory)

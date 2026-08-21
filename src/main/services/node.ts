@@ -10,6 +10,7 @@ import type {
   NodeCacheSnapshot,
   NodeEnvironmentPath,
   NodeInstall,
+  NodeOpenPathTarget,
   NodeRegistry,
   NodeRegistryDraft,
   NodeRelease,
@@ -25,6 +26,7 @@ import {
   setUserNodeBinOverride
 } from '@main/infrastructure/shell-environment'
 import { createId, requiredText } from './common'
+import { mergeDetectedNodeState } from './node-state'
 import createNodeInstallWorker from '@main/workers/node-install-worker?nodeWorker'
 
 const execFileAsync = promisify(execFile)
@@ -35,6 +37,8 @@ const activeInstallVersions = new Set<string>()
 const cancelledTaskIds = new Set<string>()
 let nodeStateMutation: Promise<void> = Promise.resolve()
 let nvmVersionRequest: Promise<string> | undefined
+let nodeProbeCache: { key: string; expiresAt: number; state: NodeState } | undefined
+let nodeProbeRequest: { key: string; promise: Promise<NodeState> } | undefined
 
 const defaultRegistries = (): NodeRegistry[] => [
   { id: 'registry-npm', name: 'npm', url: 'https://registry.npmjs.org', isCurrent: true },
@@ -387,10 +391,10 @@ async function readNrmRegistrySnapshot(saved: NodeRegistry[]): Promise<NodeRegis
   return parseNrmRegistries(output, currentName.trim(), saved)
 }
 
-/** 汇总真实命令状态，同时保留任务、镜像和缓存等持久化数据。 */
-export async function getNodeState(): Promise<NodeState> {
-  const [savedValue, settings] = await Promise.all([store.node.read(), store.settings.read()])
-  const saved = normalizeState(savedValue)
+async function probeNodeState(
+  saved: NodeState,
+  settings: Awaited<ReturnType<typeof store.settings.read>>
+): Promise<NodeState> {
   const packageManager = settings.node.packageManager || saved.packageManager || 'pnpm'
   const installed = await installedVersions()
   const activeInstall = installed.find((item) => item.version === saved.activeVersion)
@@ -443,6 +447,38 @@ export async function getNodeState(): Promise<NodeState> {
     capabilities
   }
   return state
+}
+
+/** 汇总真实命令状态；稳定 CLI 探测短时缓存，任务、缓存和全局包始终读取最新持久化值。 */
+export async function getNodeState(refresh = false): Promise<NodeState> {
+  const [savedValue, settings] = await Promise.all([store.node.read(), store.settings.read()])
+  const saved = normalizeState(savedValue)
+  const key = `${settings.node.packageManager}:${saved.activeVersion ?? ''}`
+  let detected: NodeState
+  if (!refresh && nodeProbeCache?.key === key && nodeProbeCache.expiresAt > Date.now()) {
+    detected = nodeProbeCache.state
+  } else if (!refresh && nodeProbeRequest?.key === key) {
+    detected = await nodeProbeRequest.promise
+  } else {
+    const promise = probeNodeState(saved, settings)
+    nodeProbeRequest = { key, promise }
+    try {
+      detected = await promise
+      nodeProbeCache = { key, state: detected, expiresAt: Date.now() + 20_000 }
+    } finally {
+      if (nodeProbeRequest?.promise === promise) nodeProbeRequest = undefined
+    }
+  }
+  const merged = mergeDetectedNodeState(saved, detected)
+  return {
+    ...merged,
+    registries: merged.registries.map((registry) => ({
+      ...registry,
+      latencyMs:
+        saved.registries.find((item) => item.id === registry.id || item.name === registry.name)
+          ?.latencyMs ?? registry.latencyMs
+    }))
+  }
 }
 
 export async function listNodeReleases(filter?: {
@@ -659,9 +695,9 @@ export async function installNode(
         activeInstallWorkers.delete(task.id)
       }
     }
-    const after = await getNodeState()
+    const after = await getNodeState(true)
     const completed = await updateNodeState((latest) => ({
-      ...after,
+      ...mergeDetectedNodeState(latest, after),
       tasks: latest.tasks.map((item) =>
         item.id === task.id
           ? {
@@ -695,7 +731,7 @@ export async function installNode(
               progress: cancelled ? item.progress : 100,
               message,
               finishedAt: new Date().toISOString(),
-              logs: [...item.logs, message]
+              logs: item.status === 'cancelled' ? item.logs : [...item.logs, message]
             }
           : item
       )
@@ -714,8 +750,22 @@ export async function cancelNodeTask(id: string): Promise<NodeState> {
   const worker = activeInstallWorkers.get(taskId)
   if (!worker) throw new Error('该安装任务未在运行，无法取消')
   cancelledTaskIds.add(taskId)
+  const cancelled = await updateNodeState((state) => ({
+    ...state,
+    tasks: state.tasks.map((task) =>
+      task.id === taskId
+        ? {
+            ...task,
+            status: 'cancelled' as const,
+            message: '用户已取消安装',
+            finishedAt: new Date().toISOString(),
+            logs: [...task.logs, '用户已取消安装']
+          }
+        : task
+    )
+  }))
   await worker.terminate()
-  return getNodeState()
+  return cancelled
 }
 
 export async function retryNodeTask(id: string): Promise<NodeState> {
@@ -754,7 +804,7 @@ export async function switchNode(versionInput: string, setDefault: boolean): Pro
       activeVersion: version,
       ...(setDefault ? { defaultVersion: version } : {})
     }))
-    return getNodeState()
+    return getNodeState(true)
   }
 
   if (setDefault) {
@@ -766,7 +816,7 @@ export async function switchNode(versionInput: string, setDefault: boolean): Pro
     setUserNodeBinOverride(nodeBinDirectory(install))
     await updateNodeState((current) => ({ ...current, activeVersion: version }))
   }
-  return getNodeState()
+  return getNodeState(true)
 }
 
 /** 在新的 macOS Terminal 会话中加载 nvm 并启用指定版本，避免伪造进程级切换结果。 */
@@ -804,7 +854,7 @@ export async function removeNode(versionInput: string): Promise<NodeState> {
   }
   if (state.defaultVersion === version)
     await updateNodeState((current) => ({ ...current, defaultVersion: '' }))
-  return getNodeState()
+  return getNodeState(true)
 }
 
 export async function listNodeRegistries(): Promise<NodeRegistry[]> {
@@ -855,7 +905,7 @@ export async function saveNodeRegistry(draft: NodeRegistryDraft): Promise<NodeRe
     throw new Error('写入 nrm 镜像失败，请检查镜像名称、地址和配置权限')
   }
   await updateNodeState((current) => ({ ...current, registries }))
-  return (await getNodeState()).registries
+  return (await getNodeState(true)).registries
 }
 
 export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
@@ -870,7 +920,7 @@ export async function removeNodeRegistry(id: string): Promise<NodeRegistry[]> {
   })
   const registries = state.registries.filter((item) => item.id !== id)
   await updateNodeState((current) => ({ ...current, registries }))
-  return (await getNodeState()).registries
+  return (await getNodeState(true)).registries
 }
 
 export async function useNodeRegistry(id: string): Promise<NodeState> {
@@ -886,7 +936,7 @@ export async function useNodeRegistry(id: string): Promise<NodeState> {
     registry: target.url,
     registries: current.registries.map((item) => ({ ...item, isCurrent: item.id === id }))
   }))
-  return getNodeState()
+  return getNodeState(true)
 }
 
 export async function testNodeRegistry(id: string): Promise<NodeRegistry[]> {
@@ -918,7 +968,7 @@ export async function installNrm(): Promise<NodeState> {
   } catch {
     throw new Error('nrm 安装失败，请检查当前 Node 的 npm、Registry 和网络连接')
   }
-  const next = await getNodeState()
+  const next = await getNodeState(true)
   if (!next.nrmAvailable) throw new Error('nrm 安装命令已完成，但未检测到 nrm，请刷新环境后重试')
   return next
 }
@@ -1129,14 +1179,14 @@ export async function getNodeEnvironmentPaths(): Promise<NodeEnvironmentPath[]> 
     join(homedir(), '.pnpm-store')
   )
   const paths = [
-    { name: 'Node 可执行文件', path: nodeExecutable || '未找到 Node 可执行文件' },
-    { name: 'nvm 根目录', path: process.env.NVM_DIR || join(homedir(), '.nvm') },
-    { name: 'Node 版本目录', path: getNodeVersionsDirectory() },
-    { name: 'npm 缓存', path: npmCache },
-    { name: 'pnpm Store', path: pnpmStore },
-    { name: 'Yarn 缓存', path: join(homedir(), 'Library', 'Caches', 'Yarn') },
-    { name: 'Bun 缓存', path: join(homedir(), '.bun', 'install', 'cache') }
-  ]
+    { id: 'node', name: 'Node 可执行文件', path: nodeExecutable || '未找到 Node 可执行文件' },
+    { id: 'nvm-root', name: 'nvm 根目录', path: process.env.NVM_DIR || join(homedir(), '.nvm') },
+    { id: 'versions', name: 'Node 版本目录', path: getNodeVersionsDirectory() },
+    { id: 'npm-cache', name: 'npm 缓存', path: npmCache },
+    { id: 'pnpm-store', name: 'pnpm Store', path: pnpmStore },
+    { id: 'yarn-cache', name: 'Yarn 缓存', path: join(homedir(), 'Library', 'Caches', 'Yarn') },
+    { id: 'bun-cache', name: 'Bun 缓存', path: join(homedir(), '.bun', 'install', 'cache') }
+  ] satisfies Array<Omit<NodeEnvironmentPath, 'exists'>>
   return Promise.all(
     paths.map(async (item) => ({
       ...item,
@@ -1158,8 +1208,20 @@ export async function listNodeTasks(): Promise<NodeTask[]> {
 }
 
 /** 环境页只允许打开已展示的本地路径，失败时返回平台相关中文错误。 */
-export async function openNodePath(pathInput: string): Promise<void> {
-  const path = resolve(requiredText(pathInput, '环境路径', 1_000))
+export async function openNodePath(targetInput: unknown): Promise<void> {
+  if (!targetInput || typeof targetInput !== 'object') throw new Error('环境路径参数无效')
+  const target = targetInput as Partial<NodeOpenPathTarget>
+  if (target.type !== 'environment' && target.type !== 'cache') throw new Error('环境路径类型无效')
+  if (typeof target.id !== 'string') throw new Error('环境路径标识无效')
+  const candidates =
+    target.type === 'environment' ? await getNodeEnvironmentPaths() : await resolveCachePaths()
+  const candidate = candidates.find((item) => item.id === target.id)
+  if (!candidate) throw new Error('环境路径不存在或已失效')
+  const path = resolve(candidate.path)
+  const exists = await access(path)
+    .then(() => true)
+    .catch(() => false)
+  if (!exists) throw new Error('环境路径不存在或已失效')
   const error = await shell.openPath(path)
   if (error) throw new Error(`无法打开环境路径：${error}`)
 }
@@ -1173,7 +1235,7 @@ export async function setPackageManager(managerInput: string): Promise<NodeState
     ...settings,
     node: { ...settings.node, packageManager: manager }
   })
-  return getNodeState()
+  return getNodeState(true)
 }
 
 /** npm、pnpm 和 yarn 通过各自 CLI 维护 Registry，bun 写入用户级 bunfig.toml。 */
@@ -1197,7 +1259,7 @@ export async function setPackageManagerRegistry(
       registry: settings.node.packageManager === manager ? registry : settings.node.registry
     }
   })
-  return getNodeState()
+  return getNodeState(true)
 }
 
 async function mutateGlobalPackage(
